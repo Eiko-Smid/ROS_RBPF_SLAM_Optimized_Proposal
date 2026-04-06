@@ -1,0 +1,18 @@
+
+1) Better two classes?
+
+    - One for ROS specific things like publish, subscribe
+    - The other for the real Mapping stuff?
+
+
+2) Umgang mit grid Grid Cells
+
+    - Wäre es besser die korrekten Positionen beizubehalten, statt sie auf die 
+      Mittelposition einer Zelle zu runden? Dadurch entstehen nämlich Ungenauigkeiten.!
+    - Geht das überhaupt?
+
+
+3) Width und Height der Karte vertauscht
+
+  In Rviz sind width und height der Karte vertauscht !
+  Warum?

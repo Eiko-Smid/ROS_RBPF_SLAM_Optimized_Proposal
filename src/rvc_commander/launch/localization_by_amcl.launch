@@ -1,0 +1,19 @@
+<!--This launchfile starts the amcl ros package for localization. The package localizes the pose
+of a robot against a existing map of the enviroment-->
+
+<launch>
+    <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch"/>
+    <!-- <arg name="map_file" default="$(find rvc_commander)/maps/Maps_by_Gmapping/cafe_map_by_gmapping.yaml"/> -->
+    <arg name="map_file" default="$(find rvc_commander)/maps/Maps_by_occupancy_Grid_Mapping/Cafe_Maps/final_occupancy_map_occ_95_free_5.yaml"/>
+    <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)" output="screen" />
+
+    <node pkg="amcl" name="amcl" type="amcl" output="screen">
+        <!-- <param name="scan_topic"   value="/scan" "default is also scan" /> -->
+        <param name="min_particles"     value="50" />
+        <param name="max_particles"     value="500" />
+        <param name="global_frame_id"   value="/map" />
+        <param name="base_frame_id"     value="/base_link" />
+        <param name="odom_frame_id"     value="/odom_link" />
+        <param name="use_map_topic"     value="true" />
+    </node>
+</launch>

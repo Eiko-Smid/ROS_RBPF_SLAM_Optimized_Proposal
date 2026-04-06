@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <!--Define the parameters for the differential drive mobile robot-->
+    <!--All units are SI-Units-->
+
+    <!--The parameters of the robot vacuum cleaner chassis (cylinder shape)-->
+    <xacro:property name="r_chassis" value="0.25"/>                                             <!--Radius of the chassis-->                            
+    <xacro:property name="h_chassis" value="0.15"/>                                             <!--Height of the chassis-->
+    <xacro:property name="d_chassis" value="1440"/>                                             <!--Density of the chassis-->                                 
+    <xacro:property name="v_chassis" value="${pi * r_chassis * r_chassis * h_chassis}"/>        <!--Volume of the chassis (no use) -->
+    <xacro:property name="m_chassis" value="${v_chassis * d_chassis}"/>                         <!--Mass of the chassis-->
+    <xacro:property name="dist_chassis_to_ground" value="${h_chassis/5}"/>                      <!--Distance between the bottom of the chassis and the ground-->
+    <xacro:property name="pos_chassis" value="0 0 ${h_chassis/2 + dist_chassis_to_ground}"/>    <!--Origin position of the chassis-->
+    <xacro:property name="rot_chassis" value="0 0 0"/>                                          <!--Origin rotation of the chassis-->
+
+
+    <!--Access chassis points ()-->
+    <xacro:property name="chassis_center" value="${h_chassis/2 + dist_chassis_to_ground}"/>
+    <xacro:property name="chassis_top" value="${chassis_center + (h_chassis/2)}"/>
+    <xacro:property name="chassis_bottom" value="${chassis_center - (h_chassis/2)}"/>
+    <xacro:property name="chassis_front" value="${r_chassis}"/>
+    <xacro:property name="chassis_back" value="${-r_chassis}"/>
+
+
+    <!--The parameters for the two driving wheels (cylinder shape)-->
+    <xacro:property name="r_wheel" value="${h_chassis/2 + dist_chassis_to_ground}"/>                                            <!--Radius of the wheels-->
+    <xacro:property name="w_wheel" value="${0.3 * r_wheel}"/>                                                                   <!--Width of the wheels-->
+    <xacro:property name="d_wheel" value="1440.0"/>                                                                             <!--Density of the material-->
+    <xacro:property name="v_wheel" value="${pi * r_wheel * r_wheel * w_wheel}"/>                                                <!--Volume of the wheels -->
+    <xacro:property name="m_wheel" value="${v_wheel * d_wheel}"/>                                                               <!--Mass off the wheels-->
+    <xacro:property name="torque_wheel" value="5.0"/>                                                                           <!--Torque of the wheels-->
+    <xacro:property name="wheel_separation" value="${2 * r_chassis + w_wheel}"/>                                                <!--Distance between the two wheels-->
+    <xacro:property name="pos_l_wheel" value="0 0 0"/>                                                                          <!--Origin position of the left wheel -->
+    <xacro:property name="pos_r_wheel" value="0 0 0"/>                                                                          <!--Origin position of the right wheel -->
+    <xacro:property name="rot_wheel" value="0.0 1.5707 1.5707"/>                                                                <!--Origin rotation of the wheels -->
+    <xacro:property name="joint_pos_l_wheel" value="0 ${r_chassis + w_wheel/2} ${h_chassis/2 + dist_chassis_to_ground}"/>       <!--Origin position of the left wheel joint-->
+    <xacro:property name="joint_pos_r_wheel" value="0 ${-(r_chassis + w_wheel/2)} ${h_chassis/2 + dist_chassis_to_ground}"/>    <!--Origin position of the right wheel joint-->
+    <xacro:property name="joint_rot_wheel" value="0 0 0"/>                                                                      <!--Origin rotation of the wheel joints-->
+
+
+    <!--The parameter of the two caster wheels (sphere shape)-->
+    <xacro:property name="r_caster_wheel" value="${0.25 * r_wheel}"/>                                                   <!--Radius of the caster wheels -->
+    <xacro:property name="d_caster_wheel" value="1440.0"/>                                                              <!--Density of the caster wheel material -->
+    <xacro:property name="v_caster_wheel" value="${(4/3) * pi * r_caster_wheel * r_caster_wheel * r_caster_wheel}"/>    <!--Volume of the caster wheels -->
+    <xacro:property name="m_caster_wheel" value="${v_caster_wheel * d_caster_wheel}"/>                                  <!--Mass of the caster wheels -->
+    <xacro:property name="pos_f_caster_wheel" value="${0.75*r_chassis} 0 ${0.25 * r_wheel}"/>                           <!--Position of the front caster weheel-->
+    <xacro:property name="pos_b_caster_wheel" value="${-0.75*r_chassis} 0 ${0.25 * r_wheel}"/>                          <!--Position of the back caster wheel-->
+    <xacro:property name="rot_caster_wheel" value="0 0 0"/>                                                             <!--Rotation of the caster wheels-->
+
+    
+    <!--The parameter of the Hokuya Laser Scanner-->
+    <xacro:property name="r_laser_scanner" value="0.05"/>
+    <xacro:property name="h_laser_scanner" value="0.075"/>
+    <xacro:property name="d_laser_scanner" value="1440.0"/>
+    <xacro:property name="v_laser_scanner" value="${pi * r_laser_scanner * r_laser_scanner * h_laser_scanner}"/>
+    <xacro:property name="m_laser_scanner" value="${v_laser_scanner * d_laser_scanner}"/>
+    <xacro:property name="pos_laser_scanner" value="0 0 0"/>
+    <xacro:property name="rot_laser_scanner" value="0 0 0"/>
+    <xacro:property name="joint_pos_laser_scanner" value="0 0 ${chassis_top + h_laser_scanner/2}"/>
+    <xacro:property name="joint_rot_laser_scanner" value="0 0 0"/>
+    <xacro:property name="joint_axis_laser_scanner" value="0 1 0"/>
+    <!--Technical specifications-->
+    <xacro:property name="sensor_name" value="hokuyo_laser_scanner_head"/>
+    <xacro:property name="sensor_type" value="ray"/>
+    <xacro:property name="update_rate" value="10"/>
+    <xacro:property name="pose_hokuyo_laser_scanner_head" value="0 0 0"/>
+    <xacro:property name="visu_rays" value="true"/>  
+    <xacro:property name="numb_of_samples" value="720"/>
+    <xacro:property name="angular_resolution" value="1"/>
+    <xacro:property name="min_angle" value="${-pi/2}"/>                 <!--Minimum angle [rad]-->
+    <xacro:property name="max_angle" value="${pi/2}"/>                  <!--Maximum angle [rad]-->
+    <xacro:property name="min_range" value="0.1"/>                      <!--Minimum distance the lidar can measure-->
+    <xacro:property name="max_range" value="10.0"/>                     <!--Maximum distance the lidar can measure-->
+    <xacro:property name="range_resolution" value="0.01"/>              
+    <xacro:property name="noise_type" value="gaussian"/>  
+    <xacro:property name="noise_mean" value="0.0"/>                     <!--Mean of the gaussian noise in [m]-->
+    <xacro:property name="noise_stddv" value="0.01"/>                   <!--Standard deviation in [m]-->
+    <xacro:property name="scan_topic" value="/scan"/>  
+    <xacro:property name="frame_name" value="laser_scanner_link"/>  
+
+</robot>

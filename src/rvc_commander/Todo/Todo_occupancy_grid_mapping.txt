@@ -1,0 +1,306 @@
+Todo Liste zur Implementierung des Occupancy Grid Mapping Algorithms in Python. 
+
+
+0. Create simple Python publisher and Subscriber
+
+    0.1 Create the python publisher
+
+        Status: Done
+        
+
+    0.2 Create the python subscriber
+
+        Status: Done
+
+
+    0.3 Create publisher and subscriber class   
+
+        Status: Done
+
+
+_______________________________________________________________________________________________________
+
+
+1. Datentypen der Topics ermitteln 
+
+
+    1.1 Datentypen der Pose ermitteln 
+
+        - Ermittlung des Datentyps/Aufbaus der Pose (/odom Topic)
+
+        Problem: Kein Zugriff auf tf möglich 
+
+        Lösungen: 
+
+            1) Problem ermitteln und lösen
+
+            2) diff_drive_controller verwenden. Dieser published odom 
+
+            3) Gazebo Topic "Link_states" verwenden.
+
+                - Verwendet den Datentypen gazebo_msgs.msg LinkStates
+
+                Besteht aus:
+
+                    # broadcast all link states in world frame
+                    string[] name                 # link names
+                    geometry_msgs/Pose[] pose     # desired pose in world frame
+                    geometry_msgs/Twist[] twist   # desired twist in world frame
+
+        Status: Done
+
+
+    
+    1.2 Ermittlung des Datentyps des Laserscanners
+
+        - Ermittlung des Datentyps/Aufbaus der Rays (/scan Topic)
+
+            -> sensor_msgs/LaserScan  
+
+        - Enthält ein eindimensionales Array, das alle Distanzwerte enthält.
+        - Die Winkel sind nicht in einem Array angegeben. Startwinkel, Endwinkel, sowie Winkelinkrement sind bekannt.
+        - Die Distanzwerte in dem Array gehen von min_angle zu max_angle (gegen den Uhrzeigersinn).
+
+        Status: Done
+
+
+    Status: Done
+
+
+_______________________________________________________________________________________________________
+
+
+2. Implementierung Klasse zur Umwandlung von gazebo_msgs.msg LinkStates -> geometry_msgs.msg Pose und Twist
+
+    2.1 Grundaufbau der Klasse:
+
+        Status: Done
+
+    
+    2.1 Programmieren der Methoden 
+
+        Status: Done
+
+    
+    2.2 Zwei Publisher    
+
+        Status: Done
+
+
+_______________________________________________________________________________________________________
+
+
+3. Implementierung Klasse zur transformation sensor_msgs/LaserScan  
+
+    3.1 Transformation der sensor_msgs/LaserScan in eigenem Node
+
+        - Die Daten sollen für den Grid Mapping Algorithmus aufbereitet werden. 
+        - Als Ergebnis soll ein Array bestehend aus tuple entstehen. 
+            -> [(range_1, bearing_1), ((range_2, bearing_2), ..., (range_n, bearing_n))]
+
+        Status; Done
+
+
+    3.2 Test mit Ausgabe der Werte
+
+        Status: Done
+
+
+    Status: Done
+    
+_______________________________________________________________________________________________________
+
+
+2. Implementierung Grid Mapping Algorithm
+
+    2.1 Einfügen der Klasse Occupancy Grid Mapping
+
+        Status: Done
+
+
+
+    2.2 Implementierung Subscriber für Pose
+
+        - Subscribed wird von der Topic "/odom"
+        - Speichern der Pose in Member Variable "self.pose"
+
+        1) Transform orientation from Quantenion to radians
+
+            Status: Done
+
+        Status: Done
+
+
+    2.3 Implementierung Subscriber für Scanner 
+
+        - Subscribed bei der Topic "scan" und speichert die Distanzwerte und zugehöriegen 
+        Winkel als Tuple in einer Liste namens "measurements" ab
+
+        Status: Done
+
+
+
+    2.4 Finde heraus ob Callbacks parallel ablaufen (shared memory Problem)
+
+        - Nein, Sequentiell, jede Callback entspricht einem eigenen Thread
+        - Threads werden nicht parallel ausgeführt, sie wechseln sich gegenseitig ab (In python).
+
+        Status: Done
+
+
+    
+    2.5 Wird die Callback aufgerufen, wenn main Programm nicht pausiert?
+
+        - Testen, indem loginfo in callback function ausgegeben wird 
+        - Im Main darf kein spin oder sleep vorhanden sein, lediglich while
+          Schleife.
+
+        Ergebnis:   Ja, die Callback wird dennoch aufgerufen. Scheinbar jedes Mal, wenn eine
+                    neue Message registriert wird. Die loginfo Zeit der Aufrufe entspricht nämlich
+                    der Publish rate des Publishers. 
+        
+        Status: Done
+
+
+
+    2.6 Ist es allgemein in python möglich das sich threads abwechseln, wenn sie nicht pausieren?
+
+        - Schreibe ein python script bestehend aus zwei Threads, die nicht schlafen. Printe eine 
+        individuelle Message für beide. Damit kann visuell erfasst werden ob beide Threads laufen
+        oder nur ein thread.
+
+        Ergebnis: 
+            Against our expectation, both threads are running. Maybe not in parallel but the threading module seems
+            to ensure that all threads are doing their work.  
+
+        Status: Done
+
+
+
+    2.7 Blocken locks wirklich die Callback?
+
+        - Starte ein Lock im main (main thread) 
+        - Prüfe durch loginfo, ob callback aufgerufen wird.
+
+        2.7.1 Finde heraus wie threads gesperrt und aktiviert werden.
+
+        Ergebnis: 
+
+        Status: Todo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    2.5 Realisierung Mapping
+
+        3.3.1 Variante 1: Sperren anderer Prozesse in Callback
+
+            Idee:
+                    - Nutze eine der beiden Callback Funktionen in der "update_map()" ausgeführt wird
+                        und die Map updated wird.
+                    - Sperre die andere Callback, um shared Memory zu umgehen.
+
+
+        3.3.2 Variante 2: ...
+
+
+
+    3.n-1 Schreibe den Node (main Programm) für die Klasse occupancy grid Mapping
+
+        - 
+
+        Status: Todo
+
+
+
+
+
+    2.4 Versuch Map zu plotten
+
+        - Versuche die erstellte Karte mit Matplotlib zu plotten.
+        - Gelingt dies nicht, so muss der Datentyp einer Karte in ROS ermittelt werden
+
+        Status: Todo
+
+
+
+    2.5 Datentyp für Map publishing ermitteln
+
+        - Datentyp und Aufbau ermitteln
+        - Publisher Node schreiben, so dass Karte live in rviz angezeigt werden kann.
+
+        Status: Todo
+
+
+    
+    Status: Todo
+
+
+_______________________________________________________________________________________________________
+
+
+3. Testphase
+
+    3.1 Teste pose_callback()
+
+        Problem: 
+
+            - Die Werte die in der callback function "pose_callback()" ausgegeben werden (Konsole) stimmen
+            nicht mit den Werte überein, die sich auf der Topic befinden und mit rostopic echo ausgegeben werden.  
+        
+
+            1. Lösungsansatz
+
+                - Definiere einen Publisher in "gazebo_state_publisher.py" der in einem vorgegebenen Intervall den
+                  Wert in die Topic schreibt. Damit wird die Frequent mit der gepublished wird deutlich verringert.
+                  
+                Status: Done
+
+                Ergebnis: Löst das Problem 
+
+                Frage:
+                        - Anscheinend hat die Frequenz der Callback Funktion dafür gesorgt dass der Speicher voll lief.
+                        - Das macht aber eigentlich keinen Sinn, weil beide Callback Funktionen ca. die gleiche 
+                          Programmdauer aufweisen. 
+
+        Status: Todo
+
+
+    
+    3.2 Teste laser_scan_callback()
+
+        - Gebe die Messwerte des Scanners aus. 
+        - Gebe Sie nur bei jedem 100 Aufruf der Callback aus!
+
+        Status: Done
+
+
+    
+
+    3.n Ermittlung ob Pose /odom genau
+
+        - Anhand der erstellten Karte kann visuell ermitteln werden, ob die Pose die in der Topic
+          Odom gepublished wird, korrekt ist.  
+        
+        Status: Todo
+
+    
+    Status: Todo

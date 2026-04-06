@@ -1,0 +1,110 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro" />
+
+    
+    <!-- TODO: Add same update rates over parameter setting and define all parameters in config -->
+    <!-- Differential Drive controller from Gazebo, TODO: Add noise by adapting the plugin -->
+    <gazebo>
+        <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+            <alwaysOn>true</alwaysOn>
+            <!-- Plugin update rate in Hz -->
+            <updateRate>10</updateRate>
+            <!-- Name of left joint, defaults to `left_joint` -->
+            <leftJoint>base_link_to_left_wheel</leftJoint>
+            <!-- Name of right joint, defaults to `right_joint` -->
+            <rightJoint>base_link_to_right_wheel</rightJoint>
+            <!-- The distance from the center of one wheel to the other, in meters, defaults to 0.34 m -->
+            <wheelSeparation>${wheel_separation}</wheelSeparation>
+            <!-- Diameter of the wheels, in meters, defaults to 0.15 m -->
+            <wheelDiameter>${r_wheel*2}</wheelDiameter>
+            <!-- Wheel acceleration, in rad/s^2, defaults to 0.0 rad/s^2 -->
+            <!-- <wheelAcceleration>5.0</wheelAcceleration> -->
+            <!-- Maximum torque which the wheels can produce, in Nm, defaults to 5 Nm -->
+            <wheelTorque>${torque_wheel}</wheelTorque>
+            <!-- Topic to receive geometry_msgs/Twist message commands, defaults to `cmd_vel` -->
+            <commandTopic>cmd_vel</commandTopic>
+            <!-- Topic to publish nav_msgs/Odometry messages, defaults to `odom` -->
+            <odometryTopic>odom</odometryTopic>
+            <!-- Odometry frame, defaults to `odom` -->
+            <odometryFrame>odom_link</odometryFrame>
+            <!-- Robot frame to calculate odometry from, defaults to `base_footprint` -->
+            <robotBaseFrame>base_link</robotBaseFrame>
+            <!-- Odometry source, 0 for ENCODER, 1 for WORLD, defaults to WORLD -->
+            <!-- <odometrySource>1</odometrySource> -->
+            <!-- Set to true to publish transforms for the wheel links, defaults to false -->
+            <!-- <publishWheelTF>true</publishWheelTF> -->
+            <!-- Set to true to publish transforms for the odometry, defaults to true -->
+            <!-- <publishOdom>true</publishOdom> -->
+            <!-- Set to true to publish sensor_msgs/JointState on /joint_states for the wheel joints, defaults to false -->
+            <!-- <publishWheelJointState>false</publishWheelJointState> -->
+            <!-- Set to true to swap right and left wheels, defaults to true -->
+            <legacyMode>true</legacyMode>
+        </plugin>
+    </gazebo>
+
+
+    <!--Hukuyo Laser Plugin-->
+    <gazebo reference="laser_scanner_link">
+        <sensor name="${sensor_name}" type="${sensor_type}">
+            <pose>${pose_hokuyo_laser_scanner_head}</pose>
+            <visualize>${visu_rays}</visualize>
+            <update_rate>${update_rate}</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>${numb_of_samples}</samples>
+                        <resolution>${angular_resolution}</resolution>
+                        <min_angle>${min_angle}</min_angle>
+                        <max_angle>${max_angle}</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>${min_range}</min>
+                    <max>${max_range}</max>
+                    <resolution>${range_resolution}</resolution>
+                </range>
+                <noise>
+                    <type>${noise_type}</type>
+                    <mean>${noise_mean}</mean>
+                    <stddv>${noise_stddv}</stddv>
+                </noise>
+            </ray>
+            <plugin name="gazebo_ros_head_hokuyo_controller" filename="libgazebo_ros_laser.so">
+                <topicName>${scan_topic}</topicName>
+                <frameName>${frame_name}</frameName>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+
+    <!--Define the colors of the robot components-->
+    <!--Orange box-->
+    <gazebo reference="chassis_link">
+        <material>Gazebo/Orange</material>
+    </gazebo>
+
+    <!--Black Caster Wheels-->
+    <gazebo reference="caster_wheel_front_link">
+        <mu1>0.0</mu1>
+        <mu2>0.0</mu2>
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <gazebo reference="caster_wheel_back_link">
+        <mu1>0.0</mu1>
+        <mu2>0.0</mu2>
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <!--Black Left Wheel-->
+    <gazebo reference="left_wheel_link">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+    <!--Black Right Wheel-->
+    <gazebo reference="right_wheel_link">
+        <material>Gazebo/Black</material>
+    </gazebo>
+
+</robot>

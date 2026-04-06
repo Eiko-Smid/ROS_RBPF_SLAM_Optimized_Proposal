@@ -1,0 +1,38 @@
+# ROS build system
+build/
+devel/
+install/
+
+# logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/
+
+# system files
+.DS_Store
+
+# ROS specific
+*.bag
+*.db
+
+# catkin tools
+.catkin_tools/
+
+# compiled libs
+*.so
+
+# temporary maps
+maps/tmp/
+maps/*~ 
+
+# images
+*.png
+*.jpg
+*.jpeg
+
