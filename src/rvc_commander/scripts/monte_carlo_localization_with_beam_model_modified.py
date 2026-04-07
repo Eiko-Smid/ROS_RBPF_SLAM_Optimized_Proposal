@@ -615,7 +615,7 @@ class MonteCarloLocalization():
 
     def simulate_motion_error(self, left_wheel, right_wheel):
         '''Simulates gaussian error in robot motion. The error is simulated by two factors. 
-        One is the error in distance the other is the error is due to slip while turning.'''
+        One is the error in distance the other is the error due to slip while turning.'''
         left_distance, right_distance= (left_wheel, right_wheel)
         control_difference= left_distance - right_distance
         # Calculate error standarddeviation
@@ -690,9 +690,9 @@ class MonteCarloLocalization():
                 self.distance_right_wheel= 0.0
                 # Extract laser scan measurements
                 laser_scan = self.laser_scan
+                self.lock.release()
                 # Get current measurements
                 measurements= self.transform_laser_scan_to_measurement(laser_scan)
-                self.lock.release()
                 # Simulate motion error
                 control= self.simulate_motion_error(distance_left_wheel, distance_right_wheel)
                 # Update pose by particle filter

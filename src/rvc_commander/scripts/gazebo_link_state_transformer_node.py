@@ -111,7 +111,7 @@ def main():
     link_states_topic= "gazebo/link_states"
     odom_topic= "true_odom"
     velocity_topic= "cmd_vel"
-    link_name= 'robot_vacuum_cleaner::base_link'    
+    link_name= 'robot_vacuum_cleaner::base_link'
     publish_rate= 10
     link_state_transformer= Link_State_Transformer(odom_topic= odom_topic, velocity_topic= velocity_topic,
                             link_states_topic= link_states_topic, link_name= link_name, publish_rate= publish_rate)
