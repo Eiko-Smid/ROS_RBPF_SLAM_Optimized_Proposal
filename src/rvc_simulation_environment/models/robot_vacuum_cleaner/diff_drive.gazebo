@@ -19,7 +19,7 @@
             <!-- Diameter of the wheels, in meters, defaults to 0.15 m -->
             <wheelDiameter>${r_wheel*2}</wheelDiameter>
             <!-- Wheel acceleration, in rad/s^2, defaults to 0.0 rad/s^2 -->
-            <!-- <wheelAcceleration>5.0</wheelAcceleration> -->
+            <wheelAcceleration>2.0</wheelAcceleration>
             <!-- Maximum torque which the wheels can produce, in Nm, defaults to 5 Nm -->
             <wheelTorque>${torque_wheel}</wheelTorque>
             <!-- Topic to receive geometry_msgs/Twist message commands, defaults to `cmd_vel` -->
@@ -100,11 +100,23 @@
 
     <!--Black Left Wheel-->
     <gazebo reference="left_wheel_link">
+        <mu1>1.5</mu1>
+        <mu2>1.5</mu2>
+        <kp>1000000.0</kp>
+        <kd>100.0</kd>
+        <minDepth>0.001</minDepth>
+        <maxVel>0.1</maxVel>
         <material>Gazebo/Black</material>
     </gazebo>
 
     <!--Black Right Wheel-->
     <gazebo reference="right_wheel_link">
+        <mu1>1.5</mu1>
+        <mu2>1.5</mu2>
+        <kp>1000000.0</kp>
+        <kd>100.0</kd>
+        <minDepth>0.001</minDepth>
+        <maxVel>0.1</maxVel>
         <material>Gazebo/Black</material>
     </gazebo>    
     <!--Black Right Wheel-->

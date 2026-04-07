@@ -43,7 +43,6 @@
     <inertial>
         <origin xyz="${pos_chassis}" rpy="${rot_chassis}" />
         <mass value= "${m_chassis}"/>
-        <cylinder_inertia m="${m_chassis}" r="${r_chassis}" h="${h_chassis}"/> 
         <xacro:cylinder_inertia m="${m_chassis}" r="${r_chassis}" h="${h_chassis}"/> 
     </inertial>
 </link>
@@ -82,7 +81,6 @@
         <inertial>
             <origin xyz="${pos_f_caster_wheel}" rpy="${rot_caster_wheel}"/>
             <mass value= "${m_caster_wheel}"/>
-            <sphere_inertia m="${m_caster_wheel}" r="${r_caster_wheel}"/> 
             <xacro:sphere_inertia m="${m_caster_wheel}" r="${r_caster_wheel}"/> 
         </inertial>
     </link>
@@ -121,7 +119,6 @@
         <inertial>
             <origin xyz="${pos_b_caster_wheel}" rpy="${rot_caster_wheel}"/>
             <mass value= "${m_caster_wheel}"/>
-            <sphere_inertia m="${m_caster_wheel}" r="${r_caster_wheel}"/> 
             <xacro:sphere_inertia m="${m_caster_wheel}" r="${r_caster_wheel}"/> 
         </inertial>
     </link>
@@ -157,7 +154,6 @@
         <inertial>
             <origin xyz="${pos_l_wheel}" rpy="${rot_wheel}" />
             <mass value= "${m_wheel}"/>
-            <cylinder_inertia m="${m_wheel}" r="${r_wheel}" h="${w_wheel}"/>
             <xacro:cylinder_inertia m="${m_wheel}" r="${r_wheel}" h="${w_wheel}"/> 
         </inertial>
     </link>
@@ -190,7 +186,6 @@
         <inertial>
             <origin xyz="${pos_r_wheel}" rpy="${rot_wheel}" />
             <mass value= "${m_wheel}"/>
-            <cylinder_inertia m="${m_wheel}" r="${r_wheel}" h="${w_wheel}"/>
             <xacro:cylinder_inertia m="${m_wheel}" r="${r_wheel}" h="${w_wheel}"/> 
         </inertial>
     </link>
@@ -202,7 +197,7 @@
         <child link="left_wheel_link"/>
         <parent link="base_link"/>
         <limit effort="100" velocity="100"/>
-        <joint_properties damping="0.0" friction="0.0"/>
+        <joint_properties damping="0.2" friction="0.05"/>
     </joint>
 
     <joint name="base_link_to_right_wheel" type="continuous">
@@ -211,7 +206,7 @@
         <child link="right_wheel_link"/>
         <parent link="base_link"/>
         <limit effort="100" velocity="100"/>
-        <joint_properties damping="0.0" friction="0.0"/>
+        <joint_properties damping="0.2" friction="0.05"/>
     </joint>
 
 
@@ -237,7 +232,6 @@
         <inertial>
             <origin xyz= "${pos_laser_scanner}" rpy="${rot_laser_scanner}"/>
             <mass value="${m_laser_scanner}"/>
-            <cylinder_inertia m="${m_laser_scanner}" r="${r_laser_scanner}" h="${h_laser_scanner}" />
             <xacro:cylinder_inertia m="${m_laser_scanner}" r="${r_laser_scanner}" h="${h_laser_scanner}" />
         </inertial>
     </link>

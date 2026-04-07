@@ -33,7 +33,7 @@
     <xacro:property name="wheel_separation" value="${2 * r_chassis + w_wheel}"/>                                                <!--Distance between the two wheels-->
     <xacro:property name="pos_l_wheel" value="0 0 0"/>                                                                          <!--Origin position of the left wheel -->
     <xacro:property name="pos_r_wheel" value="0 0 0"/>                                                                          <!--Origin position of the right wheel -->
-    <xacro:property name="rot_wheel" value="0.0 1.5707 1.5707"/>                                                                <!--Origin rotation of the wheels -->
+    <xacro:property name="rot_wheel" value="0 ${pi/2} ${pi/2}"/>                                                                <!--Origin rotation of the wheels -->
     <xacro:property name="joint_pos_l_wheel" value="0 ${r_chassis + w_wheel/2} ${h_chassis/2 + dist_chassis_to_ground}"/>       <!--Origin position of the left wheel joint-->
     <xacro:property name="joint_pos_r_wheel" value="0 ${-(r_chassis + w_wheel/2)} ${h_chassis/2 + dist_chassis_to_ground}"/>    <!--Origin position of the right wheel joint-->
     <xacro:property name="joint_rot_wheel" value="0 0 0"/>                                                                      <!--Origin rotation of the wheel joints-->

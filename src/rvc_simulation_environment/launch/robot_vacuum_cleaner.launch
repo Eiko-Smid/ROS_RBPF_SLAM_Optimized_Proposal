@@ -8,6 +8,12 @@
   <arg name="gui" 			default="true"/>
   <arg name="headless" 		default="false"/>
   <arg name="debug" 		default="false"/>
+  <arg name="spawn_x" 		default="0.0"/>
+  <arg name="spawn_y" 		default="0.0"/>
+  <arg name="spawn_z" 		default="0.002"/>
+  <arg name="spawn_roll" 	default="0.0"/>
+  <arg name="spawn_pitch" 	default="0.0"/>
+  <arg name="spawn_yaw" 	default="0.0"/>
   
   <!-- Load the world environment -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
@@ -27,8 +33,8 @@
   <!-- Spawn the robot after we built the urdf files -->
   <node name="robot_vacuum_cleaner_spawn" pkg="gazebo_ros" type="spawn_model" output="screen"
    args="-urdf -param robot_vacuum_cleaner_description -model robot_vacuum_cleaner
-          -x 0.0 -y 0.0 -z 0.2
-          -R 0.0 -P 0.0 -Y 0.0" />
+      -x $(arg spawn_x) -y $(arg spawn_y) -z $(arg spawn_z)
+      -R $(arg spawn_roll) -P $(arg spawn_pitch) -Y $(arg spawn_yaw)" />
 
    
   <!-- Publish the TFs -->
