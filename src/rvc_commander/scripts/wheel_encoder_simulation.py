@@ -35,8 +35,8 @@ class SimulateWheelEncoder():
         self.wheel_encoder_publisher= rospy.Publisher(wheelencoder_topic, WheelEncoder, queue_size=1)
 
 
-    def link_state_callback(self, link_states):
-        '''Receive pose from topic.'''
+    def link_state_callback(self, link_states: LinkStates):
+        '''Receive gazebo link state from topic.'''
         self.lock.acquire()
         # Extract message
         self.link_state_message = link_states
@@ -61,7 +61,7 @@ class SimulateWheelEncoder():
     @staticmethod
     def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
         '''
-        Transforms the geometry msgs pose to a planar pose, consisting of (x, y, yaw) tuple.
+        Transforms the link state message to a planar pose, consisting of (x, y, yaw) tuple.
         '''
         link_state_pose: Pose = link_state.pose[link_state_index]
 
@@ -135,11 +135,12 @@ class SimulateWheelEncoder():
                 # Copy pose
                 self.lock.acquire()
                 link_state = self.link_state_message
+                link_state_index = self.link_state_index
                 self.lock.release()
                 # Pose -> planar pose
                 new_pose= self.transform_link_state_pose_to_planar_pose(
                     link_state=link_state,
-                    link_state_index=self.link_state_index
+                    link_state_index=link_state_index,
                 )
                 # Check if old pose was initialized already
                 if(old_pose):
