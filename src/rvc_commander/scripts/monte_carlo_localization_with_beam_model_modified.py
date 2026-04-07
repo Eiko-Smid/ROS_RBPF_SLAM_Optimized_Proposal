@@ -383,15 +383,15 @@ class ParticleFilter():
     def transform_point_to_grid_cell(self, point):
         '''Transforms an (x, y) point to the array access indices (i, j for row, column). '''
         x,y = point
-        x_shifted= x + self.shift_x
-        y_shifted= y + self.shift_y
-        i= floor(y_shifted/self.grid_resolution)
-        j= floor(x_shifted/self.grid_resolution)
+        x_shifted = x + self.shift_x
+        y_shifted = y + self.shift_y
+        i = floor(y_shifted/self.grid_resolution)
+        j = floor(x_shifted/self.grid_resolution)
         return (i, j)
 
 
     def transform_grid_cell_to_point(self, grid_cell):
-        '''Transforms the given grid cell (i, j) to a (x, y) point in the real   world.'''
+        '''Transforms the given grid cell (i, j) to a (x, y) point in the real world.'''
         i, j= grid_cell
         x= j * self.grid_resolution - self.shift_x + self.grid_resolution/2
         y= i * self.grid_resolution - self.shift_y + self.grid_resolution/2
@@ -571,14 +571,13 @@ class MonteCarloLocalization():
 
     def publish_map_to_odom_tf(self):
         """
-        Broadcast the correction transform map -> odom.
-
-        The particle filter estimates the robot pose in the map frame.
-        The odometry / simulator already provides odom -> base_link.
-        From both we compute and publish map -> odom.
+        This function computes the transformation between the odom frame and the map frame based on the tf between
+        the odom frame and the base frame as well as the pose of the robot. The pose of the robot is the tf between 
+        the map frame and the base frame, which is estimated by the MCL algorithm. 
+        
         """
         try:
-            # Current odometry pose of the robot: odom -> base_link
+            # get tf: odom -> base_link
             (translation, rotation) = self.tf_listener.lookupTransform(
                 self.odom_frame_id, self.base_frame_id, rospy.Time(0)
             )
@@ -675,6 +674,12 @@ class MonteCarloLocalization():
         rospy.loginfo("TF available!")
 
         while not rospy.is_shutdown():
+            # Check if measurement is available, else stop rest of loop
+            if self.laser_scan is None:
+                    rospy.logwarn_throttle(2.0, "Waiting for laser scan measurement initialization...")
+                    update_rate.sleep()
+                    continue
+        
             # Check if Localization is necessary 
             if(self.is_localization_necessary((self.distance_left_wheel, self.distance_right_wheel))):
                 self.lock.acquire()
@@ -683,8 +688,10 @@ class MonteCarloLocalization():
                 distance_right_wheel= self.distance_right_wheel
                 self.distance_left_wheel= 0.0
                 self.distance_right_wheel= 0.0
+                # Extract laser scan measurements
+                laser_scan = self.laser_scan
                 # Get current measurements
-                measurements= self.transform_laser_scan_to_measurement(self.laser_scan)
+                measurements= self.transform_laser_scan_to_measurement(laser_scan)
                 self.lock.release()
                 # Simulate motion error
                 control= self.simulate_motion_error(distance_left_wheel, distance_right_wheel)
@@ -692,6 +699,7 @@ class MonteCarloLocalization():
                 self.particle_filter.update_particles(control, measurements)
             else: 
                 rospy.loginfo("\nNo Localization\n")
+            
             # Publish particles
             self.publish_particles()
             # Publish pose
