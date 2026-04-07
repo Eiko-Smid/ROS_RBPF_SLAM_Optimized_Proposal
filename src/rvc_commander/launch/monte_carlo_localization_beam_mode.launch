@@ -1,6 +1,9 @@
 <launch>
 <!--Launch the robot model and the world.-->
-    <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch"/>
+    <arg name="paused" default="true"/>
+    <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch">
+        <arg name="paused" value="$(arg paused)"/>
+    </include>
 
 <!--Generate a transform between map and odom -->
     <!-- <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" /> -->

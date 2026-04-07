@@ -27,7 +27,7 @@
   <!-- Spawn the robot after we built the urdf files -->
   <node name="robot_vacuum_cleaner_spawn" pkg="gazebo_ros" type="spawn_model" output="screen"
    args="-urdf -param robot_vacuum_cleaner_description -model robot_vacuum_cleaner
-          -x 0.0 -y 0.0 -z 1.0
+          -x 0.0 -y 0.0 -z 0.2
           -R 0.0 -P 0.0 -Y 0.0" />
 
    
