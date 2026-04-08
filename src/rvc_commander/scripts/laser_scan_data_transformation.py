@@ -35,7 +35,6 @@ class My_Laser_Scan_Data_Transformation():
 
 
 
-
 def main():
     rospy.init_node("laser_scan_transformer", anonymous=True)
     laser_scan_topic= "scan"
