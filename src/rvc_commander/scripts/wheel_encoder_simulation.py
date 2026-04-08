@@ -19,37 +19,58 @@ class SimulateWheelEncoder():
     which is expected to be published by a localization node. The simulated wheel encoder data is then
     published to a topic, which can be used by the controller node.
     '''
-    def __init__(self, robot_width, odom_topic= "odom", wheelencoder_topic="encoder", publish_rate= 10):
+    def __init__(self, robot_width, link_state_name, link_state_topic= "gazebo/link_states", wheelencoder_topic="encoder", publish_rate= 10):
         # Robot parameter
         self.robot_width= robot_width
         # Init Wheel encoder message 
         self.distance= WheelEncoder()
-        # Subscriber for odometry 
-        self.odom_subscriber= rospy.Subscriber(odom_topic, Pose, self.pose_callback)
+        # Subscriber for link state -> pose
+        self.link_state_message = None
+        self.link_state_name = link_state_name
+        self.link_state_index = None
+        self.link_states_sunscriber = rospy.Subscriber(link_state_topic, LinkStates, self.link_state_callback)
         self.lock= threading.Lock()
-        self.geometry_pose= None
         # Publisher
         self.publish_rate= publish_rate
         self.wheel_encoder_publisher= rospy.Publisher(wheelencoder_topic, WheelEncoder, queue_size=1)
 
 
-    def pose_callback(self, pose):
-        '''Receive pose from topic.'''
+    def link_state_callback(self, link_states: LinkStates):
+        '''Receive gazebo link state from topic.'''
         self.lock.acquire()
-        self.geometry_pose= pose
+        # Extract message
+        self.link_state_message = link_states
+
+        # Find link state name index -> base_link index
+        if self.link_state_index is None:
+            try:
+                self.link_state_index = link_states.name.index(self.link_state_name)
+                rospy.loginfo(f"Found link state index: {self.link_state_index}")
+            except ValueError:
+                rospy.logwarn_throttle(5.0, f"Link {self.link_state_name} not found in Gazebo link states.")
+
+        if self.link_state_index is None:
+            for i in range(len(link_states.name)):
+                if self.link_state_name == link_states.name[i]:
+                    self.link_state_index = i
+                    break
+        
         self.lock.release()
 
 
     @staticmethod
-    def transform_pose_to_planar_pose(pose):
+    def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
         '''
-        Transforms the geometry msgs pose to a planar pose, consisting of (x, y, yaw) tuple.
+        Transforms the link state message to a planar pose, consisting of (x, y, yaw) tuple.
         '''
-        x= pose.position.x
-        y= pose.position.y
+        link_state_pose: Pose = link_state.pose[link_state_index]
+
+        x= link_state_pose.position.x
+        y= link_state_pose.position.y
+        orientation = link_state_pose.orientation
         # Transform quaternion angle's to euler angle's
-        (roll, pitch, yaw)= euler_from_quaternion([pose.orientation.x, pose.orientation.y, pose.orientation.z,
-                                                pose.orientation.w])
+        (roll, pitch, yaw)= euler_from_quaternion([orientation.x, orientation.y, orientation.z,
+                                                orientation.w])
         planar_pose= (x, y, yaw)
         return planar_pose
 
@@ -110,15 +131,20 @@ class SimulateWheelEncoder():
         rate= rospy.Rate(self.publish_rate)
         while not rospy.is_shutdown():
             # Check if data was received
-            if(self.geometry_pose):
+            if(self.link_state_message and self.link_state_index is not None):
                 # Copy pose
                 self.lock.acquire()
-                pose= self.geometry_pose
+                link_state = self.link_state_message
+                link_state_index = self.link_state_index
                 self.lock.release()
                 # Pose -> planar pose
-                new_pose= self.transform_pose_to_planar_pose(pose)
+                new_pose= self.transform_link_state_pose_to_planar_pose(
+                    link_state=link_state,
+                    link_state_index=link_state_index,
+                )
                 # Check if old pose was initialized already
                 if(old_pose):
+                    rospy.loginfo_once("Wheel encoder simulation initialized.")
                     # Simulate encoder data
                     left_control, right_control= self.wheelencoder_simulation(old_pose, new_pose, self.robot_width)
                     # Publish wheel distances 
@@ -143,10 +169,11 @@ def main():
     wheel_separation= 2 * r_chassis + w_wheel
 
     # Init SimulateWheelEncoder
-    odom_topic= "true_odom"
+    link_state_topic= "gazebo/link_states"
+    link_state_name = "robot_vacuum_cleaner::base_link"
     wheelencoder_topic= "wheel_encoder" 
     publish_rate= 10
-    wheel_encoder_simulation= SimulateWheelEncoder(robot_width= wheel_separation, odom_topic= odom_topic, 
+    wheel_encoder_simulation= SimulateWheelEncoder(robot_width= wheel_separation, link_state_name= link_state_name, link_state_topic=link_state_topic, 
                                 wheelencoder_topic= wheelencoder_topic, publish_rate= publish_rate)
     # Execute 
     wheel_encoder_simulation.execute()

@@ -50,6 +50,7 @@ class ParticleFilter():
         # Initialize particles.
         self.particles= None
         self.initialize_particles(start_pose, map_width_m, map_height_m)
+        # self.initialize_particles_v2(start_pose, map_width_m, map_height_m)
         # Robot parameter.
         self.wheel_saperation= wheel_saperation
         # Measurement parameter
@@ -74,6 +75,17 @@ class ParticleFilter():
         number_of_particles= 70
         for i in range(number_of_particles):
             particle= [ random.gauss(start_pose[j], standard_deviation[j]) for j in range(3)]
+            self.particles.append(particle)
+
+
+    def initialize_particles_v2(self, start_pose, map_width_m, map_height_m):
+        '''Gets the known start pose of the robot and initialize the particles 
+        around the given pose.'''
+        self.particles= []
+        pose= [0.0, 0.0, 0.0]
+        number_of_particles= 70
+        for i in range(number_of_particles):
+            particle = pose.copy()
             self.particles.append(particle)
 
 
@@ -420,21 +432,32 @@ class ParticleFilter():
         return geometry_particles
 
     
-    def extract_density(self):        
+    def extract_density(self):
+        '''
+        Extract the density of the particles. The density is estimated by calculating the mean position and the 
+        mean heading vector of all particles. The mean heading vector is calculated by summing up all heading 
+        vectors of the particles and then calculating the angle of the resulting vector. The mean position is 
+        calculated by summing up all x and y values of the particles and then dividing by the number of particles.
+        ''' 
         sum_x= 0.0
         sum_y= 0.0
         theta_x= 0.0
         theta_y= 0.0
         number_of_particles= 0
+        
+        # Compute mean position and mean heading vector for each particle
         for particle in self.particles:
             x, y, theta= particle
+            
             # Mean position
             sum_x+= x
             sum_y+= y
+            
             # Mean heading vector
             theta_x+= cos(theta)
             theta_y+= sin(theta)
             number_of_particles+= 1
+        
         return (sum_x/number_of_particles, sum_y/number_of_particles, atan2(theta_y, theta_x))  
 
 
@@ -552,8 +575,8 @@ class MonteCarloLocalization():
         self.particle_publisher.publish(particle_cloud)
 
 
-    def publish_pose(self):
-        x, y, theta= self.particle_filter.extract_density()
+    def publish_pose(self, pose):
+        x, y, theta = pose
         pose= Pose()
         pose.position.x= x
         pose.position.y= y
@@ -569,7 +592,7 @@ class MonteCarloLocalization():
         return atan2(sin(angle), cos(angle))
 
 
-    def publish_map_to_odom_tf(self):
+    def publish_map_to_odom_tf(self, pose):
         """
         This function computes the transformation between the odom frame and the map frame based on the tf between
         the odom frame and the base frame as well as the pose of the robot. The pose of the robot is the tf between 
@@ -590,7 +613,8 @@ class MonteCarloLocalization():
         (_, _, odom_theta) = euler_from_quaternion(rotation)
 
         # Particle filter estimate: map -> base_link
-        pose_x, pose_y, pose_theta = self.particle_filter.extract_density()
+        pose_x, pose_y, pose_theta = pose
+        rospy.loginfo(f"\nPose used for TF is: {pose}")
 
         # Compute map -> odom from map -> base_link and odom -> base_link
         map_to_odom_theta = self.normalize_angle(pose_theta - odom_theta)
@@ -615,7 +639,7 @@ class MonteCarloLocalization():
 
     def simulate_motion_error(self, left_wheel, right_wheel):
         '''Simulates gaussian error in robot motion. The error is simulated by two factors. 
-        One is the error in distance the other is the error is due to slip while turning.'''
+        One is the error in distance the other is the error due to slip while turning.'''
         left_distance, right_distance= (left_wheel, right_wheel)
         control_difference= left_distance - right_distance
         # Calculate error standarddeviation
@@ -690,9 +714,9 @@ class MonteCarloLocalization():
                 self.distance_right_wheel= 0.0
                 # Extract laser scan measurements
                 laser_scan = self.laser_scan
+                self.lock.release()
                 # Get current measurements
                 measurements= self.transform_laser_scan_to_measurement(laser_scan)
-                self.lock.release()
                 # Simulate motion error
                 control= self.simulate_motion_error(distance_left_wheel, distance_right_wheel)
                 # Update pose by particle filter
@@ -700,21 +724,27 @@ class MonteCarloLocalization():
             else: 
                 rospy.loginfo("\nNo Localization\n")
             
+            # Extract density -> pose
+            pose = self.particle_filter.extract_density()
+
             # Publish particles
             self.publish_particles()
-            # Publish pose
-            self.publish_pose()
-            # Publish correction TF: map -> odom
-            self.publish_map_to_odom_tf()
+
+            # Publish weights
             self.publish_weights()
+            
+            # Publish pose
+            self.publish_pose(pose=pose)
+
+            # Publish correction TF: map -> odom
+            self.publish_map_to_odom_tf(pose=pose)
+            
             update_rate.sleep()
 
 
     #________________________________________________________________________________________________________________
     # Test Part
     #________________________________________________________________________________________________________________
-
-
 
     def publish_weights(self):
         weights= self.particle_filter.weights

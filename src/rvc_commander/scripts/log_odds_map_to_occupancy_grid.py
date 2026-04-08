@@ -88,8 +88,10 @@ class LogOddsToOccupancyGrid():
         for i in range(self.number_of_grid_cells):
             log_odds_value= probability_grid_map[i] 
             probability_grid_map[i]= self.log_odds_to_probability(log_odds_value)
+
         # Scale values and copy the map to the message object (data type must be int8)
         self.occupancy_grid_msg.data= np.copy(probability_grid_map * 100).astype(dtype= np.int8)
+        
         # Publish the message 
         self.occupancy_grid_msg.header.stamp= rospy.Time.now()
         self.occupancy_grid_publisher_object.publish(self.occupancy_grid_msg)
@@ -100,13 +102,17 @@ class LogOddsToOccupancyGrid():
         while not rospy.is_shutdown():
             # Check if logOdds map was received
             if(self.log_odds_map_object):
-                # rospy.loginfo("\n\nExecution works\n\n")
+                rospy.loginfo("\nLogOdds map received.")
+
+                # Extract map
                 self.lock.acquire()
-                self.log_odds_map= self.log_odds_map_object
+                self.log_odds_map = self.log_odds_map_object
                 self.lock.release()
+
+                # Publish map
                 self.occupancy_grid_publisher()
             else:
-                rospy.loginfo("No logOdds map received")
+                rospy.loginfo("\nNo logOdds map received")
             publish_rate.sleep()
         
 
@@ -119,7 +125,6 @@ def main():
     transform_occupancy_grid_map= LogOddsToOccupancyGrid(log_odds_topic= log_odds_topic, map_frame= map_frame, map_topic= map_topic,
                                                             publish_rate= publish_rate)
     transform_occupancy_grid_map.execute()
-
 
 
 if __name__=="__main__":

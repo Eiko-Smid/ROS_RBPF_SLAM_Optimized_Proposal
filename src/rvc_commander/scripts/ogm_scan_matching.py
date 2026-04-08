@@ -6,6 +6,7 @@ import numpy as np
 from math import exp, atan2, sin, cos, radians, degrees, floor, ceil, isfinite
 import time
 from geometry_msgs.msg import Pose, Point
+from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion
 # from nav_msgs.msg import OccupancyGrid
@@ -13,58 +14,40 @@ from rvc_commander.msg import Measurement
 from rvc_commander.msg import LogOddsMap
 
 
-'''
-The goal of this program is to see, if a change in the map effects the result of the grid map.
-
-
-    1) Make a grid map were all cells are black
-    2) Publish the map
-    3) Extend the map 
-    4) Publish the extended map and see the difference 
-
-'''
-
-    
-#__________________________________________________________________________________________________________________________
-# Occupancy Grid Mapping Class  
-#__________________________________________________________________________________________________________________________
-
-
-class OccupancyGridMapping():
+class OGM():
     IDX_X= 0
     IDX_Y= 1
-    def __init__(self, map_width_m= 10.0, map_height_m= 10.0, grid_resolution_m= 1.0, min_distance_to_border= 10.0, map_prior_probability= 0.5, 
-                increasing_probability= 0.65, decreasing_probability= 0.35, odom_topic= "odom", 
-                scan_topic= "scan", map_topic= "log_odds_map", update_rate= 4, min_sensor_range= 0.1, max_sensor_range= 8.0):
+    def __init__(self, map_parameter, occupancy_parameter, sensor_parameter):
         '''Class for creating a grid map with the possibility. Arrays are numpy arrays. Attention! After creating
         the grid map with "create_map()" the map will stay in log Odds space forever. To get the occupancy grid map
         out of the self.log_odds_map, the two methodes "transform_log_odds_map_to_occupancy_grid_map" and 
-        "transform_log_odds_map_to_probability_map" need to be used.'''        
+        "transform_log_odds_map_to_probability_map" need to be used.'''     
+        # Extract parameter
+        self.min_distance_to_border= map_parameter
+        prior_probability, increasing_probability, decreasing_probability, self.min_log_odds, self.max_log_odds= occupancy_parameter
+        self.min_sensor_range, self.max_sensor_range= sensor_parameter
         # Define map
-        self.log_odds_map= []  
-        self.map_width_m= map_width_m                                                       
-        self.map_height_m= map_height_m                                                     
+        self.log_odds_map= []                                                          
         self.number_of_cells_x= 0.0
         self.number_of_cells_y= 0.0
-        self.grid_resolution_m= grid_resolution_m
         self.left_map_border_m= 0.0
         self.top_map_border_m= 0.0
         self.right_map_border_m= 0.0
         self.bottom_map_border_m= 0.0
-        self.min_distance_to_border= min_distance_to_border
         # Variables needed for point to grid cell transformation
         self.shift_x= 0
         self.shift_y= 0
         # Create OccupancyGrid Message object
+        lom= LogOddsMap()
         self.log_odds_map_msg= LogOddsMap()
-        self.log_odds_map_msg.header.frame_id= map_topic
+        self.log_odds_map_msg.header.frame_id= "log_odds_map"
         # Ensure correct prior probability
-        if(map_prior_probability <= 0 or map_prior_probability > 1.0):                  
+        if(prior_probability <= 0 or prior_probability > 1.0):                  
             self.log_odds_prior= np.log(0.5 / (1 - 0.5))    
             rospy.loginfo("\nTHe prior probability must lie between 0 and 1.\n")
             rospy.loginfo("The prior was set to: %f", 0.5)
         else:
-            self.log_odds_prior= np.log(map_prior_probability/(1-map_prior_probability))    # Calculate log Odds of prior 
+            self.log_odds_prior= np.log(prior_probability/(1-prior_probability))    # Calculate log Odds of prior 
         # Ensure correct increasing probability
         if(increasing_probability <= 0 or increasing_probability > 1.0):
             self.log_odds_increasing_probability= np.log(0.65 / 0.35) 
@@ -79,32 +62,15 @@ class OccupancyGridMapping():
             rospy.loginfo("The decreasing probability was set to: %f", 0.35)
         else:
             self.log_odds_decreasing_probability= np.log(decreasing_probability / (1 - decreasing_probability))
-        # Define max and min value for logOdds 
-        self.max_log_odds= 100
-        self.min_log_odds= -100
-        # Save Pose and Velocity
-        self.geometry_pose= []
-        # self.velocity= []
-        # Scan Data
-        self.laser_scan= []
-        self.max_sensor_range= max_sensor_range
-        self.min_sensor_range= min_sensor_range
-        # Lock object to lock threads
-        self.lock= threading.Lock()
-        # Subscriber for odometry and scan data
-        self.odom_subscriber= rospy.Subscriber(odom_topic, Pose, self.pose_callback)
-        self.laser_scan_subscriber= rospy.Subscriber(scan_topic, LaserScan, self.laser_scan_callback)
-        # Publisher for map data
-        self.map_publisher= rospy.Publisher(map_topic, LogOddsMap, queue_size=1) 
-        self.update_rate= update_rate
 
 
-
-    # Map creation
-    #_______________________________________________________________________________________________________________
-
-    def create_map(self):
+    def init_map(self, map_width, map_height, grid_resolution):
         '''Create map and init prior probability'''
+        # Init map parameters
+        self.map_width_m = map_width
+        self.map_height_m = map_height
+        self.grid_resolution_m = grid_resolution
+
         # Define number of grids in x direction (must be odd value)
         self.number_of_cells_x= ceil(self.map_width_m / self.grid_resolution_m)        
         # Check for odds number of grid cells
@@ -134,6 +100,11 @@ class OccupancyGridMapping():
         self.right_map_border_m= half_map_width
         self.bottom_map_border_m= - half_map_height        
 
+
+    def init_map_from_map(self, map: np.ndarray):
+        '''Create the map from a given map.'''
+        pass
+
     
     def init_occupancy_grid_message(self):
         '''Init the static values of the OccupancyGrid message.'''
@@ -143,14 +114,20 @@ class OccupancyGridMapping():
         self.log_odds_map_msg.info.origin.position.x= origin_x
         self.log_odds_map_msg.info.origin.position.y= origin_y
         self.log_odds_map_msg.info.resolution= self.grid_resolution_m
+
+
     
-
-    # Map access and map manipulation
-    #_______________________________________________________________________________________________________________
-
     def return_log_odds_map(self):
         '''Retruns the grid map in log odds form.'''
         return self.log_odds_map
+
+    
+    def return_log_odds_map_object(self):
+        # Copy the logOdds map to the message
+        self.log_odds_map_msg.data= self.log_odds_map.ravel()
+        # generate timestamp
+        self.log_odds_map_msg.header.stamp= rospy.Time.now()        
+        return self.log_odds_map_msg
 
     
     def extend_map(self, direction, distance):
@@ -221,7 +198,7 @@ class OccupancyGridMapping():
         return number_of_cells, was_extension_successfull
 
 
-    def map_extansion_if_necessary(self, pose):
+    def map_extension_if_necessary(self, pose):
         x, y, theta= pose        
         extension_needed= False
         # Check if map needed to be extended on the left side 
@@ -258,67 +235,7 @@ class OccupancyGridMapping():
         self.log_odds_map_msg.info.origin.position.x= origin_x
         self.log_odds_map_msg.info.origin.position.y= origin_y
 
-
-    # Callback functions and Message transformation
     #_______________________________________________________________________________________________________________
-    
-    def pose_callback(self, pose):
-        '''Receive pose from topic.'''
-        self.lock.acquire()
-        self.geometry_pose= pose
-        self.lock.release()
-        # rospy.loginfo("Odom callback")
-
-
-    def laser_scan_callback(self, laser_scan):
-        '''Receive laser scan from topic.'''
-        self.lock.acquire()
-        self.laser_scan= laser_scan
-        self.lock.release()
-    
-
-    @staticmethod
-    def transform_pose_to_planar_pose(pose):
-        '''Transforms the geometry msgs pose to a planar pose, consisting of 
-        (x, y, yaw) tuple.'''
-        x= pose.position.x
-        y= pose.position.y
-        # Transform quaternion angle's to euler angle's
-        (roll, pitch, yaw)= euler_from_quaternion([pose.orientation.x, pose.orientation.y, pose.orientation.z,
-                                                pose.orientation.w])
-        planar_pose= (x, y, yaw)
-        return planar_pose
-
-
-    @staticmethod
-    def transform_laser_scan_to_measurement(laser_scan):
-        '''Tranforms the sensor msgs LaserScan to a list of measurement's consisting of 
-        (range, bearing) tuple.'''
-        min_angle= laser_scan.angle_min
-        angle_increment= laser_scan.angle_increment
-        bearing= min_angle
-        measurements= []
-        counter= 0
-        # Transform LaserScan data
-        for range in laser_scan.ranges:
-            measurement= (range, bearing)
-            bearing+= angle_increment
-            measurements.append(measurement)
-        return measurements    
-
-
-    # Publisher and message transformation
-    #_______________________________________________________________________________________________________________
-    
-    def publish_occupancy_grid_message(self):
-        '''Get's the logOdds map and do all necessary transformation's for publishing the Occupancy Message.'''
-        # Copy the logOdds map to the message
-        self.log_odds_map_msg.data= self.log_odds_map.ravel() 
-        # generate timestamp
-        self.log_odds_map_msg.header.stamp= rospy.Time.now()
-        self.map_publisher.publish(self.log_odds_map_msg)
-
-
     # Transformations
     #_______________________________________________________________________________________________________________
 
@@ -350,7 +267,7 @@ class OccupancyGridMapping():
         for i in range(map_shape[0]):
              for j in range(map_shape[1]):
                 #  probability_map[i][j]= self.log_odds_to_probability(self.log_odds_map[i][j])
-                probability_map[i][j]= OccupancyGridMapping.log_odds_to_probability(log_odds_map[i][j])
+                probability_map[i][j]= OGM.log_odds_to_probability(log_odds_map[i][j])
         return np.copy(probability_map)
 
     
@@ -362,15 +279,15 @@ class OccupancyGridMapping():
         # Round probability of each grid cell to 0, 1, or 0.5
         for i in range(map_shape[0]):
             for j in range(map_shape[1]):
-                occupancy_grid_map[i][j]= OccupancyGridMapping.probability_to_occupancy(probability_grid_map[i][j])
+                occupancy_grid_map[i][j]= OGM.probability_to_occupancy(probability_grid_map[i][j])
         return occupancy_grid_map
 
     
     @staticmethod
     def transform_log_odds_map_to_occupancy_grid_map(log_odds_map):
         '''Transforms the given map from log odds space to occupancy space.'''
-        probability_grid_map= OccupancyGridMapping.transform_log_odds_map_to_probability_map(log_odds_map)
-        occupancy_grid_map= OccupancyGridMapping.transform_probability_map_to_occupancy_map(probability_grid_map)
+        probability_grid_map= OGM.transform_log_odds_map_to_probability_map(log_odds_map)
+        occupancy_grid_map= OGM.transform_probability_map_to_occupancy_map(probability_grid_map)
         return occupancy_grid_map
 
 
@@ -393,6 +310,7 @@ class OccupancyGridMapping():
 
 
 
+    #_______________________________________________________________________________________________________________
     # Main Algorithm
     #_______________________________________________________________________________________________________________
 
@@ -508,56 +426,8 @@ class OccupancyGridMapping():
                 # Find all grid cells between pose and reflecting grid cell
                 affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
                 self.update_affected_cells(affected_cells)
-
     
-    def extract_new_data(self, geometry_pose, laser_scan):
-        '''Get's a geometry_msgs pose object and a sensor_msgs LaserScan. Transforms the pose
-        into a planar pose and transfors the laser_scan to a list of (range, bearing) measurements.
-        Returns the planar pose and the measurements.'''
-        pose= self.transform_pose_to_planar_pose(geometry_pose)
-        measurement=self.transform_laser_scan_to_measurement(laser_scan)
-        return pose, measurement
-        
-
-    # Execution
     #_______________________________________________________________________________________________________________
-
-    def execute(self):
-        '''Runs the occupancy grid mapping algorithm.'''
-        update_rate= rospy.Rate(self.update_rate)
-        while not rospy.is_shutdown():
-            # rospy.loginfo("Mapping node running")
-            # Check if data was received
-            '''Check if there is odom and scan data. (Only in Praxis)'''
-            if(self.geometry_pose and self.laser_scan):
-                # Lock Threads
-                self.lock.acquire()
-                # Transform pose and scan data
-                pose, measurements= self.extract_new_data(self.geometry_pose, self.laser_scan)
-                self.lock.release()
-                # Increase map size if necessary
-                extension_needed= True
-                while(extension_needed):
-                    extension_needed= self.map_extansion_if_necessary(pose)
-                # Update the map
-                self.update_map(measurements, pose)
-                # Transform and publish map
-                self.publish_occupancy_grid_message()
-            else:
-                rospy.loginfo("No pose or scan data")
-            
-            # Testing Part________________________________________________________
-            # self.print_planar_pose(pose)
-            # self.publish_planar_pose()
-            # self.publish_measurements(0, 20)
-            #_____________________________________________________________________
-            update_rate.sleep()
-    
-
-#__________________________________________________________________________________________________________________________
-# For Testing
-#__________________________________________________________________________________________________________________________
-
     # Grid Cell manipulation
     #_______________________________________________________________________________________________________________
 
@@ -581,53 +451,3 @@ class OccupancyGridMapping():
         '''Changes the value of the given grid to the given value.'''
         grid_idx_x, grid_idx_y= grid_cell_indices
         self.log_odds_map[grid_idx_x][grid_idx_y]= value
-
-
-
-#__________________________________________________________________________________________________________________________
-# Test Programs  
-#__________________________________________________________________________________________________________________________
-
-
-
-
-#__________________________________________________________________________________________________________________________
-# Main  
-#__________________________________________________________________________________________________________________________
-
-def full_occupied_map(grid_map_obj):
-    map_shape= np.shape(grid_map_obj.log_odds_map)
-    grid_map_obj.log_odds_map= np.full((map_shape), 100.0)
-
-
-def main():
-     # Init Node
-    rospy.init_node("optimized_occupancy_grid_algo_with_map_extension", anonymous=True)
-    # Define map (size in mm)
-    map_width_m= 10.0               # [m] -> 20 m
-    map_height_m= 10.0              # [m] -> 20 m
-    grid_resolution_m= 0.05         # [m] -> 50 mm grid resolution
-    min_distance_to_border= 10.0    # The minimum distance from the actual robot pose to the border before extending the map
-    prior_probability= 0.5          # Init map with probability of 0.5
-    # Define subscriber topics
-    odom_topic= "true_odom"
-    scan_topic= "scan"
-    # Define update rate of mapping algorithm
-    update_rate= 12             # Highest possible rate is 15
-    # Define Sensor parameter
-    min_sensor_range= 0.1
-    max_sensor_range= 8.0
-    # Create map
-    grid_map= OccupancyGridMapping(map_width_m= map_width_m, map_height_m= map_height_m, grid_resolution_m= grid_resolution_m,
-                                    min_distance_to_border= min_distance_to_border, map_prior_probability= prior_probability, 
-                                    increasing_probability= 0.65, decreasing_probability= 0.35, odom_topic= odom_topic, 
-                                    scan_topic= scan_topic, update_rate= update_rate, min_sensor_range= min_sensor_range, 
-                                    max_sensor_range= max_sensor_range)
-    grid_map.create_map()
-    # Start the algorithm
-    grid_map.execute()
-
-
-
-if __name__=="__main__":
-    main()  

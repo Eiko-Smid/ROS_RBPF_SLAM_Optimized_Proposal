@@ -6,6 +6,7 @@ import numpy as np
 from math import exp, atan2, sin, cos, radians, degrees, floor, ceil, isfinite
 import time
 from geometry_msgs.msg import Pose, Point
+from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion
 # from nav_msgs.msg import OccupancyGrid
@@ -79,7 +80,8 @@ class OccupancyGridMapping():
         else:
             self.log_odds_decreasing_probability= np.log(decreasing_probability / (1 - decreasing_probability))
 
-
+    
+    #_______________________________________________________________________________________________________________
     # Map creation
     #_______________________________________________________________________________________________________________
 
@@ -124,7 +126,7 @@ class OccupancyGridMapping():
         self.log_odds_map_msg.info.origin.position.y= origin_y
         self.log_odds_map_msg.info.resolution= self.grid_resolution_m
     
-
+    #_______________________________________________________________________________________________________________
     # Map access and map manipulation
     #_______________________________________________________________________________________________________________
 
@@ -209,7 +211,7 @@ class OccupancyGridMapping():
         return number_of_cells, was_extension_successfull
 
 
-    def map_extansion_if_necessary(self, pose):
+    def map_extension_if_necessary(self, pose):
         x, y, theta= pose        
         extension_needed= False
         # Check if map needed to be extended on the left side 
@@ -246,7 +248,7 @@ class OccupancyGridMapping():
         self.log_odds_map_msg.info.origin.position.x= origin_x
         self.log_odds_map_msg.info.origin.position.y= origin_y
 
-
+    #_______________________________________________________________________________________________________________
     # Transformations
     #_______________________________________________________________________________________________________________
 
@@ -321,6 +323,7 @@ class OccupancyGridMapping():
 
 
 
+    #_______________________________________________________________________________________________________________
     # Main Algorithm
     #_______________________________________________________________________________________________________________
 
@@ -437,11 +440,7 @@ class OccupancyGridMapping():
                 affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
                 self.update_affected_cells(affected_cells)
     
-
-#__________________________________________________________________________________________________________________________
-# For Testing
-#__________________________________________________________________________________________________________________________
-
+    #_______________________________________________________________________________________________________________
     # Grid Cell manipulation
     #_______________________________________________________________________________________________________________
 
@@ -476,13 +475,17 @@ class OGMROSCommunication():
         self.ogm= OccupancyGridMapping(map_parameter, occupancy_parameter, sensor_parameter)
         self.ogm.create_map()
         # Extract ros parameter
-        odom_topic, scan_topic, map_topic, self.update_rate= ros_parameter   
+        link_state_topic, link_state_name, scan_topic, map_topic, self.update_rate= ros_parameter   
         # Define Subscriber and Publisher
         # Lock object to lock threads
         self.lock= threading.Lock()
         # Subscriber for odometry and scan data
-        self.odom_subscriber= rospy.Subscriber(odom_topic, Pose, self.pose_callback)
-        self.geometry_pose= []
+        # Subscriber for link state -> pose
+        self.link_state_message = None
+        self.link_state_name = link_state_name
+        self.link_state_index = None
+        self.link_states_sunscriber = rospy.Subscriber(link_state_topic, LinkStates, self.link_state_callback)
+
         self.laser_scan_subscriber= rospy.Subscriber(scan_topic, LaserScan, self.laser_scan_callback)
         self.laser_scan= []
         self.map_publisher= rospy.Publisher(map_topic, LogOddsMap, queue_size=1) 
@@ -491,12 +494,27 @@ class OGMROSCommunication():
     # Callback functions and Message transformations
     #_______________________________________________________________________________________________________________
     
-    def pose_callback(self, pose):
-        '''Receive pose from topic.'''
+    def link_state_callback(self, link_states: LinkStates):
+        '''Receive gazebo link state from topic.'''
         self.lock.acquire()
-        self.geometry_pose= pose
+        # Extract message
+        self.link_state_message = link_states
+
+        # Find link state name index -> base_link index
+        if self.link_state_index is None:
+            try:
+                self.link_state_index = link_states.name.index(self.link_state_name)
+                rospy.loginfo(f"Found link state index: {self.link_state_index}")
+            except ValueError:
+                rospy.logwarn_throttle(5.0, f"Link {self.link_state_name} not found in Gazebo link states.")
+
+        if self.link_state_index is None:
+            for i in range(len(link_states.name)):
+                if self.link_state_name == link_states.name[i]:
+                    self.link_state_index = i
+                    break
+        
         self.lock.release()
-        # rospy.loginfo("Odom callback")
 
 
     def laser_scan_callback(self, laser_scan):
@@ -507,21 +525,25 @@ class OGMROSCommunication():
     
 
     @staticmethod
-    def transform_pose_to_planar_pose(pose):
-        '''Transforms the geometry msgs pose to a planar pose, consisting of 
-        (x, y, yaw) tuple.'''
-        x= pose.position.x
-        y= pose.position.y
+    def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
+        '''
+        Transforms the link state message to a planar pose, consisting of (x, y, yaw) tuple.
+        '''
+        link_state_pose: Pose = link_state.pose[link_state_index]
+
+        x= link_state_pose.position.x
+        y= link_state_pose.position.y
+        orientation = link_state_pose.orientation
         # Transform quaternion angle's to euler angle's
-        (roll, pitch, yaw)= euler_from_quaternion([pose.orientation.x, pose.orientation.y, pose.orientation.z,
-                                                pose.orientation.w])
+        (roll, pitch, yaw)= euler_from_quaternion([orientation.x, orientation.y, orientation.z,
+                                                orientation.w])
         planar_pose= (x, y, yaw)
         return planar_pose
 
 
     @staticmethod
-    def transform_laser_scan_to_measurement(laser_scan):
-        '''Tranforms the sensor msgs LaserScan to a list of measurement's consisting of 
+    def transform_laser_scan_to_measurement(laser_scan: LaserScan):
+        '''Transform the sensor msgs LaserScan to a list of measurement's consisting of 
         (range, bearing) tuple.'''
         min_angle= laser_scan.angle_min
         angle_increment= laser_scan.angle_increment
@@ -534,15 +556,6 @@ class OGMROSCommunication():
             bearing+= angle_increment
             measurements.append(measurement)
         return measurements    
-
-    
-    def extract_new_data(self, geometry_pose, laser_scan):
-        '''Get's a geometry_msgs pose object and a sensor_msgs LaserScan. Transforms the pose
-        into a planar pose and transfors the laser_scan to a list of (range, bearing) measurements.
-        Returns the planar pose and the measurements.'''
-        pose= self.transform_pose_to_planar_pose(geometry_pose)
-        measurement=self.transform_laser_scan_to_measurement(laser_scan)
-        return pose, measurement
 
 
     def publish_occupancy_grid_message(self):
@@ -557,47 +570,38 @@ class OGMROSCommunication():
         while not rospy.is_shutdown():
             # rospy.loginfo("Mapping node running")
             # Check if data was received
-            '''Check if there is odom and scan data. (Only in Praxis)'''
-            if(self.geometry_pose and self.laser_scan):
+            
+            # Check if data is available
+            if(self.link_state_message and self.link_state_index and self.laser_scan):
+                rospy.loginfo_once("OGM Initalized.")
+
+                # get data from callbacks
                 self.lock.acquire()
-                # Transform pose and scan data
-                pose, measurements= self.extract_new_data(self.geometry_pose, self.laser_scan)
+                link_state = self.link_state_message
+                link_state_index = self.link_state_index 
+                laser_scan = self.laser_scan
                 self.lock.release()
+                
+                # Transform data
+                pose = self.transform_link_state_pose_to_planar_pose(
+                    link_state=link_state,
+                    link_state_index=link_state_index,
+                )
+
+                measurements = self.transform_laser_scan_to_measurement(laser_scan)
+
                 # Increase map size if necessary
                 extension_needed= True
                 while(extension_needed):
-                    extension_needed= self.ogm.map_extansion_if_necessary(pose)
+                    extension_needed= self.ogm.map_extension_if_necessary(pose)
+
                 # Update the map
                 self.ogm.update_map(measurements, pose)
                 # Transform and publish map
                 self.publish_occupancy_grid_message()
+
             update_rate.sleep()
 
-
-    # def execute(self):
-    #     '''Runs the occupancy grid mapping algorithm.'''
-    #     update_rate= rospy.Rate(self.update_rate)
-    #     while not rospy.is_shutdown():
-    #         # rospy.loginfo("Mapping node running")
-    #         # Check if data was received
-    #         '''Check if there is odom and scan data. (Only in Praxis)'''
-    #         if(self.ogm.geometry_pose and self.ogm.laser_scan):
-    #             # Lock Threads
-    #             self.ogm.lock.acquire()
-    #             # Transform pose and scan data
-    #             pose, measurements= self.ogm.extract_new_data(self.ogm.geometry_pose, self.ogm.laser_scan)
-    #             self.ogm.lock.release()
-    #             # Increase map size if necessary
-    #             extension_needed= True
-    #             while(extension_needed):
-    #                 extension_needed= self.ogm.map_extansion_if_necessary(pose)
-    #             # Update the map
-    #             self.ogm.update_map(measurements, pose)
-    #             # Transform and publish map
-    #             self.publish_occupancy_grid_message()
-    #         else:
-    #             rospy.loginfo("No pose or scan data")
-    #         update_rate.sleep()
 
 #__________________________________________________________________________________________________________________________
 # Main  
@@ -611,30 +615,37 @@ def full_occupied_map(grid_map_obj):
 def main():
      # Init Node
     rospy.init_node("optimized_occupancy_grid_algo_with_map_extension", anonymous=True)
+    
     # Define map (size in mm)
     map_width_m= 10.0               # [m] -> 20 m
     map_height_m= 10.0              # [m] -> 20 m
     grid_resolution_m= 0.05         # [m] -> 50 mm grid resolution
     min_distance_to_border= 10.0    # The minimum distance from the actual robot pose to the border before extending the map
+    
     # Define occupancy parameter
     prior_probability= 0.5          # Init map with probability of 0.5
     increasing_probability= 0.65
     decreasing_probability= 0.35
     max_log_odds= 100
     min_log_odds= -100
+    
     # Define subscriber topics
-    odom_topic= "true_odom"
+    link_state_topic = "/gazebo/link_states"
+    link_state_name = "robot_vacuum_cleaner::base_link"
     scan_topic= "scan"
     map_topic= "log_odds_map"
+    
     # Define update rate of mapping algorithm
     update_rate= 12                 # Highest possible rate is 15
+    
     # Define Sensor parameter
     min_sensor_range= 0.1
     max_sensor_range= 8.0
-    # 
+    
+    # Summarize parameters
     map_parameter=[map_width_m, map_height_m, grid_resolution_m, min_distance_to_border]
     occupancy_parameter= [prior_probability, increasing_probability, decreasing_probability, min_log_odds, max_log_odds]
-    ros_parameter= [odom_topic, scan_topic, map_topic, update_rate]
+    ros_parameter= [link_state_topic, link_state_name, scan_topic, map_topic, update_rate]
     sensor_parameter= [min_sensor_range, max_sensor_range]
 
     # Initialize algorithm
