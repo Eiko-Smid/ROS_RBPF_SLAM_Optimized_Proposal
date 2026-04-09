@@ -711,7 +711,7 @@ class MonteCarloLocalization():
         '''Determines if localization is necessary based on the motion of the robot.'''
         is_necessary= False
         left_distance, right_distance= control
-        if(left_distance**2 > self.control_threshold_squared and right_distance**2 > self.control_threshold_squared):
+        if(left_distance**2 > self.control_threshold_squared or right_distance**2 > self.control_threshold_squared):
             is_necessary= True
         else: 
             is_necessary= False

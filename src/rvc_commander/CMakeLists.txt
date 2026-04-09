@@ -84,14 +84,19 @@ include_directories(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
+scripts/final_occupancy_grid_mapping_with_map_extension.py
+scripts/icp_scan_matching.py
 scripts/laser_scan_data_transformation.py
-scripts/testing.py
 scripts/log_odds_map_to_occupancy_grid.py
-scripts/wheel_encoder_simulation.py
 scripts/monte_carlo_localization_with_beam_model_modified.py
 scripts/monte_carlo_localization_with_likelihood_field.py
 scripts/monte_carlo_localization_with_likelihood_field_pre_computation.py
+scripts/ogm_scan_matching.py
+scripts/scan_matcher.py
+scripts/scan_matching_node.py
 scripts/test_map_change.py
-scripts/final_occupancy_grid_mapping_with_map_extension.py
+scripts/test.py
+scripts/testing.py
+scripts/wheel_encoder_simulation.py
 DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
