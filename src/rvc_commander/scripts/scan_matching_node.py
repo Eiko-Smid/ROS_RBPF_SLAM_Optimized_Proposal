@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+
+import rospy
+import threading
+
+# For math
+import numpy as np
+from math import sin, cos, pi
+
+# TFs
+from tf.transformations import euler_from_quaternion
+
+# Ros msgs
+from geometry_msgs.msg import Pose
+from gazebo_msgs.msg import LinkStates
+from sensor_msgs.msg import LaserScan
+from nav_msgs.srv import GetMap
+
+# Own messages
+from rvc_commander.msg import Measurement
+from rvc_commander.msg import LogOddsMap
+from rvc_commander.msg import WheelEncoder
+
+# Import ICP
+from icp_scan_matching import IterativeClosestPoint
+
+# Import OGM
+from ogm_scan_matching import OGM
+
+# Import scan matcher
+from scan_matcher import ScanMatcher
+
+
+'''
+Description
+
+ICP scan matching node that 
+
+'''
+
+class ScanMatchingNode:
+    def __init__(self, ros_parameter: tuple, scan_matcher: ScanMatcher, every_nth_ray: int = 5) -> None:
+        # Extract ros parameter
+        link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
+
+        self.update_rate = update_rate
+
+        # Define scan matcher member
+        self.scan_matcher = scan_matcher
+
+        # Define poses
+        self.true_pose = self.scan_matcher.get_pose()    # The true pose of the robot, extracted from the gazebo link state message
+        self.uncertain_pose = None
+
+        # Init members 
+        self.link_state_message = None
+        self.laser_scan = None
+        self.distance_left_wheel = 0.0
+        self.distance_right_wheel = 0.0
+        self.every_nth_ray = every_nth_ray
+
+        self.lock = threading.Lock()
+
+        # Init link state sub
+        self.link_state_message = None
+        self.link_state_name = link_state_name
+        self.link_state_index = None
+        self.link_state_sub = rospy.Subscriber(
+            name=link_state_topic,
+            data_class=LinkStates,
+            callback=self.link_state_cb,
+        )
+
+        # Init laser scan sub
+        self.laser_scan_sub = rospy.Subscriber(
+            name=scan_topic,
+            data_class=LaserScan,
+            callback=self.laser_scan_cb,
+        )
+
+        # Init wheel encoder sub
+        self.wheel_encode_sub = rospy.Subscriber(
+            name=wheel_encoder_topic,
+            data_class=WheelEncoder,
+            callback=self.wheel_encoder_cb,
+        )
+
+
+    def link_state_cb(self, link_states: LinkStates):
+        '''
+        Receive gazebo link state from topic. Also find the ID corresponding to the link state which we wanne access.
+        '''
+        self.lock.acquire()
+        # Extract message
+        self.link_state_message = link_states
+
+        # Find link state name index -> base_link index
+        if self.link_state_index is None:
+            try:
+                self.link_state_index = link_states.name.index(self.link_state_name)
+                rospy.loginfo(f"Found link state index: {self.link_state_index}")
+            except ValueError:
+                rospy.logwarn_throttle(5.0, f"Link {self.link_state_name} not found in Gazebo link states.")
+
+        if self.link_state_index is None:
+            for i in range(len(link_states.name)):
+                if self.link_state_name == link_states.name[i]:
+                    self.link_state_index = i
+                    break
+        
+        self.lock.release()
+
+
+    def laser_scan_cb(self, laser_scan):
+        '''Receive laser scan from topic.'''
+        self.lock.acquire()
+        self.laser_scan= laser_scan
+        self.lock.release()
+        
+    
+    def wheel_encoder_cb(self, distance):
+        '''Accumulate the distances of the left and right wheel.'''
+        self.lock.acquire()
+        self.distance_left_wheel+= distance.left
+        self.distance_right_wheel+= distance.right
+        self.lock.release()
+
+    
+    def transform_laser_scan_to_measurement(self, laser_scan):
+        '''Tranforms the sensor msgs LaserScan to a list of measurement's consisting of 
+        (range, bearing) tuple. Only every nth measurement will be taken into account.'''
+        min_angle= laser_scan.angle_min
+        angle_increment= laser_scan.angle_increment
+        bearing= min_angle
+        measurements= []
+        counter= 0
+        # Transform LaserScan data
+        for i in range(len(laser_scan.ranges)):
+            # Only use every nth measurement
+            if(not (counter % self.every_nth_ray)):
+                r= laser_scan.ranges[i]
+                measurements.append((r, bearing))
+            bearing+= angle_increment
+            counter+= 1
+        return measurements
+        
+    
+    @staticmethod
+    def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
+        '''
+        Transforms the link state message to a planar pose, consisting of (x, y, yaw) tuple.
+        '''
+        link_state_pose: Pose = link_state.pose[link_state_index]
+
+        x= link_state_pose.position.x
+        y= link_state_pose.position.y
+        orientation = link_state_pose.orientation
+        # Transform quaternion angle's to euler angle's
+        (roll, pitch, yaw)= euler_from_quaternion([orientation.x, orientation.y, orientation.z,
+                                                orientation.w])
+        planar_pose= (x, y, yaw)
+        return planar_pose
+
+
+    def execute(self):
+        update_rate = rospy.Rate(self.update_rate)
+
+        while not rospy.is_shutdown():
+            # Check of all necessary data is received
+            if(
+                self.link_state_message is not None and
+                self.link_state_index is not None and
+                self.laser_scan is not None and
+                self.distance_left_wheel is not None and
+                self.distance_right_wheel is not None
+            ):
+                # TODO: Check if scan matching is necessary
+                min_dist = self.scan_matcher.ogm.grid_resolution_m
+                if self.distance_left_wheel > min_dist or self.distance_right_wheel > min_dist:
+
+                    # Lock threads
+                    self.lock.acquire()
+
+                    # Extract robot pose from link state message
+                    link_state = self.link_state_message
+                    link_state_index = self.link_state_index 
+                    # Extract laser scan data
+                    laser_scan = self.laser_scan
+                    # Extract wheel encoder data
+                    distance_left_wheel = self.distance_left_wheel
+                    distance_right_wheel = self.distance_right_wheel
+                    self.distance_left_wheel = 0.0
+                    self.distance_right_wheel = 0.0
+
+                    # Release lock
+                    self.lock.release()
+
+                    # Transform received data
+                    # Transform link state to planar pose
+                    self.true_pose = self.transform_link_state_pose_to_planar_pose(
+                        link_state=link_state,
+                        link_state_index=link_state_index
+                    )
+                    # Transform meadsurement to points
+                    measurements = self.transform_laser_scan_to_measurement(laser_scan=laser_scan)
+
+                    # Correct pose by scan matching
+                    self.uncertain_pose = self.scan_matcher.update_pose(
+                        old_pose=self.uncertain_pose,
+                        dl=distance_left_wheel,
+                        dr=distance_right_wheel,
+                        measurements=measurements
+                    )
+            update_rate.sleep()
+
+
+#__________________________________________________________________________________________________________________________________
+#  Helper for map getting map from map server
+#__________________________________________________________________________________________________________________________________
+
+def get_occupancy_grid_map(map_service_name="static_map", service_class= GetMap):
+    '''Calling the service and receives the map. Extracts the map data.'''
+    occupancy_grid_map= None
+    rospy.wait_for_service("static_map")
+    try:
+        map_loader= rospy.ServiceProxy("static_map", service_class)
+        occupancy_grid_map= map_loader()
+        return occupancy_grid_map.map
+    except rospy.ServiceException() as e:
+        rospy.loginfo("The Service %s failed", e)
+
+
+def extract_map_meta_data(occupancy_grid_map):
+    '''Returns the parameter of the occupancy grid map given the occupancy_grid_map Message object.'''
+    frame_id= occupancy_grid_map.header.frame_id
+    map_width= occupancy_grid_map.info.width
+    map_height= occupancy_grid_map.info.height
+    origin_x= occupancy_grid_map.info.origin.position.x
+    origin_y= occupancy_grid_map.info.origin.position.y
+    grid_resolution= occupancy_grid_map.info.resolution
+    return (frame_id, map_width, map_height, origin_x, origin_y, grid_resolution)
+
+
+def transform_2D_grid_to_1D_grid(self, indice):
+    '''Transforms a given 2D grid cell indice to an 1D grid cell index.'''
+    row, column= indice
+    index= row * self.number_of_grids_x + column
+    return int(index)
+
+
+#__________________________________________________________________________________________________________________________________
+#  Main
+#__________________________________________________________________________________________________________________________________
+
+def main():
+    # Init node
+    rospy.init_node("scan_matching_node", anonymous=True)
+
+    # Define ros parameter
+    # Define subscriber topics
+    link_state_topic = "/gazebo/link_states"
+    link_state_name = "robot_vacuum_cleaner::base_link"
+    scan_topic= "scan"
+    wheel_encoder_topic= "wheel_encoder"
+    # Define update rate
+    update_rate = 2.0
+    # summarize ros parameter
+    ros_parameter= (link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate)
+
+    every_nth_ray = 5   # Only use every nth ray of the laser scan for scan matching to reduce computational cost
+
+    # Define robot params
+    # Robot chassis parameter (need to be received from .yaml later)
+    h_chassis= 0.15
+    dist_chassis_to_ground= h_chassis/5
+    r_wheel= h_chassis/2 + dist_chassis_to_ground
+    w_wheel= 0.3 * r_wheel
+    r_chassis= 0.25
+    wheel_separation= 2 * r_chassis + w_wheel
+
+
+    # Get map and extract infos
+    # Get ogm from map server
+    map_service_name="static_map"
+    service_class= GetMap
+    occupancy_grid_map_msg= get_occupancy_grid_map(map_service_name=map_service_name, service_class= service_class)
+    # Extract map meta data from message
+    frame_id, map_width, map_height, origin_x, origin_y, grid_resolution= extract_map_meta_data(occupancy_grid_map_msg)
+    # Transform 1D map to 2D map
+    occupancy_grid_map_2D= np.reshape(occupancy_grid_map_msg.data, (map_height, map_width))
+        
+    # Define start pose of robot 
+    start_pose= (0.0, 0.0, 0.0)
+    
+    # Define parameter for ogm
+    min_distance_to_border= 10.0    # The minimum distance from the actual robot pose to the border before extending the map
+
+    # Define ogm param
+    # Summarize map param
+    map_parameters= (min_distance_to_border)
+    # Define occupancy param
+    prior_probability= 0.5          # Init map with probability of 0.5
+    increasing_probability= 0.65
+    decreasing_probability= 0.35
+    max_log_odds= 100
+    min_log_odds= -100
+    occupancy_parameters= [prior_probability, increasing_probability, decreasing_probability, min_log_odds, max_log_odds]
+
+    # Define ogm -> log Odds map transformation param
+    occ = 100.0
+    free = 0.0
+    log_odds_occ = 100.0
+    log_odds_free = -100.0
+    log_odds_unknown = 0.0
+
+    # Summarize params
+    occ_params = (occ, free)
+    log_odds_params = (log_odds_occ, log_odds_free, log_odds_unknown)
+
+    # Define senor param 
+    min_sensor_range= 0.1
+    max_sensor_range= 8.0
+    delta_r = 1.5
+    sensor_parameters_ogm= (min_sensor_range, max_sensor_range)
+    sensor_parameters_scan_matcher= (min_sensor_range, max_sensor_range, delta_r)
+    # Define occ threshold for map point extraction for scan matching
+    # Only cells > occ_thres will be considered as occupied and used for scan matching
+    occ_thres = 50.0
+
+    # Define icp scan matching param
+    max_number_of_iterations=10
+    max_correspondence_distance=2.0
+    icp = IterativeClosestPoint(
+        max_number_of_iterations=max_number_of_iterations,
+        max_correspondence_distance=max_correspondence_distance,
+    )
+
+    # Define robot parameter for scan matcher
+    robot_parameter= (start_pose, wheel_separation)
+
+    # Init ogm class
+    ogm = OGM(
+        map_parameter=map_parameters,
+        occupancy_parameter=occupancy_parameters,
+        sensor_parameter=sensor_parameters_ogm
+    )
+
+    # Transform ogm -> logOdds Map
+    log_odds_map = ogm.transform_occupany_map_to_log_odds_map(
+        ogm=occupancy_grid_map_2D,
+        occ_params=occ_params,
+        log_odds_param=log_odds_params, 
+    )
+
+    # Store map from map sever inside ogm class
+    ogm.init_map_from_map(
+        log_odds_map=log_odds_map,
+        grid_resolution=grid_resolution
+    )
+
+    # Init scan matcher
+    scan_matcher = ScanMatcher(
+        ogm=ogm,
+        icp=icp,
+        robo_param=robot_parameter,
+        sensor_parameters=  sensor_parameters_scan_matcher,
+        occ_thres=occ_thres,
+    )
+    
+    # Initialize node class
+    scan_matching_node = ScanMatchingNode(
+        ros_parameter=ros_parameter,
+        scan_matcher=scan_matcher,
+        every_nth_ray=every_nth_ray,
+    )
+
+    # Execute
+    scan_matching_node.execute()
+
+
+if __name__ == "__main__":
+    main()
