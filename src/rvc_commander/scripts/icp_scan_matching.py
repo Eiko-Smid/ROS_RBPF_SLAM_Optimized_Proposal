@@ -1,3 +1,4 @@
+from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 from math import sin, cos, atan2, pi
@@ -23,6 +24,40 @@ class IterativeClosestPoint():
 
         # Init numpys random generator
         self.rng = np.random.default_rng()
+
+
+    @staticmethod
+    def correct_pose(pose:Tuple[float, float, float] , transf_param: np.ndarray):
+        '''
+        Corrects the given pose by the given transformation.
+        '''
+        tx, ty, rot_theta = transf_param.flatten()
+        x, y, theta = pose
+
+        # Compute sin, cos
+        c = np.cos(rot_theta)
+        s = np.sin(rot_theta)
+
+        # Define transformation matrix 
+        T = np.array([
+            [c, -s, tx],
+            [s, c, ty],
+            [0, 0, 1],
+        ])
+
+        # get point
+        p = np.array([x, y, 1])
+
+        # Transform point and theta
+        p_new = T @ p
+        theta_new = theta + rot_theta
+
+        # normalize angle
+        atan2(sin(theta_new), cos(theta_new))
+
+        return (p_new[0], p_new[1], theta_new)
+
+
 
 
     @staticmethod
@@ -160,7 +195,6 @@ class IterativeClosestPoint():
         return H, g, squared_error
 
 
-    @staticmethod
     def downsample_pointcloud(self, pointcloud: np.ndarray, max_n_points: int=800):
         '''
         Downsamples the given pointcloud to the given max numbber of points, randomly.
@@ -169,8 +203,11 @@ class IterativeClosestPoint():
 
         if n_points >= max_n_points:
             indices = self.rng.choice(n_points, size=max_n_points, replace=False)
+            subsampled_pointcloud = pointcloud[indices]
+        else:
+            subsampled_pointcloud = pointcloud
         
-        return n_points[indices]
+        return subsampled_pointcloud
 
 
     def find_transformation(self, new_data_pointpairs, true_data_pointpairs):
