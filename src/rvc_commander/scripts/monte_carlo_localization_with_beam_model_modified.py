@@ -73,6 +73,7 @@ class ParticleFilter():
         self.particles= []
         standard_deviation= (0.5, 0.5, 10*pi/180)
         number_of_particles= 70
+        
         for i in range(number_of_particles):
             particle= [ random.gauss(start_pose[j], standard_deviation[j]) for j in range(3)]
             self.particles.append(particle)
@@ -84,6 +85,7 @@ class ParticleFilter():
         self.particles= []
         pose= [0.0, 0.0, 0.0]
         number_of_particles= 70
+        
         for i in range(number_of_particles):
             particle = pose.copy()
             self.particles.append(particle)
@@ -97,6 +99,7 @@ class ParticleFilter():
         '''Motion Model for differential drive robot.'''
         x, y, theta = state
         distance_left_wheel, distance_right_wheel = control
+        
         if distance_right_wheel != distance_left_wheel:
             alpha = (distance_right_wheel - distance_left_wheel) / wheel_saperation
             rad = distance_left_wheel/alpha
@@ -107,6 +110,7 @@ class ParticleFilter():
             g1 = x + distance_left_wheel * cos(theta)
             g2 = y + distance_left_wheel * sin(theta)
             g3 = theta
+        
         return (g1, g2, g3)
 
 
@@ -120,6 +124,7 @@ class ParticleFilter():
         right_control_variance= (self.control_motion_factor * right_control)**2 + control_turn_variance
         left_control_stddv= sqrt(left_control_variance)
         right_control_stddv= sqrt(right_control_variance)
+        
         # Sample control values and calculate new particle pose.
         for i in range(len(self.particles)):
             sampled_left_control= random.gauss(left_control, left_control_stddv)
@@ -135,10 +140,12 @@ class ParticleFilter():
         '''Gets s list of (range, bearing) measurements. Determins which measurements are valid. Returns a list of all 
         valid measurements.'''
         valid_measurements= []
+        
         for m in measurements:
             range, bearing= m
             if(range >= self.min_sensor_range and range <= self.max_sensor_range and isfinite(range)):
                 valid_measurements.append(m)
+        
         return valid_measurements
 
 
@@ -151,12 +158,15 @@ class ParticleFilter():
         x, y, heading= pose
         range, bearing= measurement
         reflecting_cell= ()
+        
         # Calculate x,y-position of reflected beam.
         phi= atan2(sin(heading + bearing), cos(heading + bearing))
         reflection_point_x= x + range * cos(phi)
         reflection_point_y= y + range* sin(phi)
+        
         # Transfrom cell coordinates to cell indices.
         reflecting_cell= self.transform_point_to_grid_cell((reflection_point_x, reflection_point_y))
+        
         return reflecting_cell
 
 
@@ -167,14 +177,17 @@ class ParticleFilter():
         y_start, x_start= start_grid_idx
         y_end, x_end= end_grid_idx
         affected_cells= []
+        
         # Determine if slope is rising or falling -> y increment up or down
         dx= x_end - x_start
         dy= y_end - y_start
+        
         # Define Increments 
         increment_x= np.sign(dx)
         increment_y= np.sign(dy)
         if(dx<0): dx= -dx
         if(dy<0): dy= -dy
+        
         # Set parameters
         ddx= increment_x
         ddy= increment_y
@@ -188,20 +201,24 @@ class ParticleFilter():
             pdy= increment_y
             slow_direction= dx
             fast_direction= dy
+        
         # Initialization
         x= x_start
         y= y_start
         err= fast_direction / 2.0
+        
         # Indicator if occupied cell was found (only in mode 2)
         is_occupied= False
         is_inside= False
         leaf_loop= False
         index= 0
         affected_cells.append(start_grid_idx)
+        
         # Algorithm
         while((index < fast_direction) and (not leaf_loop)):
             index+= 1
             err-= slow_direction
+            
             if(err < 0):
                 err+= fast_direction
                 x+= ddx
@@ -209,8 +226,10 @@ class ParticleFilter():
             else:
                 x+= pdx
                 y+= pdy
+            
             # Add new cell to list
             affected_cells.append((y, x))  
+            
             if(self.is_cell_inside_map((y, x))):
                 is_inside= True
                 # Check if cell is occupied
@@ -218,12 +237,10 @@ class ParticleFilter():
                 if(occupancy_value == self.occ):
                     leaf_loop= True
                     is_occupied= True
-                elif(occupancy_value == self.unknown):
-                    leaf_loop= True                    
-                    is_occupied= True
             else: 
                 is_inside= False
                 leaf_loop= True
+        
         return affected_cells, (y, x), is_occupied, is_inside
                 
     
@@ -236,12 +253,16 @@ class ParticleFilter():
         these cell will be treated as if it's occupancy value is "occupied".'''
         px, py, theta= particle
         range, bearing= measurement
+        
         # Compute grid cell indices of max measurement
         max_measurement_grid_cell= self.find_reflecting_grid_cell((self.max_sensor_range, bearing), particle)
+        
         # Estimate reflecting grid cell 
         affected_cells, last_cell, is_occupied, is_inside= self.find_occupied_grid_cell(particle_cell_index, max_measurement_grid_cell)
+        
         # Is cell occupied or unknown or out of map or max range, treat the cell as if the cell is occupied and predict the measurement
         rx, ry= self.transform_grid_cell_to_point(last_cell)
+        
         # Calculate range and bearing of reflecting cell
         dx= rx - px
         dy= ry - py
@@ -255,18 +276,23 @@ class ParticleFilter():
         measured_range, measured_bearing= measurement
         predicted_range= predicted_measurement
         range_difference= measured_range - predicted_range
+        
         # Normal measurement probability (without normalization)
         probability= self.z_hit * normal_dist.pdf(range_difference, 0, self.sigma_hit)
+        
         # Probability for unexpected objects (without normalization)
         if(range_difference < 0):
             probability+= self.z_short * self.lambda_short * exp((-self.lambda_short) * measured_range)
+        
         # Take measurement failures into account
         if(measured_range == self.max_sensor_range):
             probability+= self.z_max * 1.0
             rospy.loginfo("\nMax Range reading\n")
+        
         # Take random measurements into account
         if(measured_range < self.max_sensor_range):
             probability+= self.z_random * 1/self.max_sensor_range
+        
         return probability
 
 
@@ -305,39 +331,39 @@ class ParticleFilter():
 
 
     def compute_weights_test(self, measurements):
-            '''Compute a weight for each particle depending on the measurements. AMCL Variant!
-            The weights will not be multiplied, we use an ad-hoc-scheme.'''
-            index= 0
-            # Extract all valid measurements
-            valid_measurements= self.exclude_invalid_measurements(measurements)
-            rospy.loginfo("Number of valid measurements %i and measurements %i", len(valid_measurements), len(measurements))
-            # Check if there are valid measurements
-            if(valid_measurements):
-                for particle in self.particles:  
-                    # Check if particle is inside the map if not -> weight= 0
-                    particle_weight= 1.0
-                    measurement_weight= 1.0
-                    x, y, theta= particle
-                    particle_cell_index= self.transform_point_to_grid_cell((x, y))
-                    if(self.is_cell_inside_map(particle_cell_index)):
-                        for m in valid_measurements:                         
-                            # Predict the measurement
-                            predicted_measurement, is_inside, is_occupied= self.predict_measurement(particle, particle_cell_index, m)                        
-                            # Compute measurement probability
-                            w= self.calculate_measurement_probability(m, predicted_measurement)
-                            measurement_weight+= w * w * w
-                        # Update particle measurement_weight
-                        particle_weight*= measurement_weight
-                    else:
-                        # Make sure particle outside map will be erased
-                        particle_weight= 0.0    
-                    self.weights[index]= self.weights[index] * particle_weight
-                    index+= 1
-                # Normalize all weights
-                normalizer= sum(self.weights)
-                self.weights= [w / normalizer for w in self.weights] 
-            else:
-                rospy.loginfo("No Valid Measurements")
+        '''Compute a weight for each particle depending on the measurements. AMCL Variant!
+        The weights will not be multiplied, we use an ad-hoc-scheme.'''
+        index= 0
+        # Extract all valid measurements
+        valid_measurements= self.exclude_invalid_measurements(measurements)
+        rospy.loginfo("Number of valid measurements %i and measurements %i", len(valid_measurements), len(measurements))
+        # Check if there are valid measurements
+        if(valid_measurements):
+            for particle in self.particles:  
+                # Check if particle is inside the map if not -> weight= 0
+                particle_weight= 1.0
+                measurement_weight= 1.0
+                x, y, theta= particle
+                particle_cell_index= self.transform_point_to_grid_cell((x, y))
+                if(self.is_cell_inside_map(particle_cell_index)):
+                    for m in valid_measurements:                         
+                        # Predict the measurement
+                        predicted_measurement, is_inside, is_occupied= self.predict_measurement(particle, particle_cell_index, m)                        
+                        # Compute measurement probability
+                        w= self.calculate_measurement_probability(m, predicted_measurement)
+                        measurement_weight+= w * w * w
+                    # Update particle measurement_weight
+                    particle_weight*= measurement_weight
+                else:
+                    # Make sure particle outside map will be erased
+                    particle_weight= 0.0    
+                self.weights[index]= self.weights[index] * particle_weight
+                index+= 1
+            # Normalize all weights
+            normalizer= sum(self.weights)
+            self.weights= [w / normalizer for w in self.weights] 
+        else:
+            rospy.loginfo("No Valid Measurements")
 
 
     def initialize_weights(self):
@@ -362,14 +388,17 @@ class ParticleFilter():
         acc_weight= weights[0]
         new_particles= []
         particle_index= 0
+        
         # Pick particles according to weight.
         random_number= random.uniform(0.0, 1/number_of_weights)
+        
         for j in range(number_of_weights):
             u= random_number + j * (1/number_of_weights)
             while(u > acc_weight):
                 particle_index+= 1
                 acc_weight+= weights[particle_index]                    # List index out of range
             new_particles.append(self.particles[particle_index])
+        
         # return new_particles.copy()
         return new_particles
 
@@ -378,6 +407,7 @@ class ParticleFilter():
         '''Correction step of the particle filter.'''
         # First compute all weights.
         self.compute_weights_test(measurements)
+        
         # Decide if resampling is needed based on number of effective particles
         if(self.number_of_effective_particles(self.weights) < self.neff_threshold):
             self.particles = self.low_variance_sampler(self.weights)
@@ -576,10 +606,12 @@ class MonteCarloLocalization():
 
 
     def publish_pose(self, pose):
+        # Extract pose
         x, y, theta = pose
         pose= Pose()
         pose.position.x= x
         pose.position.y= y
+        
         # Transform angles to quaternion
         ang_x, ang_y, ang_z, w= quaternion_from_euler(0.0, 0.0, theta)
         orientation= Quaternion(x= ang_x, y= ang_y, z= ang_z, w= w)
@@ -642,12 +674,14 @@ class MonteCarloLocalization():
         One is the error in distance the other is the error due to slip while turning.'''
         left_distance, right_distance= (left_wheel, right_wheel)
         control_difference= left_distance - right_distance
+        
         # Calculate error standarddeviation
         control_turn_variance= (self.wheel_encoder_turn_error_factor * control_difference)**2
         left_control_variance= (self.wheel_encoder_motion_error_factor * left_distance)**2 + control_turn_variance
         right_control_variance= (self.wheel_encoder_motion_error_factor * right_distance)**2 + control_turn_variance
         left_encoder_stddv= sqrt(left_control_variance)
         right_encoder_stddv= sqrt(right_control_variance)
+        
         # Calculate distances with gaussian error. 
         left_distance_with_error= random.gauss(left_distance, left_encoder_stddv)
         right_distance_with_error=random.gauss(right_distance, right_encoder_stddv)
@@ -801,7 +835,6 @@ def transform_2D_grid_to_1D_grid(self, indice):
 # Main
 #__________________________________________________________________________________________________________________________________
 
-
 def main():
     rospy.init_node("monte_carlo_localization_with_beam_model", anonymous=True)
     # Get the occupancy grid map from the ros map_server
@@ -812,15 +845,20 @@ def main():
     frame_id, map_width, map_height, origin_x, origin_y, grid_resolution= extract_map_meta_data(occupancy_grid_map_msg)
     # Transform 1D map to 2D map
     occupancy_grid_map_2D= np.reshape(occupancy_grid_map_msg.data, (map_height, map_width))
+    rospy.loginfo(f"\n\nThe OGM includes the following unique values:\n{np.unique(occupancy_grid_map_2D)}\n\n")
+    
     # Define start pose of robot 
     start_pose= (0.0, 0.0, 0.0)
+    
     # Occupancy values
     occ= 100
     free= 0
     unknown= -1
     occupancy_values= (occ, free, unknown)
+    
     # Summarize map parameter
     map_parameter= (start_pose, frame_id, map_width, map_height, origin_x, origin_y, grid_resolution, occupancy_values)
+    
     # Robot chassis parameter (need to be received from .yaml later)
     h_chassis= 0.15
     dist_chassis_to_ground= h_chassis/5
@@ -828,9 +866,11 @@ def main():
     w_wheel= 0.3 * r_wheel
     r_chassis= 0.25
     wheel_separation= 2 * r_chassis + w_wheel
+    
     # Motion Uncertainty 
     control_motion_factor = 0.35                    # Motion error in distance -> 35% error in distance
     control_turn_factor = 0.6                       # Motion error while turning, due to slip -> 60% error while turning.
+    
     # Measurement parameter
     min_sensor_range= 0.1                           # Min measurement range [m]
     max_sensor_range= 8.0                           # Max measurement range [m]
@@ -846,26 +886,30 @@ def main():
     sigma_hit, z_hit, z_short, z_max, z_random, lambda_short= [0.15,  0.35,  0.2,  0.25,  0.15,  0.5]
     measurement_model_parameter= (sigma_hit, z_hit, z_short, z_max, z_random, lambda_short)
     measurement_parameter= (min_sensor_range, max_sensor_range)
+    
     # Summarize particle filter parameter
     uncertainty_parameter= (control_motion_factor, control_turn_factor, measurement_model_parameter)
     robot_parameter= (wheel_separation)
     particle_filter_parameter= (robot_parameter, uncertainty_parameter, measurement_parameter)
+    
     # Wheel encoder information (for simulating wheel encoder data)
     wheel_encoder_topic= "wheel_encoder"
     wheel_encoder_motion_error_factor= 0.05          # 5% error in distance
     wheel_encoder_turn_error_factor= 0.15            # 15% error while turning 
     encoder_error= (wheel_encoder_motion_error_factor, wheel_encoder_turn_error_factor)
     wheel_encoder_parameter= (wheel_encoder_topic, encoder_error)
-    # Publish
 
     # Subscriber
     scan_topic= "scan"
+    
     # Define update rate
     update_rate= 4
+    
     # Init Monte Carlo Localization
     mcl= MonteCarloLocalization(update_rate= update_rate, scan_topic= scan_topic, occupancy_grid_map= occupancy_grid_map_2D, 
                                 map_parameter= map_parameter, wheel_encoder_parameter= wheel_encoder_parameter, 
                                 particle_filter_parameter= particle_filter_parameter)
+    
     # Execute algorithm
     mcl.execute()
 
