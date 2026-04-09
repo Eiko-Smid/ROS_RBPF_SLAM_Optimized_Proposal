@@ -4,7 +4,7 @@ import rospy
 from typing import List, Tuple, Optional
 import threading
 import numpy as np
-from math import exp, atan2, sin, cos, radians, degrees, floor, ceil, isfinite
+from math import exp, atan2, sin, cos, radians, degrees, floor, ceil, isfinite, log
 import time
 from geometry_msgs.msg import Pose, Point
 from gazebo_msgs.msg import LinkStates
@@ -49,6 +49,8 @@ class OGM:
         self.min_distance_to_border= map_parameter
         prior_probability, increasing_probability, decreasing_probability, self.min_log_odds, self.max_log_odds= occupancy_parameter
         self.min_sensor_range, self.max_sensor_range= sensor_parameter
+        self.grid_resolution_m = None
+
         # Define map
         self.log_odds_map= []                                                          
         self.number_of_cells_x= 0.0
@@ -57,13 +59,16 @@ class OGM:
         self.top_map_border_m= 0.0
         self.right_map_border_m= 0.0
         self.bottom_map_border_m= 0.0
+        
         # Variables needed for point to grid cell transformation
         self.shift_x= 0
         self.shift_y= 0
+        
         # Create OccupancyGrid Message object
         lom= LogOddsMap()
         self.log_odds_map_msg= LogOddsMap()
         self.log_odds_map_msg.header.frame_id= "log_odds_map"
+        
         # Ensure correct prior probability
         if(prior_probability <= 0 or prior_probability > 1.0):                  
             self.log_odds_prior= np.log(prior_probability / (1 - 0.5))    
@@ -144,50 +149,50 @@ class OGM:
         )
 
 
-    def init_map_from_map(self, map: np.ndarray) -> None:
+    def init_map_from_map(self, log_odds_map: np.ndarray, grid_resolution: float) -> None:
         '''Create the map from a given map.'''
-        # Check if map is not None
-        if map is not None:
-            # Extract map parameters
-            self.log_odds_map= np.copy(map)
-            map_shape= np.shape(map)
-            self.number_of_cells_y= map_shape[0]
-            self.number_of_cells_x= map_shape[1]
+        self.grid_resolution_m = grid_resolution
 
-            # Ensure correct number of grid cells
-            if(not (self.number_of_cells_x % 2)):
-                self.number_of_cells_x+= 1
-            if(not (self.number_of_cells_y % 2)):
-                self.number_of_cells_y+= 1
-
-            # Compute map width and height from cell numbers
-            self.map_width_m= self.number_of_cells_x * self.grid_resolution_m
-            self.map_height_m= self.number_of_cells_y * self.grid_resolution_m
-            
-            # Init variables needed transformation (point -> cell)
-            self.shift_x= self.map_width_m / 2
-            self.shift_y= self.map_height_m / 2
-
-            # Init OccupancyGrid message
-            self.update_log_odds_message()
-            
-            # Define the border values for the map
-            half_map_width= self.map_width_m / 2.0
-            half_map_height= self.map_height_m / 2.0
-            self.left_map_border_m= -half_map_width 
-            self.top_map_border_m= half_map_height
-            self.right_map_border_m= half_map_width
-            self.bottom_map_border_m= - half_map_height
-
-            rospy.loginfo("The map was successfully initialized from the given map.")
-            rospy.loginfo(
-                f"Map width= {self.map_width_m}, Map height= {self.map_height_m},"
-                f" Number of cells in x direction= {self.number_of_cells_x},"
-                f" Number of cells in y direction= {self.number_of_cells_y}"
-            )
-        
-        else:
+        if log_odds_map is None:
             rospy.loginfo("The given map is None. The map was not initialized.")
+            return
+
+        self.log_odds_map = np.array(log_odds_map, copy=True)
+
+        pad_y = 1 if self.log_odds_map.shape[0] % 2 == 0 else 0
+        pad_x = 1 if self.log_odds_map.shape[1] % 2 == 0 else 0
+
+        if pad_y or pad_x:
+            self.log_odds_map = np.pad(
+                self.log_odds_map,
+                pad_width=((pad_y, 0), (pad_x, 0)),
+                mode="constant",
+                constant_values=self.log_odds_prior,
+            )
+
+        self.number_of_cells_y, self.number_of_cells_x = self.log_odds_map.shape
+
+        self.map_width_m = self.number_of_cells_x * self.grid_resolution_m
+        self.map_height_m = self.number_of_cells_y * self.grid_resolution_m
+
+        self.shift_x = self.map_width_m / 2
+        self.shift_y = self.map_height_m / 2
+
+        self.update_log_odds_message()
+
+        half_map_width = self.map_width_m / 2.0
+        half_map_height = self.map_height_m / 2.0
+        self.left_map_border_m = -half_map_width
+        self.top_map_border_m = half_map_height
+        self.right_map_border_m = half_map_width
+        self.bottom_map_border_m = -half_map_height
+
+        rospy.loginfo("The map was successfully initialized from the given map.")
+        rospy.loginfo(
+            f"Map width= {self.map_width_m}, Map height= {self.map_height_m},"
+            f" Number of cells in x direction= {self.number_of_cells_x},"
+            f" Number of cells in y direction= {self.number_of_cells_y}"
+        )
 
 
     def return_log_odds_map(self) -> np.ndarray:
@@ -196,6 +201,9 @@ class OGM:
 
     
     def return_log_odds_map_object(self) -> LogOddsMap:
+        '''
+        Returns a log odds map message object containing the map and the map metadata.
+        '''
         # Copy the logOdds map to the message
         self.log_odds_map_msg.data= self.log_odds_map.ravel()
         # generate timestamp
@@ -319,7 +327,24 @@ class OGM:
         '''Calculates the probability according to the given log Odds value.'''
         log_odds_exp= exp(log_odds)
         return log_odds_exp / (1+ log_odds_exp)
+    
 
+    @staticmethod
+    def transform_occupany_map_to_log_odds_map(ogm: np.ndarray, occ_params: tuple, log_odds_param: tuple) -> float:
+        '''
+        Transforms the given occupancy grid map to a log Odds map.  
+        '''
+        # Extract parameters
+        occ, free = occ_params
+        log_odds_occ, log_odds_free, log_odds_unknown = log_odds_param 
+
+        # Assign log odds values to log odds map
+        log_odds_map = np.full_like(ogm, log_odds_unknown, dtype=float)
+        log_odds_map[ogm == occ] = log_odds_occ
+        log_odds_map[ogm == free] = log_odds_free
+
+        return log_odds_map
+    
 
     @staticmethod
     def probability_to_occupancy(probability: float) -> float:
@@ -555,14 +580,15 @@ class OGM:
         return belongs_to_surface
 
 
-    def extract_map_for_scan_matching(self, pose, radius, r_thres=1.0, occ_thresh=2.0) -> None:
+    def extract_map_for_scan_matching(self, pose, radius, delta_r=1.0, occ_thresh=2.0) -> np.ndarray:
         '''
         This method extracts a part of the map which is used as a target pointcloud for scan matching. 
         '''
         valid_points = []
 
         # Convert radius into cell numbers
-        r_cells = ceil((radius + r_thres) / self.grid_resolution_m)
+        r_cells = ceil((radius + delta_r) / self.grid_resolution_m)
+        r_cells_squared = r_cells * r_cells
 
         # Transform pose into grid cell
         i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
@@ -574,7 +600,7 @@ class OGM:
                 # For every cell in the general square we check if the cell is inside the radius (from the center point)
                 # Using squared values to avoid sqrt -> faster
                 # Skip if not inside circle area
-                if di * di + dj * dj > r_cells * r_cells:
+                if di * di + dj * dj > r_cells_squared:
                     continue
                 
                 # Compute the actual cell indices in the map/array from our general square and the center point
@@ -584,7 +610,6 @@ class OGM:
                 # Check if cell is indeed inside our map 
                 if not self.cell_inside_map((i, j)):
                     continue
-
                 
                 # Check if cell is occupied -> extract point coordinates
                 if self.log_odds_map[i, j] < occ_thresh:
