@@ -1,0 +1,170 @@
+# For math
+import numpy as np
+from math import sin, cos, pi, atan2
+
+from typing import Tuple, List
+
+# Import ICP
+from icp_scan_matching import IterativeClosestPoint
+
+# Import OGM
+from ogm_scan_matching import OGM
+
+
+
+class ScanMatcher():
+    def __init__(
+            self,
+            ogm: OGM,
+            icp: IterativeClosestPoint, 
+            robo_param: float, sensor_parameters: Tuple[float, float], occ_thres: float
+    ):
+        # Extract parameter
+        self.ogm = ogm
+        self.icp = icp
+        initial_robo_pose, wheel_separation = robo_param
+        min_sensor_range, max_sensor_range, delta_r = sensor_parameters
+
+        # Init members
+        self.pose = initial_robo_pose
+        self.wheel_separation = wheel_separation
+        self.min_sensor_range = min_sensor_range
+        self.max_sensor_range = max_sensor_range
+        self.delta_r = delta_r
+        self.occ_thres = occ_thres
+
+
+    def get_pose(self) -> Tuple[float, float, float]:
+        '''
+        Returns the pose of robot. Attention, not guaranteed the corrected one. Best to call directly
+        after 'update_pose()' call.
+        '''
+        return self.pose
+
+
+    def get_ogm(self):
+        '''
+        Returns a log odds map message object containing the map and the map metadata.
+        '''
+        return self.ogm.return_log_odds_map_object()
+
+
+    def transform_measurements_to_points(
+            self, 
+            pose: Tuple[float, float, float],
+            measurements: List[Tuple[float, float]],
+    ) -> np.ndarray:
+        # Extract pose
+        x, y, theta = pose
+
+        # Extract measurement to vectors
+        measurements = np.array(measurements)
+        r = measurements[:, 0]
+        b = measurements[:,1]
+
+        # Compute phi
+        phi = theta + b
+
+        # Compute points from scan
+        c = np.cos(phi)
+        s = np.sin(phi)
+        x_points = x + r * c
+        y_points = y + r * s
+
+        return np.column_stack((x_points, y_points))
+
+
+    def predict_pose(self, pose: Tuple[float, float, float], dl: float, dr: float) -> Tuple[float, float, float]:
+        '''
+        Predicts the pose based in the given control values and the wheel separation of the DDMR.
+        '''
+        # Extract pose
+        x, y, theta = pose
+        
+        # predict pose for the case that we turned
+        if dr != dl:
+            alpha = (dr - dl) / self.wheel_separation
+            rad = dl/alpha
+            g1 = x + (rad + self.wheel_separation/2.)*(sin(theta+alpha) - sin(theta))
+            g2 = y + (rad + self.wheel_separation/2.)*(-cos(theta+alpha) + cos(theta))
+            g3 = (theta + alpha + pi) % (2*pi) - pi
+
+        # Predict pose for the case we drove on a straight line
+        else:
+            g1 = x + dl * cos(theta)
+            g2 = y + dl * sin(theta)
+            g3 = theta
+        
+        return (g1, g2, g3)
+
+
+    def correct_pose(self, pose: Tuple[float, float, float], scan_points: np.ndarray, map_points: np.ndarray
+                     ) -> Tuple[float, float, float]: 
+        '''
+        Corrects the robots pose by scan matching the measurement against the current map. 
+        '''
+        # Find best transformation for given points
+        transf_param, _, _, _ = self.icp.find_transformation(
+            new_data_pointpairs=scan_points,
+            true_data_pointpairs=map_points,
+        )
+
+        # Transform pose -> Correction
+        pose = self.icp.correct_pose(
+            pose=pose,
+            transf_param=transf_param,
+        )
+
+        return pose
+
+
+    def update_pose(
+            self,
+            old_pose: Tuple[float, float, float],
+            dl: float, dr: float, 
+            measurements: List[Tuple[float, float]],
+    ) -> Tuple[float, float, float]:
+        '''
+        Updates the pose of the robot by first predicting it based on the control values and then correcting it
+        by scan matching the measurement against the current map.
+        ''' 
+        # Transform measurements (range, bearing) -> point cloud
+        scan_points = self.transform_measurements_to_points(
+            pose=old_pose,
+            measurements=measurements
+        )
+
+        # Get map points
+        map_points = self.ogm.extract_map_for_scan_matching(
+            pose=old_pose,
+            radius=self.max_sensor_range,
+            delta_r=self.delta_r,
+            occ_thresh=self.occ_thres,
+        )
+
+        # Predict pose
+        pred_pose = self.predict_pose(
+            pose=old_pose,
+            dl=dl,
+            dr=dr,
+        )
+
+        # Correct pose
+        corr_pose = self.correct_pose(
+            pose=pred_pose, 
+            scan_points=scan_points,
+            map_points=map_points,
+        )
+
+        self.pose = corr_pose
+
+        return corr_pose
+
+
+
+def main():
+    pass
+
+
+if __name__ == "__main__":
+    main()
