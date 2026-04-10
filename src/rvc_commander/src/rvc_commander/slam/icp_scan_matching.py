@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt

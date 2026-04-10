@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 
+# Init debugger
+import debugpy
+debugpy.listen(("0.0.0.0", 5678))
+print("Waiting for debugger...")
+debugpy.wait_for_client()
+
+import os
+import sys
 import rospy
 import threading
 
 # For math
 import numpy as np
-from math import sin, cos, pi
+from math import sin, cos, pi, atan2, sqrt
 
 # TFs
 from tf.transformations import euler_from_quaternion
@@ -16,19 +24,24 @@ from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
 from nav_msgs.srv import GetMap
 
+# Prefer source modules in this scripts directory over catkin wrapper scripts in devel/lib.
+# SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# if SCRIPT_DIR not in sys.path:
+#     sys.path.insert(0, SCRIPT_DIR)
+
 # Own messages
 from rvc_commander.msg import Measurement
 from rvc_commander.msg import LogOddsMap
 from rvc_commander.msg import WheelEncoder
 
 # Import ICP
-from icp_scan_matching import IterativeClosestPoint
+from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
 
 # Import OGM
-from ogm_scan_matching import OGM
+from rvc_commander.slam.ogm_scan_matching import OGM
 
 # Import scan matcher
-from scan_matcher import ScanMatcher
+from rvc_commander.slam.scan_matcher import ScanMatcher
 
 
 '''
@@ -48,9 +61,9 @@ class ScanMatchingNode:
         # Define scan matcher member
         self.scan_matcher = scan_matcher
 
-        # Define poses
+        # initialize poses
         self.true_pose = self.scan_matcher.get_pose()    # The true pose of the robot, extracted from the gazebo link state message
-        self.uncertain_pose = None
+        self.scan_match_pose = self.true_pose
 
         # Init members 
         self.link_state_message = None
@@ -84,6 +97,14 @@ class ScanMatchingNode:
             data_class=WheelEncoder,
             callback=self.wheel_encoder_cb,
         )
+
+        # TODO: Define pose publisher
+        # True pose publisher
+        
+
+        # Scan Matcher pose publisher
+
+        # Pose error Publisher
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -160,13 +181,39 @@ class ScanMatchingNode:
                                                 orientation.w])
         planar_pose= (x, y, yaw)
         return planar_pose
+    
+
+    def compute_pose_err(self):
+        '''
+        Computes the error between the true pose and the uncertain pose, reported by the scan matcher.
+
+        Returns:
+        --------
+        orientation_error: float
+            The orientation error in radians.
+        orientation_error_grad: float
+            The orientation error in degree, which is more intuitive to interpret.
+        '''
+        x_true, y_true, yaw_true = self.true_pose
+        x_uncertain, y_uncertain, yaw_uncertain = self.scan_match_pose
+
+        # Compute position error
+        position_error = sqrt((x_true - x_uncertain) ** 2 + (y_true - y_uncertain) ** 2)
+
+        # Compute orientation error
+        orientation_error = yaw_true - yaw_uncertain
+        orientation_error = atan2(sin(orientation_error), cos(orientation_error))
+
+        orientation_error_grad = orientation_error * 180 / pi
+
+        return position_error, orientation_error, orientation_error_grad
 
 
     def execute(self):
         update_rate = rospy.Rate(self.update_rate)
 
         while not rospy.is_shutdown():
-            # Check of all necessary data is received
+            # Check if all necessary data is received
             if(
                 self.link_state_message is not None and
                 self.link_state_index is not None and
@@ -174,13 +221,14 @@ class ScanMatchingNode:
                 self.distance_left_wheel is not None and
                 self.distance_right_wheel is not None
             ):
-                # TODO: Check if scan matching is necessary
+                # Check if scan matching is necessary
                 min_dist = self.scan_matcher.ogm.grid_resolution_m
                 if self.distance_left_wheel > min_dist or self.distance_right_wheel > min_dist:
 
                     # Lock threads
                     self.lock.acquire()
 
+                    # Extract data
                     # Extract robot pose from link state message
                     link_state = self.link_state_message
                     link_state_index = self.link_state_index 
@@ -201,16 +249,25 @@ class ScanMatchingNode:
                         link_state=link_state,
                         link_state_index=link_state_index
                     )
-                    # Transform meadsurement to points
+                    # Transform measurement to range bearing tuples
                     measurements = self.transform_laser_scan_to_measurement(laser_scan=laser_scan)
 
                     # Correct pose by scan matching
-                    self.uncertain_pose = self.scan_matcher.update_pose(
-                        old_pose=self.uncertain_pose,
+                    self.scan_match_pose = self.scan_matcher.update_pose(
+                        old_pose=self.scan_match_pose,
                         dl=distance_left_wheel,
                         dr=distance_right_wheel,
                         measurements=measurements
                     )
+
+                    # Compute pose error
+                    position_error, orientation_error, orientation_error_grad = self.compute_pose_err()
+
+                    # Log poses and error
+                    rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
+                    rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
+                    rospy.loginfo(f"Pose error: position = {position_error:.4f}, Heading_err_grad = {orientation_error_grad:.4f} ")
+                    
             update_rate.sleep()
 
 

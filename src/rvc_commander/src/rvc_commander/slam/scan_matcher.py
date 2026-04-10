@@ -1,14 +1,23 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+
 # For math
 import numpy as np
 from math import sin, cos, pi, atan2
 
 from typing import Tuple, List
 
+# SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# if SCRIPT_DIR not in sys.path:
+#     sys.path.insert(0, SCRIPT_DIR)
+
 # Import ICP
-from icp_scan_matching import IterativeClosestPoint
+from .icp_scan_matching import IterativeClosestPoint
 
 # Import OGM
-from ogm_scan_matching import OGM
+from .ogm_scan_matching import OGM
 
 
 
