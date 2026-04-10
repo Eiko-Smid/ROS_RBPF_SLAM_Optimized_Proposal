@@ -9,6 +9,8 @@ from math import sin, cos, pi, atan2
 
 from typing import Tuple, List
 
+Pose2D = Tuple[float, float, float]
+
 # SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # if SCRIPT_DIR not in sys.path:
 #     sys.path.insert(0, SCRIPT_DIR)
@@ -43,7 +45,7 @@ class ScanMatcher():
         self.occ_thres = occ_thres
 
 
-    def get_pose(self) -> Tuple[float, float, float]:
+    def get_pose(self) -> Pose2D:
         '''
         Returns the pose of robot. Attention, not guaranteed the corrected one. Best to call directly
         after 'update_pose()' call.
@@ -60,7 +62,7 @@ class ScanMatcher():
 
     def transform_measurements_to_points(
             self, 
-            pose: Tuple[float, float, float],
+                pose: Pose2D,
             measurements: List[Tuple[float, float]],
     ) -> np.ndarray:
         # Extract pose
@@ -83,7 +85,7 @@ class ScanMatcher():
         return np.column_stack((x_points, y_points))
 
 
-    def predict_pose(self, pose: Tuple[float, float, float], dl: float, dr: float) -> Tuple[float, float, float]:
+    def predict_pose(self, pose: Pose2D, dl: float, dr: float) -> Pose2D:
         '''
         Predicts the pose based in the given control values and the wheel separation of the DDMR.
         '''
@@ -107,8 +109,7 @@ class ScanMatcher():
         return (g1, g2, g3)
 
 
-    def correct_pose(self, pose: Tuple[float, float, float], scan_points: np.ndarray, map_points: np.ndarray
-                     ) -> Tuple[float, float, float]: 
+    def correct_pose(self, pose: Pose2D, scan_points: np.ndarray, map_points: np.ndarray) -> Pose2D:
         '''
         Corrects the robots pose by scan matching the measurement against the current map. 
         '''
@@ -129,34 +130,59 @@ class ScanMatcher():
 
     def update_pose(
             self,
-            old_pose: Tuple[float, float, float],
+            old_pose: Pose2D,
             dl: float, dr: float, 
             measurements: List[Tuple[float, float]],
-    ) -> Tuple[float, float, float]:
+    ) -> Tuple[Pose2D, Pose2D]:
         '''
         Updates the pose of the robot by first predicting it based on the control values and then correcting it
         by scan matching the measurement against the current map.
+
+        Returns the corrected pose first and the predicted pose second. If scan matching cannot be
+        performed safely, the predicted pose is returned for both values.
         ''' 
-        # Transform measurements (range, bearing) -> point cloud
-        scan_points = self.transform_measurements_to_points(
-            pose=old_pose,
-            measurements=measurements
-        )
+        # Init pose
+        pred_pose = None
+        corr_pose = None
 
-        # Get map points
-        map_points = self.ogm.extract_map_for_scan_matching(
-            pose=old_pose,
-            radius=self.max_sensor_range,
-            delta_r=self.delta_r,
-            occ_thresh=self.occ_thres,
-        )
-
-        # Predict pose
+        # Predict psoe based on wheel encoder information
         pred_pose = self.predict_pose(
             pose=old_pose,
             dl=dl,
             dr=dr,
         )
+
+        if len(measurements) < 3:
+            self.pose = pred_pose
+            return corr_pose, pred_pose
+
+        # Transform measurements (range, bearing) -> point cloud
+        scan_points = self.transform_measurements_to_points(
+            pose=pred_pose,
+            measurements=measurements
+        )
+
+        scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
+
+        if scan_points.shape[0] < 3:
+            self.pose = pred_pose
+            return corr_pose, pred_pose
+
+        # Get map points
+        map_points = self.ogm.extract_map_for_scan_matching(
+            pose=pred_pose,
+            radius=self.max_sensor_range,
+            delta_r=self.delta_r,
+            occ_thresh=self.occ_thres,
+        )
+
+        # Filter map points -> only finite and shape must be valid
+        map_points = np.asarray(map_points, dtype=float)
+        map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
+        if map_points.ndim != 2 or map_points.shape[0] < 3:
+            self.pose = pred_pose
+            return corr_pose, pred_pose
+
 
         # Correct pose
         corr_pose = self.correct_pose(
@@ -167,7 +193,7 @@ class ScanMatcher():
 
         self.pose = corr_pose
 
-        return corr_pose
+        return corr_pose, pred_pose
 
 
 

@@ -13,6 +13,9 @@ class IterativeClosestPoint():
     IDX_X= 0
     IDX_Y= 1
     IDX_THETA= 2
+    MIN_POINTS = 3
+    EPSILON = 1e-9
+
     def __init__(self, max_number_of_iterations= 10, max_correspondence_distance= 2.0):
         # Max allowed number of iterations
         self.max_number_of_iterations= max_number_of_iterations
@@ -26,6 +29,18 @@ class IterativeClosestPoint():
 
         # Init numpys random generator
         self.rng = np.random.default_rng()
+
+
+    @staticmethod
+    def sanitize_pointcloud(pointcloud: np.ndarray) -> np.ndarray:
+        '''Return a finite Nx2 pointcloud array. Invalid rows are removed.''' 
+        pointcloud = np.asarray(pointcloud, dtype=float)
+
+        if pointcloud.ndim != 2 or pointcloud.shape[1] != 2:
+            return np.empty((0, 2), dtype=float)
+
+        finite_rows = np.all(np.isfinite(pointcloud), axis=1)
+        return pointcloud[finite_rows]
 
 
     @staticmethod
@@ -55,7 +70,7 @@ class IterativeClosestPoint():
         theta_new = theta + rot_theta
 
         # normalize angle
-        atan2(sin(theta_new), cos(theta_new))
+        theta_new = atan2(sin(theta_new), cos(theta_new))
 
         return (p_new[0], p_new[1], theta_new)
 
@@ -66,6 +81,9 @@ class IterativeClosestPoint():
     def compute_normals(points, step= 1):
         '''Gets a numpy array of points and and a step value and calculates the corresponding
         normal vectors for every point in the given array.'''
+        if points.shape[0] == 0:
+            return []
+
         normals = [np.array([0.0, 0.0])]
         visualize_normals = []
         IDX_X= 0
@@ -79,8 +97,14 @@ class IterativeClosestPoint():
         
             # Compute normal vector
             vector= next_point - previous_point
-            unit_vector= vector/np.linalg.norm(vector)
-            normal= np.array([-unit_vector[IDX_Y], unit_vector[IDX_X]])
+            vector_norm = np.linalg.norm(vector)
+
+            if not np.isfinite(vector_norm) or vector_norm <= IterativeClosestPoint.EPSILON:
+                normal = np.array([0.0, 0.0])
+            else:
+                unit_vector= vector / vector_norm
+                normal= np.array([-unit_vector[IDX_Y], unit_vector[IDX_X]])
+
             normals.append(normal)
         
             # For Visualization
@@ -95,6 +119,7 @@ class IterativeClosestPoint():
     @staticmethod
     def compute_rotation_matrix(theta):
         '''Return rotation matrix of given theta.'''
+        theta = float(np.asarray(theta).item())
         return np.array([
             [cos(theta), -sin(theta)],
             [sin(theta), cos(theta)]
@@ -109,12 +134,14 @@ class IterativeClosestPoint():
         
         for i, j in correspondences:
             error= np.linalg.norm(new_data_points[i] - true_data_points[j])
+
+            if not np.isfinite(error):
+                continue
+
             sum_error+= error
-            # error= new_data_points[i] - true_data_points[j]
-            if(np.linalg.norm(error) < self.max_correspondence_distance):    
+            if error < self.max_correspondence_distance:
                 cleaned_correspondences.append((i, j))
-        
-        print("Error is ", sum_error)
+
         return cleaned_correspondences, sum_error
 
 
@@ -124,6 +151,9 @@ class IterativeClosestPoint():
         worst (j, i) correspondences, such that there is only one i that belongs to one j. One correspon-
         dence is more worse than the other, when the distance between the corresponding points is bigger, 
         than the other. returns a list of (i, j) correspondences.'''
+        if not correspondences:
+            return []
+
         # Pop first item 
         j, i, dist= heappop(correspondences)
         current_j= j
@@ -158,6 +188,7 @@ class IterativeClosestPoint():
 
     @staticmethod
     def compute_jacobian_point_to_plane(normal, theta, point):        
+        theta = float(np.asarray(theta).item())
         x= point.item(0)
         y= point.item(1)
         x_normal= normal.item(0)
@@ -171,22 +202,39 @@ class IterativeClosestPoint():
         H = np.zeros((3, 3))
         g = np.zeros((3, 1))        
         squared_error= 0.0
+        valid_correspondence_count = 0
         for i, j in correspondences:
             new_data_point= latest_new_data[i]
             true_data_point= true_data_pointpairs[j]
             normal= true_data_normals[j]
+
+            if not (
+                np.all(np.isfinite(new_data_point)) and
+                np.all(np.isfinite(true_data_point)) and
+                np.all(np.isfinite(normal))
+            ):
+                continue
+
+            if np.linalg.norm(normal) <= self.EPSILON:
+                continue
             
             # Compute the distance error between the transformed new point and the true point
             distance_error= new_data_point - true_data_point            
             
             # Compute normal error
             normal_error= np.dot(normal, distance_error)
+
+            if not np.isfinite(normal_error):
+                continue
             
             # : Weight the correspondence by error
             weight = 1 / (1 + normal_error**2)
             
             # Compute jacobian matrix
             J= self.compute_jacobian_point_to_plane(normal, transformation_parameter[self.IDX_THETA], new_data_point)
+
+            if not np.all(np.isfinite(J)):
+                continue
             
             # Update Hessian and gradient
             H+= weight * np.dot(J.T, J)
@@ -194,7 +242,9 @@ class IterativeClosestPoint():
             
             # Accumulate the squared errors
             squared_error+= normal_error**2
-        return H, g, squared_error
+            valid_correspondence_count += 1
+
+        return H, g, squared_error, valid_correspondence_count
 
 
     def downsample_pointcloud(self, pointcloud: np.ndarray, max_n_points: int=800):
@@ -213,21 +263,30 @@ class IterativeClosestPoint():
 
 
     def find_transformation(self, new_data_pointpairs, true_data_pointpairs):
+        new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
+        true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
+
+        transformation_parameter = np.zeros((3, 1))
+
+        if (
+            new_data_pointpairs.shape[0] < self.MIN_POINTS or
+            true_data_pointpairs.shape[0] < self.MIN_POINTS
+        ):
+            return transformation_parameter, [new_data_pointpairs.copy()], [], []
+
         # Downsample true data points
         true_data_pointpairs = self.downsample_pointcloud(
             pointcloud=true_data_pointpairs,
             max_n_points=800
         )
 
-        # Transformation parameter vector (tx, ty, theta)
-        transformation_parameter = np.zeros((3, 1))
-        
         # List to save results
         squared_error_list= []
         transformation_parameter_list= [transformation_parameter.copy()]
         transformed_new_data_list= [new_data_pointpairs.copy()]
         latest_new_data= new_data_pointpairs.copy()
         list_of_correspondences= []
+        cleaned_correspondences = []
         
         # Train Nearest Neighbor with true data points 
         self.neighbor.fit(true_data_pointpairs)
@@ -246,25 +305,48 @@ class IterativeClosestPoint():
             
             # Find Nearest Neighbor by euclidean distance
             correspondences= []
+
+            if latest_new_data.shape[0] == 0:
+                break
+
             distances, indices= self.neighbor.kneighbors(latest_new_data)
             for i in range(np.shape(latest_new_data)[0]):
                 # Push correspondences to heap, sorted by the index of the true data pointcloud j
                 heappush(correspondences, (indices.item(i), i, distances[i]))
             
             # Outlier Rejection            
-            cleaned_correspondences, sum_error= self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)            
+            cleaned_correspondences, sum_error= self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)
+
+            if len(cleaned_correspondences) < self.MIN_POINTS:
+                break
             
             # Prepare the system
-            H, g, squared_error= self.prepare_system_point_to_plane(transformation_parameter, latest_new_data, true_data_pointpairs, cleaned_correspondences, true_data_normals)
+            H, g, squared_error, valid_correspondence_count = self.prepare_system_point_to_plane(
+                transformation_parameter,
+                latest_new_data,
+                true_data_pointpairs,
+                cleaned_correspondences,
+                true_data_normals,
+            )
+
+            if valid_correspondence_count < self.MIN_POINTS:
+                break
+
+            if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+                break
             
             # Compute least Squares Solution
             dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
+
+            if not np.all(np.isfinite(dtransformation)):
+                break
             
             # Update transformation parameter 
             transformation_parameter+= dtransformation
             
             # Ensure valid angle
-            transformation_parameter[self.IDX_THETA]= atan2(sin(transformation_parameter[self.IDX_THETA]), cos(transformation_parameter[self.IDX_THETA]))            
+            theta = float(transformation_parameter[self.IDX_THETA].item())
+            transformation_parameter[self.IDX_THETA] = atan2(sin(theta), cos(theta))
             
             # Update rotation and translation matrix
             rotation_matrix= self.compute_rotation_matrix(transformation_parameter[self.IDX_THETA])
@@ -280,7 +362,8 @@ class IterativeClosestPoint():
             squared_error_list.append(squared_error)
             transformation_parameter_list.append(transformation_parameter.copy())
         
-        list_of_correspondences.append(list_of_correspondences[-1])
+        if list_of_correspondences:
+            list_of_correspondences.append(list_of_correspondences[-1])
         
         return transformation_parameter, transformed_new_data_list, squared_error_list, cleaned_correspondences
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 # Init debugger
-import debugpy
-debugpy.listen(("0.0.0.0", 5678))
-print("Waiting for debugger...")
-debugpy.wait_for_client()
+# import debugpy
+# debugpy.listen(("0.0.0.0", 5678))
+# print("Waiting for debugger...")
+# debugpy.wait_for_client()
 
 import os
 import sys
@@ -13,7 +13,7 @@ import threading
 
 # For math
 import numpy as np
-from math import sin, cos, pi, atan2, sqrt
+from math import sin, cos, pi, atan2, sqrt, isfinite
 
 # TFs
 from tf.transformations import euler_from_quaternion
@@ -34,14 +34,15 @@ from rvc_commander.msg import Measurement
 from rvc_commander.msg import LogOddsMap
 from rvc_commander.msg import WheelEncoder
 
-# Import ICP
+# Import Scan matching classes roslaunch
 from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
-
-# Import OGM
 from rvc_commander.slam.ogm_scan_matching import OGM
-
-# Import scan matcher
 from rvc_commander.slam.scan_matcher import ScanMatcher
+
+# Import Scan matching classes programming
+# from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
+# from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
+# from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
 
 
 '''
@@ -64,6 +65,7 @@ class ScanMatchingNode:
         # initialize poses
         self.true_pose = self.scan_matcher.get_pose()    # The true pose of the robot, extracted from the gazebo link state message
         self.scan_match_pose = self.true_pose
+        self.predicted_pose = self.true_pose
 
         # Init members 
         self.link_state_message = None
@@ -71,6 +73,7 @@ class ScanMatchingNode:
         self.distance_left_wheel = 0.0
         self.distance_right_wheel = 0.0
         self.every_nth_ray = every_nth_ray
+        self.min_valid_measurements = 3
 
         self.lock = threading.Lock()
 
@@ -152,17 +155,27 @@ class ScanMatchingNode:
         (range, bearing) tuple. Only every nth measurement will be taken into account.'''
         min_angle= laser_scan.angle_min
         angle_increment= laser_scan.angle_increment
+        min_range = max(laser_scan.range_min, self.scan_matcher.min_sensor_range)
+        max_range = min(laser_scan.range_max, self.scan_matcher.max_sensor_range)
         bearing= min_angle
         measurements= []
         counter= 0
+        skipped_invalid_measurements = 0
         # Transform LaserScan data
         for i in range(len(laser_scan.ranges)):
             # Only use every nth measurement
             if(not (counter % self.every_nth_ray)):
                 r= laser_scan.ranges[i]
-                measurements.append((r, bearing))
+                if isfinite(r) and min_range <= r <= max_range:
+                    measurements.append((r, bearing))
+                else:
+                    skipped_invalid_measurements += 1
             bearing+= angle_increment
             counter+= 1
+
+        if skipped_invalid_measurements and not measurements:
+            rospy.logwarn_throttle(5.0, "Laser scan contained no usable beams for scan matching.")
+
         return measurements
         
     
@@ -183,7 +196,8 @@ class ScanMatchingNode:
         return planar_pose
     
 
-    def compute_pose_err(self):
+    @staticmethod
+    def compute_pose_err(true_pose, unaccurate_pose):
         '''
         Computes the error between the true pose and the uncertain pose, reported by the scan matcher.
 
@@ -194,8 +208,8 @@ class ScanMatchingNode:
         orientation_error_grad: float
             The orientation error in degree, which is more intuitive to interpret.
         '''
-        x_true, y_true, yaw_true = self.true_pose
-        x_uncertain, y_uncertain, yaw_uncertain = self.scan_match_pose
+        x_true, y_true, yaw_true = true_pose
+        x_uncertain, y_uncertain, yaw_uncertain = unaccurate_pose
 
         # Compute position error
         position_error = sqrt((x_true - x_uncertain) ** 2 + (y_true - y_uncertain) ** 2)
@@ -252,21 +266,51 @@ class ScanMatchingNode:
                     # Transform measurement to range bearing tuples
                     measurements = self.transform_laser_scan_to_measurement(laser_scan=laser_scan)
 
+                    if len(measurements) < self.min_valid_measurements:
+                        rospy.logwarn_throttle(
+                            5.0,
+                            f"Skipping scan matching because only {len(measurements)} valid beams are available.",
+                        )
+                        update_rate.sleep()
+                        continue
+
                     # Correct pose by scan matching
-                    self.scan_match_pose = self.scan_matcher.update_pose(
+                    self.scan_match_pose, self.predicted_pose = self.scan_matcher.update_pose(
                         old_pose=self.scan_match_pose,
                         dl=distance_left_wheel,
                         dr=distance_right_wheel,
                         measurements=measurements
                     )
 
-                    # Compute pose error
-                    position_error, orientation_error, orientation_error_grad = self.compute_pose_err()
+                    # Compute pose error between true pose from gaezebo link states and corrected pose by scan matching 
+                    if self.scan_match_pose is not None:
+                        position_error, orientation_error, orientation_error_grad = self.compute_pose_err(
+                            true_pose=self.true_pose,
+                            unaccurate_pose=self.scan_match_pose
+                        )
+                    else:
+                        rospy.loginfo("\nError occured in the pose update. Not corrected pose available.")
 
-                    # Log poses and error
+                    # Compute pose error between true pose and predicted pose.
+                    if self.predicted_pose is not None:
+                        position_err_true_pred, orientation_err_true_pred, orientation_err_true_pred_grad = self.compute_pose_err(
+                            true_pose=self.true_pose,
+                            unaccurate_pose=self.predicted_pose
+                        )
+                    else:
+                        rospy.loginfo("\nError occured in the pose update. Not predicted pose available.")
+
+                    # Log position and orientation error between true pose and scan matching pose
+                    # Log position and orientation error between true pose and predicted pose
+                    rospy.loginfo("\n\nDisplay position and orientation error")
                     rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
-                    rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
-                    rospy.loginfo(f"Pose error: position = {position_error:.4f}, Heading_err_grad = {orientation_error_grad:.4f} ")
+                    rospy.loginfo(f"Predicted pose: {[f'{x:.2f}' for x in self.predicted_pose]}")
+                    rospy.loginfo(f"Pose error between true pose and predicted pose: position = {position_err_true_pred:.4f}, Heading_err_grad = {orientation_err_true_pred_grad:.4f} ")
+                                        
+                    rospy.loginfo(f"\nTrue pose: {[f'{x:.2f}' for x in self.true_pose]}")
+                    rospy.loginfo(f"Corrected pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
+                    rospy.loginfo(f"Pose error between true pose and scan matching pose: position = {position_error:.4f}, Heading_err_grad = {orientation_error_grad:.4f} ")
+
                     
             update_rate.sleep()
 
