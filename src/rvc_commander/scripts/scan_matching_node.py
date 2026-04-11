@@ -118,39 +118,6 @@ class ScanMatchingNode:
             self.POSE_ERR_TRUE_SCAN_MATCH: rospy.Publisher("pose_err_true_scan_match", PoseErr2D, queue_size=5),
         }
 
-        # True pose publisher
-        self.true_pose_pub = rospy.Publisher(
-            name="true_pose",
-            data_class=Pose,
-            queue_size=5
-        )
-        
-        # Predicted pose publsiher
-        self.pred_pose_publsiher = rospy.Publisher(
-            name="predicted_pose",
-            data_class=Pose,
-            queue_size=5
-        )
-
-        # Scan Matcher pose publisher
-        rospy.Publisher(
-            name="scan_match_pose",
-            data_class=Pose,
-            queue_size=5
-        )
-
-        # Pose error Publisher
-        rospy.Publisher(
-            name="pose_error_true_pred",
-            data_class=PoseErr2D,
-            queue_size=5
-        )
-        rospy.Publisher(
-            name="pose_error_true_scan_match",
-            data_class=PoseErr2D,
-            queue_size=5
-        )
-
 
     def link_state_cb(self, link_states: LinkStates):
         '''
