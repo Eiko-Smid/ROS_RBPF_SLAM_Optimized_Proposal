@@ -25,10 +25,11 @@ catkin_python_setup()
 ## Generate messages in the 'msg' folder
 add_message_files(
   FILES
-  Measurement.msg
-  LogOddsMap.msg
-  WheelEncoder.msg
   Float64Array.msg
+  LogOddsMap.msg
+  Measurement.msg
+  PoseErr2D.msg
+  WheelEncoder.msg
 )
 
 ## Generate services in the 'srv' folder
