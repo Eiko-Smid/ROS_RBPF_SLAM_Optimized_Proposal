@@ -575,7 +575,7 @@ class MonteCarloLocalization():
         self.every_nth_ray= 20
 
     #____________________________________________________________________________________________________________________
-    # Callback Functions
+    # Callback Methods
     #____________________________________________________________________________________________________________________
     def wheel_encoder_callback(self, distance):
         '''Accumulate the distances of the left and right wheel.'''
@@ -592,7 +592,7 @@ class MonteCarloLocalization():
         self.lock.release()
 
     #____________________________________________________________________________________________________________________
-    # Publisher Functions
+    # Publisher Methods
     #____________________________________________________________________________________________________________________
     
     def publish_particles(self):

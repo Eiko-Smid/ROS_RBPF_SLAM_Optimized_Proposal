@@ -8,6 +8,7 @@
 
 import os
 import sys
+from typing import List, Tuple
 import rospy
 import threading
 
@@ -16,7 +17,8 @@ import numpy as np
 from math import sin, cos, pi, atan2, sqrt, isfinite
 
 # TFs
-from tf.transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+from geometry_msgs.msg import Quaternion
 
 # Ros msgs
 from geometry_msgs.msg import Pose
@@ -33,6 +35,7 @@ from nav_msgs.srv import GetMap
 from rvc_commander.msg import Measurement
 from rvc_commander.msg import LogOddsMap
 from rvc_commander.msg import WheelEncoder
+from rvc_commander.msg import PoseErr2D
 
 # Import Scan matching classes roslaunch
 from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
@@ -48,11 +51,16 @@ from rvc_commander.slam.scan_matcher import ScanMatcher
 '''
 Description
 
-ICP scan matching node that 
+ICP scan matching node. 
 
 '''
 
 class ScanMatchingNode:
+    TRUE_POSE = "true_pose"
+    PRED_POSE = "pred_pose"
+    SCAN_MATCH_POSE = "scan_match_pose"
+    POSE_ERR_TRUE_PRED = "pose_err_true_pred"
+    POSE_ERR_TRUE_SCAN_MATCH = "pose_err_true_scan_match"
     def __init__(self, ros_parameter: tuple, scan_matcher: ScanMatcher, every_nth_ray: int = 5) -> None:
         # Extract ros parameter
         link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
@@ -101,13 +109,47 @@ class ScanMatchingNode:
             callback=self.wheel_encoder_cb,
         )
 
-        # TODO: Define pose publisher
+        # Define pose publisher
+        self.publishers = {
+            self.TRUE_POSE: rospy.Publisher("true_pose", Pose, queue_size=5),
+            self.PRED_POSE: rospy.Publisher("pred_pose", Pose, queue_size=5),
+            self.SCAN_MATCH_POSE: rospy.Publisher("scan_match_pose", Pose, queue_size=5),
+            self.POSE_ERR_TRUE_PRED: rospy.Publisher("pose_err_true_pred", PoseErr2D, queue_size=5),
+            self.POSE_ERR_TRUE_SCAN_MATCH: rospy.Publisher("pose_err_true_scan_match", PoseErr2D, queue_size=5),
+        }
+
         # True pose publisher
+        self.true_pose_pub = rospy.Publisher(
+            name="true_pose",
+            data_class=Pose,
+            queue_size=5
+        )
         
+        # Predicted pose publsiher
+        self.pred_pose_publsiher = rospy.Publisher(
+            name="predicted_pose",
+            data_class=Pose,
+            queue_size=5
+        )
 
         # Scan Matcher pose publisher
+        rospy.Publisher(
+            name="scan_match_pose",
+            data_class=Pose,
+            queue_size=5
+        )
 
         # Pose error Publisher
+        rospy.Publisher(
+            name="pose_error_true_pred",
+            data_class=PoseErr2D,
+            queue_size=5
+        )
+        rospy.Publisher(
+            name="pose_error_true_scan_match",
+            data_class=PoseErr2D,
+            queue_size=5
+        )
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -149,8 +191,55 @@ class ScanMatchingNode:
         self.distance_right_wheel+= distance.right
         self.lock.release()
 
+
+    def publish_pose(self, topic_key: str, pose: Tuple[float, float, float]):
+        '''
+        Publishes the given pose as a Pose message to the topic corresponding to the topic key. 
+        Parameters:
+        -----------
+        topic_key: str
+            The key of the topic the messages should be published to.
+        pose: Tuple[float, float, float]
+            The pose to be published, given as a tuple of (x, y, yaw).
+        '''
+        msg = Pose()
+        # Define position
+        msg.position.x = pose[0]
+        msg.position.y = pose[1]
+        msg.position.z = 0.0
+
+        # Define angle
+        roll, pitch, yaw, w = quaternion_from_euler(0, 0, pose[2])
+        orientation = Quaternion(x=roll, y=pitch, z=yaw)
+        msg.orientation = orientation
+
+        # Publish message
+        self.publishers[topic_key].publish(msg)
+
+
+    def publish_pose_err(self, topic_key: str, pose_err: Tuple[float, float]):
+        '''
+        Publishes the given pose error as a PoseErr2D message to the topic corresponding to the topic key.
+        Parameters:
+        -----------
+        topic_key: str
+            The key of the topic the messages should be published to.
+        pose_err: Tuple[float, float]
+            The pose error to be published, given as a tuple of (translation_error, rotation_error).
+        '''
+        # Extract pose error
+        translation_err, rotation_err = pose_err
+
+        # Define message
+        msg = PoseErr2D()   
+        msg.trans_err = translation_err
+        msg.rot_err = rotation_err
+
+        # Publish message
+        self.publishers[topic_key].publish(msg)
+
     
-    def transform_laser_scan_to_measurement(self, laser_scan):
+    def transform_laser_scan_to_measurement(self, laser_scan: LaserScan) -> List[Tuple[float, float]]:
         '''Tranforms the sensor msgs LaserScan to a list of measurement's consisting of 
         (range, bearing) tuple. Only every nth measurement will be taken into account.'''
         min_angle= laser_scan.angle_min
@@ -226,6 +315,8 @@ class ScanMatchingNode:
     def execute(self):
         update_rate = rospy.Rate(self.update_rate)
 
+        # TODO: Create init check for our scan matcher as a function
+
         while not rospy.is_shutdown():
             # Check if all necessary data is received
             if(
@@ -282,36 +373,71 @@ class ScanMatchingNode:
                         measurements=measurements
                     )
 
-                    # Compute pose error between true pose from gaezebo link states and corrected pose by scan matching 
-                    if self.scan_match_pose is not None:
-                        position_error, orientation_error, orientation_error_grad = self.compute_pose_err(
-                            true_pose=self.true_pose,
-                            unaccurate_pose=self.scan_match_pose
-                        )
-                    else:
-                        rospy.loginfo("\nError occured in the pose update. Not corrected pose available.")
-
                     # Compute pose error between true pose and predicted pose.
                     if self.predicted_pose is not None:
-                        position_err_true_pred, orientation_err_true_pred, orientation_err_true_pred_grad = self.compute_pose_err(
+                        trans_err_true_pred, rot_err_true_pred, rot_err_true_pred_grad = self.compute_pose_err(
                             true_pose=self.true_pose,
                             unaccurate_pose=self.predicted_pose
                         )
+                    
+                        # Publish predicted pose
+                        self.publish_pose(
+                            topic_key=self.PRED_POSE,
+                            pose=self.predicted_pose
+                        )
+
+                        # Publish pose error between true pose and predicted pose
+                        self.publish_pose_err(
+                            topic_key=self.POSE_ERR_TRUE_PRED,
+                            pose_err=(trans_err_true_pred, rot_err_true_pred)
+                        )
+
+                         # Log position and orientation error between true pose and predicted pose
+                        rospy.loginfo("\n\nDisplay position and orientation error")
+                        rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
+                        rospy.loginfo(f"Predicted pose: {[f'{x:.2f}' for x in self.predicted_pose]}")
+                        rospy.loginfo(f"Pose error between true pose and predicted pose:")
+                        rospy.loginfo(f"translation error = {trans_err_true_pred:.4f}, Rotation error = {rot_err_true_pred_grad:.4f} ")
+                    
                     else:
                         rospy.loginfo("\nError occured in the pose update. Not predicted pose available.")
 
-                    # Log position and orientation error between true pose and scan matching pose
-                    # Log position and orientation error between true pose and predicted pose
-                    rospy.loginfo("\n\nDisplay position and orientation error")
-                    rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
-                    rospy.loginfo(f"Predicted pose: {[f'{x:.2f}' for x in self.predicted_pose]}")
-                    rospy.loginfo(f"Pose error between true pose and predicted pose: position = {position_err_true_pred:.4f}, Heading_err_grad = {orientation_err_true_pred_grad:.4f} ")
-                                        
-                    rospy.loginfo(f"\nTrue pose: {[f'{x:.2f}' for x in self.true_pose]}")
-                    rospy.loginfo(f"Corrected pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
-                    rospy.loginfo(f"Pose error between true pose and scan matching pose: position = {position_error:.4f}, Heading_err_grad = {orientation_error_grad:.4f} ")
+                    # Compute pose error between true pose from gaezebo link states and corrected pose by scan matching 
+                    if self.scan_match_pose is not None:
+                        trans_error, rot_error, rot_error_grad = self.compute_pose_err(
+                            true_pose=self.true_pose,
+                            unaccurate_pose=self.scan_match_pose
+                        )
+
+                        # Publish scan matching pose
+                        self.publish_pose(
+                            topic_key=self.SCAN_MATCH_POSE,
+                            pose=self.scan_match_pose
+                        )
+
+                         # Publish pose error between true pose and scan matching pose
+                        self.publish_pose_err(
+                            topic_key=self.POSE_ERR_TRUE_SCAN_MATCH,
+                            pose_err=(trans_error, rot_error)
+                        )
+
+                        # Log position and orientation error between true pose and scan matching pose                                        
+                        rospy.loginfo(f"\nTrue pose: {[f'{x:.2f}' for x in self.true_pose]}")
+                        rospy.loginfo(f"Corrected pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
+                        rospy.loginfo(f"Pose error between true pose and scan matching pose:")
+                        rospy.loginfo(f"translation error = {trans_error:.4f}, Rotation error = {rot_error_grad:.4f} ")
+
+
+                    else:
+                        rospy.loginfo("\nError occured in the pose update. Not corrected pose available.")
 
                     
+                    # Publish true pose
+                    self.publish_pose(
+                        topic_key=self.TRUE_POSE,
+                        pose=self.true_pose
+                    )
+                               
             update_rate.sleep()
 
 

@@ -37,4 +37,9 @@
     <!--Launch rviz-->
     <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rvc_commander)/rviz/monte_carlo_localization.rviz">
     </node>
+
+    <!--Launch rqt_plot to visualize pose errors -->
+    <node pkg="rqt_plot" type="rqt_plot" name="plot_errors"
+        args="/pose_err_true_pred/trans_err /pose_err_true_pred/rot_err /pose_err_true_scan_match/trans_err /pose_err_true_scan_match/rot_err"/>
+
 </launch>
