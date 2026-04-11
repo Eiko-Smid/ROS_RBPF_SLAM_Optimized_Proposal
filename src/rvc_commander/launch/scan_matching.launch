@@ -1,6 +1,6 @@
 <launch>
     <!--Define useful parameters-->
-    <arg name="paused" default="true"/>
+    <arg name="paused" default="false"/>
     <arg name="spawn_x" default="0.0"/>
     <arg name="spawn_y" default="0.0"/>
     <arg name="spawn_z" default="0.18"/>
@@ -27,7 +27,12 @@
     <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)" output="screen" />
 
     <!--Simulate Wheel Encoder data-->
-    <node pkg="rvc_commander" name="wheel_encoder_simulation_node" type="wheel_encoder_simulation.py" output="screen">
+    <node   pkg="rvc_commander" 
+            name="wheel_encoder_simulation_node" 
+            type="wheel_encoder_simulation.py" 
+            output="screen">
+            <param name="wheel_encoder_motion_error_factor" value="0.05"/>
+            <param name="wheel_encoder_turn_error_factor" value="0.15"/>
     </node>
 
     <!--Run scan matcher node-->
@@ -38,8 +43,8 @@
     <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rvc_commander)/rviz/monte_carlo_localization.rviz">
     </node>
 
-    <!--Launch rqt_plot to visualize pose errors -->
-    <node pkg="rqt_plot" type="rqt_plot" name="plot_errors"
-        args="/pose_err_true_pred/trans_err /pose_err_true_pred/rot_err /pose_err_true_scan_match/trans_err /pose_err_true_scan_match/rot_err"/>
+    <node pkg="rqt_gui" type="rqt_gui" name="rqt_gui"
+      args="--perspective-file $(find rvc_commander)/rqt_perspectives/Pose_error_scan_matching.perspective"/>
+
 
 </launch>
