@@ -8,6 +8,7 @@
 
 import os
 import sys
+import csv
 from typing import List, Tuple
 import rospy
 import threading
@@ -61,11 +62,18 @@ class ScanMatchingNode:
     SCAN_MATCH_POSE = "scan_match_pose"
     POSE_ERR_TRUE_PRED = "pose_err_true_pred"
     POSE_ERR_TRUE_SCAN_MATCH = "pose_err_true_scan_match"
-    def __init__(self, ros_parameter: tuple, scan_matcher: ScanMatcher, every_nth_ray: int = 5) -> None:
+    def __init__(
+            self,
+            ros_parameter: Tuple[str, str, str, str, float],
+            scan_matcher: ScanMatcher,
+            every_nth_ray: int,
+            storage_path: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_matching_data.csv"
+    ) -> None:
         # Extract ros parameter
         link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
 
         self.update_rate = update_rate
+        self.storage_path = storage_path
 
         # Define scan matcher member
         self.scan_matcher = scan_matcher
@@ -117,6 +125,50 @@ class ScanMatchingNode:
             self.POSE_ERR_TRUE_PRED: rospy.Publisher("pose_err_true_pred", PoseErr2D, queue_size=5),
             self.POSE_ERR_TRUE_SCAN_MATCH: rospy.Publisher("pose_err_true_scan_match", PoseErr2D, queue_size=5),
         }
+
+    def get_info(self) -> dict:
+        '''
+        Returns a dictionary containing the current state of the scan matching node. This includes the current true pose, 
+        the current predicted pose, the current scan matching pose and the current state of the ICP stop condition.
+        '''
+        info = self.scan_matcher.get_info()
+
+        info["true_pose"] = self.true_pose
+        info["predicted_pose"] = self.predicted_pose
+
+        return info
+    
+
+    def write_info_csv(self, info: dict, csv_file_path: str):
+        '''
+        Writes the given info dictionary to a csv file. The keys of the dictionary will be used as column names and the values will be written as rows.
+        Parameters:
+        -----------
+        info: dict
+            The info dictionary containing the data to be written to the csv file.
+        csv_file_path: str
+            The path of the csv file where the data should be written to.
+        '''
+        # Create timestamp in seconds to add to the info dictionary for logging purposes
+        timestamp = rospy.get_time()
+        info["timestamp"] = timestamp
+
+        parent_dir = os.path.dirname(csv_file_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+
+        file_exists = os.path.isfile(csv_file_path)
+        fieldnames = list(info.keys())
+
+        with open(csv_file_path, mode='a', newline='') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+                rospy.loginfo(f"Created new csv file and wrote info to {csv_file_path}")
+            else:
+                rospy.loginfo(f"Appended info to existing csv file {csv_file_path}")
+
+            writer.writerow(info)
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -404,6 +456,13 @@ class ScanMatchingNode:
                         topic_key=self.TRUE_POSE,
                         pose=self.true_pose
                     )
+
+                    # Save info to csv
+                    info = self.get_info()
+                    self.write_info_csv(
+                        info=info,
+                        csv_file_path=self.storage_path
+                    )
                                
             update_rate.sleep()
 
@@ -522,11 +581,22 @@ def main():
     occ_thres = 50.0
 
     # Define icp scan matching param
-    max_number_of_iterations=10
-    max_correspondence_distance=2.0
+    stop_params = {
+        "max_iterations": 10,           
+        "epsilon_rel": 1e-3,
+        "no_improvement_limit": 3,
+        "min_error": 1.0,
+        "epsilon_transform": 1e-4,
+        "min_dtrans": 1e-2,
+        "min_drot": 1e-1
+    }
+    # Max distance between two datapoints to build an correspondences set
+    max_correspond_dist = 0.8
+
+    # init icp 
     icp = IterativeClosestPoint(
-        max_number_of_iterations=max_number_of_iterations,
-        max_correspondence_distance=max_correspondence_distance,
+        stop_params=stop_params,
+        max_correspondence_distance=max_correspond_dist,
     )
 
     # Define robot parameter for scan matcher

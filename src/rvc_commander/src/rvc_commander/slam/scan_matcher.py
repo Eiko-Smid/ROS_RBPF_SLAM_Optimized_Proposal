@@ -60,6 +60,17 @@ class ScanMatcher():
         return self.ogm.return_log_odds_map_object()
 
 
+    def get_info(self) -> dict:
+        '''
+        Returns a dictionary containing the current state of the scan matcher. This includes the current pose, 
+        the current map and the current state of the ICP stop condition.
+        '''
+        info = self.icp.get_info()
+
+        info["scan_match_pose"] = self.pose
+        return info
+
+
     def transform_measurements_to_points(
             self, 
                 pose: Pose2D,

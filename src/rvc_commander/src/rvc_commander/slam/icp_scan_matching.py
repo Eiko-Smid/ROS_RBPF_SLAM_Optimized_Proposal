@@ -3,10 +3,179 @@
 from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
-from math import sin, cos, atan2, pi
+from math import sin, cos, atan2, pi, inf
 import time as t
 from sklearn.neighbors import NearestNeighbors
 from heapq import heappush, heappop
+
+
+
+class ICPStopCondition:
+    '''
+    Class that checks if ICP should stop based on multiple criteria:
+    - Max iterations
+    - Relative improvement
+    - No improvement limit
+    - Absolute error threshold
+    - Transformation magnitude threshold
+    '''
+    def __init__(
+        self,
+        max_iterations: int = 10,
+        epsilon_rel: float = 1e-3,
+        no_improvement_limit: int = 2,
+        min_error: float = 1.0,
+        epsilon_transform: float = 1e-4,
+        min_dtrans: float = 1e-4,
+        min_drot: float = 1e-1
+
+    ):
+        # Init params
+        self.max_iterations = max_iterations
+        self.epsilon_rel = epsilon_rel
+        self.no_improvement_limit = no_improvement_limit
+        self.min_error = min_error
+        self.epsilon_transform = epsilon_transform
+        self.min_dtrans = min_dtrans
+        self.min_drot = min_drot
+
+        # internal state
+        self.info: dict = {}
+        self.prev_error = inf
+        self.no_improvement_counter = 0
+        self.iteration = 0
+        self.dtrans_norm = None
+        self.drot_abs = None
+        self.stop_reason = None
+        self.rel_improvement = None
+        self.no_improvement_counter = None  
+
+
+    def get_stop_reason(self) -> str:
+        '''
+        Returns the reason why ICP stopped.'''
+        return self.stop_reason
+
+
+    def store_info(self):
+        '''
+        Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
+        '''
+        self.info["iteration"] = self.iteration
+        self.info["prev_error"] = self.prev_error
+        self.info["rel_improvement"] = self.rel_improvement
+        self.info["no_improvement_counter"] = self.no_improvement_counter
+        self.info["dtrans_norm"] = self.dtrans_norm
+        self.info["drot_abs"] = self.drot_abs
+        self.info["stop_reason"] = self.stop_reason
+
+
+    def get_info(self) -> dict:
+        '''
+        Returns a dictionary with the current state of the stop condition. 
+
+        Returns:
+        ----------
+            dict: With the following structure:
+            {
+                "iteration": int,
+                "prev_error": float,
+                "rel_improvement": float,
+                "no_improvement_counter": int,
+                "dtrans_norm": float,
+                "drot_abs": float,
+                "stop_reason": str
+            }
+        '''
+        return self.info
+
+
+    def reset(self):
+        '''
+        Resets the stop condition state for a new ICP run.
+        '''
+        self.prev_error = inf
+        self.no_improvement_counter = 0
+        self.iteration = 0
+        self.dtrans_norm = None
+        self.drot_abs = None
+        self.stop_reason = None
+        self.rel_improvement = None
+        self.no_improvement_counter = None  
+
+
+    def stop_icp(self, current_error: float, dtransformation: np.ndarray) -> bool:
+        """
+        Checks if ICP should stop based on the current error and transformation change.
+
+        Parameters:
+        ----------
+            current_error: The current error metric (e.g., mean distance between correspondences).
+            dtransformation: The change in transformation (translation and rotation) from the last iteration.
+        
+        Returns:
+        ----------
+            bool: True if ICP should stop, False otherwise.
+        """
+        no_improvement = False 
+
+        # Stop cause: Max iterations
+        if self.iteration >= self.max_iterations:
+            self.stop_reason = "Max iterations reached"
+            return True
+
+        # Stop cause: Absolute error threshold
+        if current_error < self.min_error:
+            self.stop_reason = "Absolute error threshold reached"
+            return True        
+
+        if self.iteration > 0:
+            # Check transformation magnitude
+            if dtransformation is not None:
+                
+                if not np.all(np.isfinite(dtransformation)):
+                    self.stop_reason = "Non-finite transformation detected"
+                    return True
+                
+                # Compute translation magnitude
+                self.dtrans_norm = np.linalg.norm(dtransformation[:2])
+                self.drot_abs = abs(dtransformation[2])
+                
+                if self.dtrans_norm < self.min_dtrans and self.drot_abs < self.min_drot:
+                    self.stop_reason = "Transformation magnitude below threshold"
+                    return True
+
+            # Compute Relative improvement
+            if not np.isfinite(self.prev_error):
+                self.rel_improvement = float("inf")
+            else:
+                self.rel_improvement = abs(self.prev_error - current_error) / max(self.prev_error, 1e-12)
+
+            # Track improvement
+            if self.rel_improvement < self.epsilon_rel:
+                no_improvement = True
+
+            # Divergence check 
+            if current_error > self.prev_error:
+                no_improvement = True
+
+            # Update improvement counter
+            if no_improvement:
+                self.no_improvement_counter += 1
+            else:
+                self.no_improvement_counter = 0
+
+            # Check if improvement 
+            if self.no_improvement_counter >= self.no_improvement_limit:
+                self.stop_reason = "No improvement limit reached"
+                return True
+        
+        # update state
+        self.prev_error = current_error
+        self.iteration += 1
+
+        return False
+    
 
 
 class IterativeClosestPoint():
@@ -16,19 +185,51 @@ class IterativeClosestPoint():
     MIN_POINTS = 3
     EPSILON = 1e-9
 
-    def __init__(self, max_number_of_iterations= 10, max_correspondence_distance= 2.0):
-        # Max allowed number of iterations
-        self.max_number_of_iterations= max_number_of_iterations
-        
-        # Max number of correspondences
-        self.max_correspondence_distance= max_correspondence_distance
-        
+    def __init__(self, stop_params: dict, max_correspondence_distance= 2.0):        
         # Init Nearest Neighbor
         self.neighbor= NearestNeighbors(n_neighbors=1, algorithm='kd_tree')        
         self.min_squared_error= 15.0
+        self.max_correspond_dist= max_correspondence_distance
 
         # Init numpys random generator
         self.rng = np.random.default_rng()
+
+        # Init points count
+        self.n_points_true_data = None
+        self.n_points_new_data = None
+
+        # Init stop condition
+        self.stop_condition = ICPStopCondition(
+            max_iterations=stop_params.get("max_iterations", 10),
+            epsilon_rel=stop_params.get("epsilon_rel", 1e-3),
+            no_improvement_limit=stop_params.get("no_improvement_limit", 2),
+            min_error=stop_params.get("min_error", 1.0),
+            epsilon_transform=stop_params.get("epsilon_transform", 1e-4),
+            min_dtrans=stop_params.get("min_dtrans", 1e-4),
+            min_drot=stop_params.get("min_drot", 1e-1)
+        )
+
+        # Add info storage
+        self.info: dict = {}
+
+
+    def store_info(self):
+        '''
+        Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
+        '''
+        self.stop_condition.store_info()
+        self.info = self.stop_condition.get_info()
+        self.info["max_correspondence_distance"] = self.max_correspond_dist
+        self.info["min_squared_error"] = self.min_squared_error
+        self.info["n_points_true_data"] = self.n_points_true_data
+        self.info["n_points_new_data"] = self.n_points_new_data
+
+
+    def get_info(self) -> dict:
+        '''
+        Returns the current state of the ICP stop condition and other relevant information.
+        '''
+        return self.info
 
 
     @staticmethod
@@ -73,8 +274,6 @@ class IterativeClosestPoint():
         theta_new = atan2(sin(theta_new), cos(theta_new))
 
         return (p_new[0], p_new[1], theta_new)
-
-
 
 
     @staticmethod
@@ -139,7 +338,7 @@ class IterativeClosestPoint():
                 continue
 
             sum_error+= error
-            if error < self.max_correspondence_distance:
+            if error < self.max_correspond_dist:
                 cleaned_correspondences.append((i, j))
 
         return cleaned_correspondences, sum_error
@@ -267,6 +466,7 @@ class IterativeClosestPoint():
         true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
 
         transformation_parameter = np.zeros((3, 1))
+        dtransformation = transformation_parameter.copy()
 
         if (
             new_data_pointpairs.shape[0] < self.MIN_POINTS or
@@ -279,6 +479,9 @@ class IterativeClosestPoint():
             pointcloud=true_data_pointpairs,
             max_n_points=800
         )
+
+        self.n_points_true_data = true_data_pointpairs.shape[0]
+        self.n_points_new_data = new_data_pointpairs.shape[0]
 
         # List to save results
         squared_error_list= []
@@ -300,7 +503,7 @@ class IterativeClosestPoint():
         # Variable to save squared error. 
         sum_error= 10**10
         
-        while(index < self.max_number_of_iterations and sum_error > self.min_squared_error):
+        while not self.stop_condition.stop_icp(sum_error, dtransformation):
             index+=1
             
             # Find Nearest Neighbor by euclidean distance
@@ -364,6 +567,11 @@ class IterativeClosestPoint():
         
         if list_of_correspondences:
             list_of_correspondences.append(list_of_correspondences[-1])
+
+        # Store info and reset stop condition for next run
+        self.store_info()
+        self.stop_condition.reset()
+
         
         return transformation_parameter, transformed_new_data_list, squared_error_list, cleaned_correspondences
 
