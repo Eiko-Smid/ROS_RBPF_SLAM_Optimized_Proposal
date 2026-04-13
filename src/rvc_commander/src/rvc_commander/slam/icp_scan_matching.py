@@ -35,13 +35,13 @@ class ICPStopCondition:
         self.epsilon_rel = epsilon_rel
         self.no_improvement_limit = no_improvement_limit
         self.min_error = min_error
-        self.epsilon_transform = epsilon_transform
         self.min_dtrans = min_dtrans
         self.min_drot = min_drot
 
         # internal state
         self.info: dict = {}
         self.prev_error = inf
+        self.mean_err = inf
         self.no_improvement_counter = 0
         self.iteration = 0
         self.dtrans_norm = None
@@ -62,7 +62,7 @@ class ICPStopCondition:
         Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
         '''
         self.info["iteration"] = self.iteration
-        self.info["prev_error"] = self.prev_error
+        self.info["mean_err"] = self.mean_err
         self.info["rel_improvement"] = self.rel_improvement
         self.info["no_improvement_counter"] = self.no_improvement_counter
         self.info["dtrans_norm"] = self.dtrans_norm
@@ -79,7 +79,7 @@ class ICPStopCondition:
             dict: With the following structure:
             {
                 "iteration": int,
-                "prev_error": float,
+                "mean_err": float,
                 "rel_improvement": float,
                 "no_improvement_counter": int,
                 "dtrans_norm": float,
@@ -95,6 +95,7 @@ class ICPStopCondition:
         Resets the stop condition state for a new ICP run.
         '''
         self.prev_error = inf
+        self.mean_err = inf
         self.no_improvement_counter = 0
         self.iteration = 0
         self.dtrans_norm = None
@@ -104,13 +105,13 @@ class ICPStopCondition:
         self.no_improvement_counter = None  
 
 
-    def stop_icp(self, current_error: float, dtransformation: np.ndarray) -> bool:
+    def stop_icp(self, mean_err: float, dtransformation: np.ndarray) -> bool:
         """
         Checks if ICP should stop based on the current error and transformation change.
 
         Parameters:
         ----------
-            current_error: The current error metric (e.g., mean distance between correspondences).
+            mean_err: The current mean error metric (e.g., mean distance between correspondences).
             dtransformation: The change in transformation (translation and rotation) from the last iteration.
         
         Returns:
@@ -118,6 +119,7 @@ class ICPStopCondition:
             bool: True if ICP should stop, False otherwise.
         """
         no_improvement = False 
+        self.mean_err = mean_err
 
         # Stop cause: Max iterations
         if self.iteration >= self.max_iterations:
@@ -125,7 +127,7 @@ class ICPStopCondition:
             return True
 
         # Stop cause: Absolute error threshold
-        if current_error < self.min_error:
+        if self.mean_err < self.min_error:
             self.stop_reason = "Absolute error threshold reached"
             return True        
 
@@ -149,14 +151,14 @@ class ICPStopCondition:
             if not np.isfinite(self.prev_error):
                 self.rel_improvement = float("inf")
             else:
-                self.rel_improvement = abs(self.prev_error - current_error) / max(self.prev_error, 1e-12)
+                self.rel_improvement = abs(self.prev_error - self.mean_err) / max(self.prev_error, 1e-12)
 
             # Track improvement
             if self.rel_improvement < self.epsilon_rel:
                 no_improvement = True
 
             # Divergence check 
-            if current_error > self.prev_error:
+            if self.mean_err > self.prev_error:
                 no_improvement = True
 
             # Update improvement counter
@@ -171,7 +173,7 @@ class ICPStopCondition:
                 return True
         
         # update state
-        self.prev_error = current_error
+        self.prev_error = self.mean_err
         self.iteration += 1
 
         return False
@@ -179,13 +181,35 @@ class ICPStopCondition:
 
 
 class IterativeClosestPoint():
+    '''
+    Implements the point-to-plane ICP algorithm for scan matching. The main method is 'find_transformation', which
+    takes two point clouds as input and returns the transformation parameters that best align the new data points to
+    the true data points. The class also includes methods for outlier rejection, normal computation, and information
+    storage for analysis and debugging.
+    '''
     IDX_X= 0
     IDX_Y= 1
     IDX_THETA= 2
     MIN_POINTS = 3
     EPSILON = 1e-9
 
-    def __init__(self, stop_params: dict, max_correspondence_distance= 2.0):        
+    def __init__(self, stop_params: dict, max_correspondence_distance= 2.0):
+        '''
+        Initializes the ICP scan matcher with the given stop parameters and maximum correspondence distance.
+
+        Parameters:
+        ----------
+            stop_params: A dictionary containing the parameters for the ICP stop condition. This includes:
+                - max_iterations: Maximum number of ICP iterations before stopping.
+                - epsilon_rel: Minimum relative improvement required to continue ICP.
+                - no_improvement_limit: Number of consecutive iterations with insufficient improvement before stopping.
+                - min_error: Minimum mean error threshold for stopping.
+                - epsilon_transform: Minimum transformation change required to continue ICP.
+                - min_dtrans: Minimum translation change required to continue ICP.
+                - min_drot: Minimum rotation change required to continue ICP.
+            max_correspondence_distance: The maximum distance between corresponding points to be considered in the ICP
+    
+        '''    
         # Init Nearest Neighbor
         self.neighbor= NearestNeighbors(n_neighbors=1, algorithm='kd_tree')        
         self.min_squared_error= 15.0
@@ -212,8 +236,15 @@ class IterativeClosestPoint():
         # Add info storage
         self.info: dict = {}
 
+        # Store infos in members
+        self.transformed_new_data_list = []
+        self.squared_error_list = []
+        self.transformation_parameter_list = []
+        self.list_of_cleaned_corresp = []
+        self.list_of_cleaned_corresp_numb = []
 
-    def store_info(self):
+
+    def store_info(self, extended: bool = False):
         '''
         Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
         '''
@@ -224,10 +255,38 @@ class IterativeClosestPoint():
         self.info["n_points_true_data"] = self.n_points_true_data
         self.info["n_points_new_data"] = self.n_points_new_data
 
+        if extended:
+            self.info["transformed_new_data_list"] = self.transformed_new_data_list
+            self.info["squared_error_list"] = self.squared_error_list
+            self.info["transformation_parameter_list"] = self.transformation_parameter_list
+            self.info["list_of_cleaned_corresp"] = self.list_of_cleaned_corresp
+            self.info["list_of_cleaned_corresp_numb"] = self.list_of_cleaned_corresp_numb
+
 
     def get_info(self) -> dict:
         '''
         Returns the current state of the ICP stop condition and other relevant information.
+
+        Returns:
+        ----------
+            dict: With the following structure:
+            {
+                "iteration": int,
+                "mean_err": float,
+                "rel_improvement": float,
+                "no_improvement_counter": int,
+                "dtrans_norm": float,
+                "drot_abs": float,
+                "stop_reason": str,
+                "max_correspondence_distance": float,
+                "min_squared_error": float,
+                "n_points_true_data": int,
+                "n_points_new_data": int,
+                "transformed_new_data_list": List[np.ndarray],  # List of transformed new data at each iteration
+                "squared_error_list": List[float],  # List of squared errors at each iteration
+                "transformation_parameter_list": List[np.ndarray],  # List of transformation parameters at each iteration
+                "list_of_cleaned_corresp": List[List[Tuple[int, int]]],  # List of cleaned correspondences at each iteration
+                "list_of_cleaned_corresp_numb": List[int]  # List of number of cleaned correspondences at each iteration
         '''
         return self.info
 
@@ -397,16 +456,23 @@ class IterativeClosestPoint():
 
 
     def prepare_system_point_to_plane(self, transformation_parameter, latest_new_data, true_data_pointpairs, correspondences, true_data_normals):
+        '''
+        Prepares the system of equations for the point-to-plane ICP algorithm. Checks if the inputs are valid and computes the Hessian
+        matrix H and the gradient vector g for the least squares problem. Also computes the squared error (point to plane) for the
+        current correspondences.
+        '''
         # Init Hessian Matrix and gradient
         H = np.zeros((3, 3))
         g = np.zeros((3, 1))        
         squared_error= 0.0
-        valid_correspondence_count = 0
+
         for i, j in correspondences:
+            # Extract data
             new_data_point= latest_new_data[i]
             true_data_point= true_data_pointpairs[j]
             normal= true_data_normals[j]
 
+            # Check if data is valid
             if not (
                 np.all(np.isfinite(new_data_point)) and
                 np.all(np.isfinite(true_data_point)) and
@@ -420,9 +486,8 @@ class IterativeClosestPoint():
             # Compute the distance error between the transformed new point and the true point
             distance_error= new_data_point - true_data_point            
             
-            # Compute normal error
+            # Compute point to plane error by projecting the distance error onto the normal vector
             normal_error= np.dot(normal, distance_error)
-
             if not np.isfinite(normal_error):
                 continue
             
@@ -441,14 +506,13 @@ class IterativeClosestPoint():
             
             # Accumulate the squared errors
             squared_error+= normal_error**2
-            valid_correspondence_count += 1
 
-        return H, g, squared_error, valid_correspondence_count
+        return H, g, squared_error
 
 
     def downsample_pointcloud(self, pointcloud: np.ndarray, max_n_points: int=800):
         '''
-        Downsamples the given pointcloud to the given max numbber of points, randomly.
+        Downsamples the given pointcloud to the given max number of points, randomly.
         '''
         n_points = pointcloud.shape[0]
 
@@ -462,11 +526,31 @@ class IterativeClosestPoint():
 
 
     def find_transformation(self, new_data_pointpairs, true_data_pointpairs):
+        '''
+        Get's the new data points and the true datapoints and trys to minimize the error between the two
+        pointclouds by finding the best transformation. Returns the transformation parameters and stores 
+        relevant information in the 'info' member variable. The info contains the data for each transformation
+        run.
+
+        Parameters:
+        ----------
+            new_data_pointpairs: Nx2 numpy array of the new data points.
+            true_data_pointpairs: Mx2 numpy array of the true data points.
+        
+        Returns:
+        ----------
+            transformation_parameter: 3x1 numpy array of the transformation parameters (tx, ty, theta).
+        '''
+        # Santize pointclouds
         new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
         true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
 
+        # Init vars
         transformation_parameter = np.zeros((3, 1))
         dtransformation = transformation_parameter.copy()
+        squared_error = inf
+        mean_err = inf  
+
 
         if (
             new_data_pointpairs.shape[0] < self.MIN_POINTS or
@@ -480,32 +564,28 @@ class IterativeClosestPoint():
             max_n_points=800
         )
 
+        # Store number of points for logging
         self.n_points_true_data = true_data_pointpairs.shape[0]
         self.n_points_new_data = new_data_pointpairs.shape[0]
 
         # List to save results
-        squared_error_list= []
-        transformation_parameter_list= [transformation_parameter.copy()]
-        transformed_new_data_list= [new_data_pointpairs.copy()]
+        self.squared_error_list= []
+        self.transformation_parameter_list = [transformation_parameter.copy()]
+        self.transformed_new_data_list = [new_data_pointpairs.copy()]
         latest_new_data= new_data_pointpairs.copy()
-        list_of_correspondences= []
-        cleaned_correspondences = []
+        self.list_of_cleaned_corresp = []
+        self.list_of_cleaned_corresp_numb = []
         
         # Train Nearest Neighbor with true data points 
         self.neighbor.fit(true_data_pointpairs)
         
         # Compute normals of true data points
         true_data_normals= self.compute_normals(true_data_pointpairs)
-        
-        # Calculate transformation iteratively
-        index= 0
-        
+                
         # Variable to save squared error. 
         sum_error= 10**10
         
-        while not self.stop_condition.stop_icp(sum_error, dtransformation):
-            index+=1
-            
+        while not self.stop_condition.stop_icp(mean_err, dtransformation):
             # Find Nearest Neighbor by euclidean distance
             correspondences= []
 
@@ -524,7 +604,7 @@ class IterativeClosestPoint():
                 break
             
             # Prepare the system
-            H, g, squared_error, valid_correspondence_count = self.prepare_system_point_to_plane(
+            H, g, squared_error = self.prepare_system_point_to_plane(
                 transformation_parameter,
                 latest_new_data,
                 true_data_pointpairs,
@@ -532,9 +612,7 @@ class IterativeClosestPoint():
                 true_data_normals,
             )
 
-            if valid_correspondence_count < self.MIN_POINTS:
-                break
-
+            # Check if Hessian and g are finite
             if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
                 break
             
@@ -558,20 +636,28 @@ class IterativeClosestPoint():
             # Transform new data points by rotation and translation 
             latest_new_data_T= np.dot(rotation_matrix, new_data_pointpairs.T) + translation
             latest_new_data= latest_new_data_T.T
+
+            # Compute mean err metric for stop condition check
+            if np.isfinite(squared_error):
+                mean_err = squared_error / len(cleaned_correspondences)
+            else:
+                mean_err = inf
             
             # Append data to lists
-            transformed_new_data_list.append(latest_new_data)
-            list_of_correspondences.append(cleaned_correspondences)
-            squared_error_list.append(squared_error)
-            transformation_parameter_list.append(transformation_parameter.copy())
+            self.transformed_new_data_list.append(latest_new_data)
+            self.list_of_cleaned_corresp.append(cleaned_correspondences)
+            self.list_of_cleaned_corresp_numb.append(len(cleaned_correspondences))
+            self.squared_error_list.append(squared_error)
+            self.transformation_parameter_list.append(transformation_parameter.copy())
         
-        if list_of_correspondences:
-            list_of_correspondences.append(list_of_correspondences[-1])
+        if self.list_of_cleaned_corresp:
+            self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
+            self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
 
         # Store info and reset stop condition for next run
-        self.store_info()
+        self.store_info(extended=True)
         self.stop_condition.reset()
 
         
-        return transformation_parameter, transformed_new_data_list, squared_error_list, cleaned_correspondences
+        return transformation_parameter
 

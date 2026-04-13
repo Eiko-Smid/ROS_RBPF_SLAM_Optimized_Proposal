@@ -64,12 +64,35 @@ class ScanMatcher():
         '''
         Returns a dictionary containing the current state of the scan matcher. This includes the current pose, 
         the current map and the current state of the ICP stop condition.
+
+        Returns:
+            dict: A dictionary containing the current state of the scan matcher.
+                {
+                    "iteration": int,
+                    "mean_err": float,
+                    "rel_improvement": float,
+                    "no_improvement_counter": int,
+                    "dtrans_norm": float,
+                    "drot_abs": float,
+                    "stop_reason": str,
+                    "max_correspondence_distance": float,
+                    "min_squared_error": float,
+                    "n_points_true_data": int,
+                    "n_points_new_data": int,
+                    "transformed_new_data_list": List[np.ndarray],  # List of transformed new data at each iteration
+                    "squared_error_list": List[float],  # List of squared errors at each iteration
+                    "transformation_parameter_list": List[np.ndarray],  # List of transformation parameters at each iteration
+                    "list_of_cleaned_corresp": List[List[Tuple[int, int]]],  # List of cleaned correspondences at each iteration
+                    "list_of_cleaned_corresp_numb": List[int]  # List of number of cleaned correspondences at each iteration
+                    "scan_match_pose": Pose2D,
+                }
+
         '''
         info = self.icp.get_info()
 
         info["scan_match_pose"] = self.pose
         return info
-
+    
 
     def transform_measurements_to_points(
             self, 
@@ -125,7 +148,7 @@ class ScanMatcher():
         Corrects the robots pose by scan matching the measurement against the current map. 
         '''
         # Find best transformation for given points
-        transf_param, _, _, _ = self.icp.find_transformation(
+        transf_param = self.icp.find_transformation(
             new_data_pointpairs=scan_points,
             true_data_pointpairs=map_points,
         )

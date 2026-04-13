@@ -10,6 +10,8 @@ import os
 import sys
 import csv
 from typing import List, Tuple
+
+from attr import dataclass
 import rospy
 import threading
 
@@ -56,24 +58,35 @@ ICP scan matching node.
 
 '''
 
+@dataclass
+class PoseError:
+    translation: float = 0.0
+    rotation: float = 0.0
+
+
 class ScanMatchingNode:
     TRUE_POSE = "true_pose"
     PRED_POSE = "pred_pose"
     SCAN_MATCH_POSE = "scan_match_pose"
     POSE_ERR_TRUE_PRED = "pose_err_true_pred"
     POSE_ERR_TRUE_SCAN_MATCH = "pose_err_true_scan_match"
+
     def __init__(
             self,
             ros_parameter: Tuple[str, str, str, str, float],
             scan_matcher: ScanMatcher,
             every_nth_ray: int,
-            storage_path: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_matching_data.csv"
+            headers_to_write: List[str],
+            storage_filename: str = "scan_matching_data.csv",
+            storage_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/",
     ) -> None:
         # Extract ros parameter
         link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
 
         self.update_rate = update_rate
-        self.storage_path = storage_path
+        self.storage_path = storage_dir + str(rospy.Time.now()) + "_" + storage_filename
+
+        self.headers_to_write = headers_to_write
 
         # Define scan matcher member
         self.scan_matcher = scan_matcher
@@ -82,6 +95,12 @@ class ScanMatchingNode:
         self.true_pose = self.scan_matcher.get_pose()    # The true pose of the robot, extracted from the gazebo link state message
         self.scan_match_pose = self.true_pose
         self.predicted_pose = self.true_pose
+
+        # init pose errors
+        # Pose err between true pose and predicted pose
+        self.pose_err_true_pred = PoseError()
+        # Pose err between true pose and scan match pose
+        self.pose_err_true_scan_match = PoseError()
 
         # Init members 
         self.link_state_message = None
@@ -126,6 +145,7 @@ class ScanMatchingNode:
             self.POSE_ERR_TRUE_SCAN_MATCH: rospy.Publisher("pose_err_true_scan_match", PoseErr2D, queue_size=5),
         }
 
+
     def get_info(self) -> dict:
         '''
         Returns a dictionary containing the current state of the scan matching node. This includes the current true pose, 
@@ -135,31 +155,51 @@ class ScanMatchingNode:
 
         info["true_pose"] = self.true_pose
         info["predicted_pose"] = self.predicted_pose
+        info["pose_err_true_pred_translation"] = self.pose_err_true_pred.translation
+        info["pose_err_true_pred_rotation"] = self.pose_err_true_pred.rotation
+        info["pose_err_true_scan_match_translation"] = self.pose_err_true_scan_match.translation
+        info["pose_err_true_scan_match_rotation"] = self.pose_err_true_scan_match.rotation
 
         return info
     
 
-    def write_info_csv(self, info: dict, csv_file_path: str):
+    def write_info_csv(self, info: dict, csv_file_path: str, headers: List[str]=None):
         '''
-        Writes the given info dictionary to a csv file. The keys of the dictionary will be used as column names and the values will be written as rows.
+        Writes only the requested headers that are present in the info dictionary to a csv file.
         Parameters:
         -----------
         info: dict
             The info dictionary containing the data to be written to the csv file.
+        headers: List[str]
+            The list of headers for the CSV file.
         csv_file_path: str
             The path of the csv file where the data should be written to.
         '''
-        # Create timestamp in seconds to add to the info dictionary for logging purposes
-        timestamp = rospy.get_time()
-        info["timestamp"] = timestamp
+        # Add timestamp to info
+        row_data = dict(info)
+        current_time = rospy.get_time()
+        row_data["timestamp"] = current_time
 
+        # Filter headers if headers exist
+        if headers is not None:
+            fieldnames = [header for header in headers if header in row_data]
+
+            if not fieldnames:
+                rospy.logwarn(f"No matching CSV headers found in info.")
+                return
+            
+            filtered_info = {header: row_data[header] for header in fieldnames}
+        else:
+            fieldnames = list(row_data.keys())
+            filtered_info = row_data
+        
+        # Create parent dir if not existing
         parent_dir = os.path.dirname(csv_file_path)
         if parent_dir:
             os.makedirs(parent_dir, exist_ok=True)
-
         file_exists = os.path.isfile(csv_file_path)
-        fieldnames = list(info.keys())
 
+        # Write to file
         with open(csv_file_path, mode='a', newline='') as csv_file:
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             if not file_exists:
@@ -168,7 +208,7 @@ class ScanMatchingNode:
             else:
                 rospy.loginfo(f"Appended info to existing csv file {csv_file_path}")
 
-            writer.writerow(info)
+            writer.writerow(filtered_info)
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -394,7 +434,7 @@ class ScanMatchingNode:
 
                     # Compute pose error between true pose and predicted pose.
                     if self.predicted_pose is not None:
-                        trans_err_true_pred, rot_err_true_pred, rot_err_true_pred_grad = self.compute_pose_err(
+                        self.pose_err_true_pred.translation, rot_err_true_pred, self.pose_err_true_pred.rotation = self.compute_pose_err(
                             true_pose=self.true_pose,
                             unaccurate_pose=self.predicted_pose
                         )
@@ -408,7 +448,7 @@ class ScanMatchingNode:
                         # Publish pose error between true pose and predicted pose
                         self.publish_pose_err(
                             topic_key=self.POSE_ERR_TRUE_PRED,
-                            pose_err=(trans_err_true_pred, rot_err_true_pred)
+                            pose_err=(self.pose_err_true_pred.translation, self.pose_err_true_pred.rotation)
                         )
 
                          # Log position and orientation error between true pose and predicted pose
@@ -416,14 +456,14 @@ class ScanMatchingNode:
                         rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
                         rospy.loginfo(f"Predicted pose: {[f'{x:.2f}' for x in self.predicted_pose]}")
                         rospy.loginfo(f"Pose error between true pose and predicted pose:")
-                        rospy.loginfo(f"translation error = {trans_err_true_pred:.4f}, Rotation error = {rot_err_true_pred_grad:.4f} ")
+                        rospy.loginfo(f"translation error = {self.pose_err_true_pred.translation:.4f}, Rotation error = {self.pose_err_true_pred.rotation:.4f} ")
                     
                     else:
                         rospy.loginfo("\nError occured in the pose update. Not predicted pose available.")
 
                     # Compute pose error between true pose from gaezebo link states and corrected pose by scan matching 
                     if self.scan_match_pose is not None:
-                        trans_error, rot_error, rot_error_grad = self.compute_pose_err(
+                        self.pose_err_true_scan_match.translation, rot_error, self.pose_err_true_scan_match.rotation = self.compute_pose_err(
                             true_pose=self.true_pose,
                             unaccurate_pose=self.scan_match_pose
                         )
@@ -437,14 +477,14 @@ class ScanMatchingNode:
                          # Publish pose error between true pose and scan matching pose
                         self.publish_pose_err(
                             topic_key=self.POSE_ERR_TRUE_SCAN_MATCH,
-                            pose_err=(trans_error, rot_error)
+                            pose_err=(self.pose_err_true_scan_match.translation, self.pose_err_true_scan_match.rotation)
                         )
 
                         # Log position and orientation error between true pose and scan matching pose                                        
                         rospy.loginfo(f"\nTrue pose: {[f'{x:.2f}' for x in self.true_pose]}")
                         rospy.loginfo(f"Corrected pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
                         rospy.loginfo(f"Pose error between true pose and scan matching pose:")
-                        rospy.loginfo(f"translation error = {trans_error:.4f}, Rotation error = {rot_error_grad:.4f} ")
+                        rospy.loginfo(f"translation error = {self.pose_err_true_scan_match.translation:.4f}, Rotation error = {self.pose_err_true_scan_match.rotation:.4f} ")
 
 
                     else:
@@ -461,7 +501,8 @@ class ScanMatchingNode:
                     info = self.get_info()
                     self.write_info_csv(
                         info=info,
-                        csv_file_path=self.storage_path
+                        csv_file_path=self.storage_path,
+                        headers=self.headers_to_write,
                     )
                                
             update_rate.sleep()
@@ -508,6 +549,35 @@ def transform_2D_grid_to_1D_grid(self, indice):
 def main():
     # Init node
     rospy.init_node("scan_matching_node", anonymous=True)
+
+    # Headers to write
+    headers_to_write = [
+        "iteration",
+        "mean_err",
+        "rel_improvement",
+        "no_improvement_counter",
+        "dtrans_norm",
+        "drot_abs",
+        "stop_reason",
+        "max_correspondence_distance",
+        "min_squared_error",
+        "n_points_true_data",
+        "n_points_new_data",
+        # "transformed_new_data_list",  
+        # "squared_error_list",  
+        # "transformation_parameter_list",  
+        # "list_of_cleaned_corresp",  
+        # "list_of_cleaned_corresp_numb", 
+        # "scan_match_pose",
+        # "true_pose",
+        # "predicted_pose",
+        "pose_err_true_pred_translation",
+        "pose_err_true_pred_rotation",
+        "pose_err_true_scan_match_translation",
+        "pose_err_true_scan_match_rotation",
+        "timestamp",
+    ]
+
 
     # Define ros parameter
     # Define subscriber topics
@@ -587,8 +657,8 @@ def main():
         "no_improvement_limit": 3,
         "min_error": 1.0,
         "epsilon_transform": 1e-4,
-        "min_dtrans": 1e-2,
-        "min_drot": 1e-1
+        "min_dtrans": 1e-3,
+        "min_drot": 1e-2
     }
     # Max distance between two datapoints to build an correspondences set
     max_correspond_dist = 0.8
@@ -636,6 +706,7 @@ def main():
         ros_parameter=ros_parameter,
         scan_matcher=scan_matcher,
         every_nth_ray=every_nth_ray,
+        headers_to_write=headers_to_write,
     )
 
     # Execute

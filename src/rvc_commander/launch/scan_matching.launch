@@ -31,8 +31,8 @@
             name="wheel_encoder_simulation_node" 
             type="wheel_encoder_simulation.py" 
             output="screen">
-            <param name="wheel_encoder_motion_error_factor" value="0.05"/>
-            <param name="wheel_encoder_turn_error_factor" value="0.15"/>
+            <param name="wheel_encoder_motion_error_factor" value="0.1"/>
+            <param name="wheel_encoder_turn_error_factor" value="0.25"/>
     </node>
 
     <!--Run scan matcher node-->

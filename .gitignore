@@ -36,3 +36,6 @@ maps/*~
 *.jpg
 *.jpeg
 
+
+# csv files
+*.csv
