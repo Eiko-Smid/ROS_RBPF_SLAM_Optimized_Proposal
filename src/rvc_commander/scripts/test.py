@@ -91,7 +91,8 @@ class ICPStopCondition:
             
             # Compute translation magnitude
             dtrans_norm = np.linalg.norm(dtransformation[:2])
-            drot_abs = abs(dtransformation[2])
+            drot_abs = abs(dtransformation[2])[0]
+            print(f"type of drot = {type(drot_abs)}")
             
             if dtrans_norm < self.min_dtrans and drot_abs < self.min_drot:
                 self.stop_reason = "Transformation magnitude below threshold"
@@ -148,7 +149,11 @@ def test_icp_stop():
 
     # Simulate ICP iterations with decreasing error
     errors = [10.0, 5.0, 2.0, 1.5, 1.2, 1.1, 1.05, 1.02, 1.01, 1.005, 0.999]
-    dtransformation = np.array([0.01, 0.01, 0.01])  # Simulated transformation change
+    dtransformation = np.zeros((3,1))
+    dtransformation[0] = 0.01  # Simulated transformation change
+    dtransformation[1] = 0.01
+    dtransformation[2] = 0.01
+
     for error in errors:
         if icp_stop.should_stop(error, dtransformation):
             print(f"Stopping at error: {error}")

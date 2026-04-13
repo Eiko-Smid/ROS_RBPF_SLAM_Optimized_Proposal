@@ -10,6 +10,7 @@ import os
 import sys
 import csv
 from typing import List, Tuple
+import time
 
 from attr import dataclass
 import rospy
@@ -84,7 +85,7 @@ class ScanMatchingNode:
         link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
 
         self.update_rate = update_rate
-        self.storage_path = storage_dir + str(rospy.Time.now()) + "_" + storage_filename
+        self.storage_path = storage_dir + str(int(time.time())) + "_" + storage_filename
 
         self.headers_to_write = headers_to_write
 
@@ -299,8 +300,25 @@ class ScanMatchingNode:
 
     
     def transform_laser_scan_to_measurement(self, laser_scan: LaserScan) -> List[Tuple[float, float]]:
-        '''Tranforms the sensor msgs LaserScan to a list of measurement's consisting of 
-        (range, bearing) tuple. Only every nth measurement will be taken into account.'''
+        '''
+        Transforms the sensor msgs LaserScan to a list of measurement's consisting of (range, bearing) tuple. Only
+        every nth measurement will be taken into account. 
+        Also the range values will be filtered by the distances set in the algorithm.
+
+        ->  A measurement with a value higher than the max range will be ignored (Sometimes range noise increase with
+            high range values)
+        -> A measurement with a value lower than the min range will be ignored (Sometimes range noise increase with low
+            range values or the distance is in the robots chassis)
+
+        Parameters:
+        -----------
+        laser_scan: LaserScan
+            The laser scan message received from the topic. 
+        
+        Returns:
+        --------
+        List[Tuple[float, float]]: A list of measurements consisting of (range, bearing) tuples.
+        '''
         min_angle= laser_scan.angle_min
         angle_increment= laser_scan.angle_increment
         min_range = max(laser_scan.range_min, self.scan_matcher.min_sensor_range)
@@ -486,7 +504,6 @@ class ScanMatchingNode:
                         rospy.loginfo(f"Pose error between true pose and scan matching pose:")
                         rospy.loginfo(f"translation error = {self.pose_err_true_scan_match.translation:.4f}, Rotation error = {self.pose_err_true_scan_match.rotation:.4f} ")
 
-
                     else:
                         rospy.loginfo("\nError occured in the pose update. Not corrected pose available.")
 
@@ -556,6 +573,7 @@ def main():
         "mean_err",
         "rel_improvement",
         "no_improvement_counter",
+        "min_mean_err",
         "dtrans_norm",
         "drot_abs",
         "stop_reason",
@@ -642,7 +660,7 @@ def main():
 
     # Define senor param 
     min_sensor_range= 0.1
-    max_sensor_range= 8.0
+    max_sensor_range= 10.0
     delta_r = 1.5
     sensor_parameters_ogm= (min_sensor_range, max_sensor_range)
     sensor_parameters_scan_matcher= (min_sensor_range, max_sensor_range, delta_r)
@@ -655,7 +673,7 @@ def main():
         "max_iterations": 10,           
         "epsilon_rel": 1e-3,
         "no_improvement_limit": 3,
-        "min_error": 1.0,
+        "min_error": 5e-4,
         "epsilon_transform": 1e-4,
         "min_dtrans": 1e-3,
         "min_drot": 1e-2

@@ -70,20 +70,22 @@ class ScanMatcher():
                 {
                     "iteration": int,
                     "mean_err": float,
+                    "min_mean_err": float,
                     "rel_improvement": float,
                     "no_improvement_counter": int,
                     "dtrans_norm": float,
                     "drot_abs": float,
                     "stop_reason": str,
                     "max_correspondence_distance": float,
-                    "min_squared_error": float,
+                    "min_squared_error": float,                
                     "n_points_true_data": int,
                     "n_points_new_data": int,
                     "transformed_new_data_list": List[np.ndarray],  # List of transformed new data at each iteration
                     "squared_error_list": List[float],  # List of squared errors at each iteration
                     "transformation_parameter_list": List[np.ndarray],  # List of transformation parameters at each iteration
                     "list_of_cleaned_corresp": List[List[Tuple[int, int]]],  # List of cleaned correspondences at each iteration
-                    "list_of_cleaned_corresp_numb": List[int]  # List of number of cleaned correspondences at each iteration
+                    "list_of_cleaned_corresp_numb": List[int],  # List of number of cleaned correspondences at each iteration
+                    "list_of_corresp_numb": List[int],  # List of number of correspondences at each iteration
                     "scan_match_pose": Pose2D,
                 }
 
