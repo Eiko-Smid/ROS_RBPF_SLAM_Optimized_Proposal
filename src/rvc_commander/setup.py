@@ -6,6 +6,7 @@ setup(
     packages=[
         'rvc_commander',
         'rvc_commander.slam'
+        'rvc_commander.utils'
     ],
     package_dir={'': 'src'},
 )

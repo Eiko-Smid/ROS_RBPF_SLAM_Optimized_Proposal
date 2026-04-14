@@ -9,12 +9,13 @@
 import os
 import sys
 import csv
-from typing import List, Tuple
+from typing import List, Tuple, Any
+from dataclasses import dataclass, field
 import time
 
 import pickle
 
-from attr import dataclass
+# from attr import dataclass
 import rospy
 import threading
 
@@ -47,12 +48,25 @@ from rvc_commander.msg import PoseErr2D
 from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
 from rvc_commander.slam.ogm_scan_matching import OGM
 from rvc_commander.slam.scan_matcher import ScanMatcher
+from rvc_commander.slam.scan_match_playback import (
+    StepData,
+    SensorParam,
+    OccupancyParam,
+    MapData,
+    PlaybackData,
+)
 
 # Import Scan matching classes programming
 # from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
 # from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
 # from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
-
+# from rvc_commander.src.rvc_commander.slam.scan_match_playback import (
+#     StepData,
+#     SensorParam,
+#     OccupancyParam,
+#     MapData,
+#     PlaybackData,
+# )
 
 '''
 Description
@@ -82,6 +96,7 @@ class ScanMatchingNode:
             every_nth_ray: int,
             headers_to_write: List[str],
             store_python_playback: bool = False,
+            playback_data: PlaybackData = None,
             python_playback_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/",
             python_playback_filename: str = "python_playback_data.pkl",
             storage_filename: str = "scan_matching_metric.csv",
@@ -96,7 +111,7 @@ class ScanMatchingNode:
         # Storage params for python playback
         self.store_python_playback = store_python_playback
         self.python_playback_path = python_playback_dir + str(int(time.time())) + "_" + python_playback_filename
-        self.python_playback_data = []
+        self.playback_data = playback_data
 
         self.headers_to_write = headers_to_write
 
@@ -162,9 +177,13 @@ class ScanMatchingNode:
 
     
     def on_shutdown(self):
+        '''
+        Shutdown callback function to log time jumps and store python playback data if enabled.
+        '''
         rospy.loginfo(f"Time jumps occurred: {self.time_jumps}")
         
-        if self.store_python_playback:
+        # Store python playback data if enabled and data is available
+        if self.store_python_playback and self.playback_data is not None:
             # Check if dir exists
             parent_dir = os.path.dirname(self.python_playback_path)
 
@@ -180,7 +199,7 @@ class ScanMatchingNode:
             # Save python storage data
             try:
                 with open(self.python_playback_path, "wb") as f:
-                    pickle.dump(self.python_playback_data, f)
+                    pickle.dump(self.playback_data, f)
                     rospy.loginfo(f"Saved python playback data to {self.python_playback_path}")
             except Exception as e:
                 rospy.logerr(f"Failed to save python playback data: {e}")
@@ -251,15 +270,27 @@ class ScanMatchingNode:
             writer.writerow(filtered_info)
 
 
-    def store_python_playback_data(self, t, dl, dr, scan, true_pose):
-        entry = {
-            "t": t,
-            "dl": dl,
-            "dr": dr,
-            "scan": scan,
-            "true_pose": true_pose,
-        }
-        self.python_playback_data.append(entry)
+    def store_python_playback_data(
+            self,
+            t: float,
+            dl: float, dr: float,
+            scan: list,
+            true_pose: Tuple[float, float, float]
+    ):
+        '''
+        Appends the given data to the playback data storage object. At the end of the run this data get's
+        stored in a .pkl file which can be used for playback in python. Enables fast scan matching evaluation
+        and parameter tuning without ros later on.
+        '''
+        self.playback_data.step_data_list.append(
+            StepData(
+                t=t,
+                dl=dl,
+                dr=dr,
+                scan=scan,
+                true_pose=true_pose
+            )
+        )
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -799,6 +830,30 @@ def main():
         sensor_parameters=  sensor_parameters_scan_matcher,
         occ_thres=occ_thres,
     )
+
+    # Init PlayBack data if needed
+    store_python_playback = True
+
+    if store_python_playback:
+        python_playback_data = PlaybackData(
+            map_data=MapData(
+                min_distance_to_border=min_distance_to_border,
+                log_odds_map=log_odds_map,
+                sensor_param=SensorParam(
+                    min_sensor_range=min_sensor_range,
+                    max_sensor_range=max_sensor_range
+                ),
+                occupancy_param=OccupancyParam(
+                    prior_probability=prior_probability,
+                    increasing_probability=increasing_probability,
+                    decreasing_probability=decreasing_probability,
+                    min_log_odds=min_log_odds,
+                    max_log_odds=max_log_odds
+                )
+            )
+        )
+    else:
+        python_playback_data = None
     
     # Initialize node class
     scan_matching_node = ScanMatchingNode(
@@ -806,7 +861,8 @@ def main():
         scan_matcher=scan_matcher,
         every_nth_ray=every_nth_ray,
         headers_to_write=headers_to_write,
-        store_python_playback=True,   
+        store_python_playback=store_python_playback,
+        playback_data=python_playback_data
     )
 
     # Execute
