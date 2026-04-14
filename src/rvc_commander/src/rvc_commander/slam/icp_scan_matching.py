@@ -22,12 +22,12 @@ class ICPStopCondition:
     '''
     def __init__(
         self,
-        max_iterations: int = 10,
-        epsilon_rel: float = 1e-3,
-        no_improvement_limit: int = 2,
-        min_error: float = 1.0,
-        min_dtrans: float = 1e-4,
-        min_drot: float = 1e-1
+        max_iterations: int = 10,       # max number of iterations for icp
+        epsilon_rel: float = 1e-3,      # minimum relative improvement to continue icp
+        no_improvement_limit: int = 2,  # maximum number of iterations without improvement
+        min_error: float = 1.0,         # minimum mean error threshold to continue icp
+        min_dtrans: float = 1e-4,       # minimum translation change threshold to continue icp
+        min_drot: float = 1e-1          # minimum rotation change threshold to continue icp (in radians)
 
     ):
         # Init params
@@ -271,7 +271,7 @@ class IterativeClosestPoint():
     MIN_POINTS = 3
     EPSILON = 1e-9
 
-    def __init__(self, stop_params: dict, max_correspondence_distance= 2.0):
+    def __init__(self, stop_params: dict, max_correspondence_distance= 2.0, neighbors_pca: int = 10):
         '''
         Initializes the ICP scan matcher with the given stop parameters and maximum correspondence distance.
 
@@ -286,12 +286,13 @@ class IterativeClosestPoint():
                 - min_dtrans: Minimum translation change required to continue ICP.
                 - min_drot: Minimum rotation change required to continue ICP.
             max_correspondence_distance: The maximum distance between corresponding points to be considered in the ICP
+            neighbors_pca: The number of neighbors to use for PCA when computing normals.
     
         '''    
         # Init Nearest Neighbor
         self.neighbor= NearestNeighbors(n_neighbors=1, algorithm='kd_tree')        
-        self.min_squared_error= 15.0
         self.max_correspond_dist= max_correspondence_distance
+        self.neighbors_pca = neighbors_pca
 
         # Init numpys random generator
         self.rng = np.random.default_rng()
@@ -550,10 +551,12 @@ class IterativeClosestPoint():
         # Pop first item 
         j, i, dist= heappop(correspondences)
         current_j= j
+
         # init all variables
         cleaned_correspondences= []
         c=(i, j)
         shortest_dist= dist
+
         # Search for best pairs
         for i in range(len(correspondences)):
             j, i ,dist= heappop(correspondences)
@@ -564,7 +567,9 @@ class IterativeClosestPoint():
                 c= (i, j)
             elif(dist < shortest_dist):
                 c= (i, j)
+        
         cleaned_correspondences.append(c)
+        
         return cleaned_correspondences
 
     
@@ -751,7 +756,7 @@ class IterativeClosestPoint():
         # true_data_normals= self.compute_normals(true_data_pointpairs)
         true_data_normals = self.compute_normals_knn_pca(
             points=true_data_pointpairs,
-            k=10
+            k=self.neighbors_pca
         )
                 
         # Variable to save squared error. 

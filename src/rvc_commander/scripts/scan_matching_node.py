@@ -12,6 +12,8 @@ import csv
 from typing import List, Tuple
 import time
 
+import pickle
+
 from attr import dataclass
 import rospy
 import threading
@@ -59,6 +61,7 @@ ICP scan matching node.
 
 '''
 
+
 @dataclass
 class PoseError:
     translation: float = 0.0
@@ -78,14 +81,22 @@ class ScanMatchingNode:
             scan_matcher: ScanMatcher,
             every_nth_ray: int,
             headers_to_write: List[str],
-            storage_filename: str = "scan_matching_data.csv",
-            storage_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/",
+            store_python_playback: bool = False,
+            python_playback_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/",
+            python_playback_filename: str = "python_playback_data.pkl",
+            storage_filename: str = "scan_matching_metric.csv",
+            storage_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/metrics/",
     ) -> None:
         # Extract ros parameter
         link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
 
         self.update_rate = update_rate
         self.storage_path = storage_dir + str(int(time.time())) + "_" + storage_filename
+
+        # Storage params for python playback
+        self.store_python_playback = store_python_playback
+        self.python_playback_path = python_playback_dir + str(int(time.time())) + "_" + python_playback_filename
+        self.python_playback_data = []
 
         self.headers_to_write = headers_to_write
 
@@ -110,9 +121,12 @@ class ScanMatchingNode:
         self.distance_right_wheel = 0.0
         self.every_nth_ray = every_nth_ray
         self.min_valid_measurements = 3
-
         self.lock = threading.Lock()
-
+        
+        # At shutdown logic
+        self.time_jumps = 0
+        rospy.on_shutdown(self.on_shutdown)
+    
         # Init link state sub
         self.link_state_message = None
         self.link_state_name = link_state_name
@@ -145,6 +159,31 @@ class ScanMatchingNode:
             self.POSE_ERR_TRUE_PRED: rospy.Publisher("pose_err_true_pred", PoseErr2D, queue_size=5),
             self.POSE_ERR_TRUE_SCAN_MATCH: rospy.Publisher("pose_err_true_scan_match", PoseErr2D, queue_size=5),
         }
+
+    
+    def on_shutdown(self):
+        rospy.loginfo(f"Time jumps occurred: {self.time_jumps}")
+        
+        if self.store_python_playback:
+            # Check if dir exists
+            parent_dir = os.path.dirname(self.python_playback_path)
+
+            # Create dir if not existing
+            if parent_dir and not os.path.exists(parent_dir):
+                try:
+                    os.makedirs(parent_dir, exist_ok=True)
+                    rospy.loginfo(f"Created directory for python playback data: {parent_dir}")
+                except Exception as e:
+                    rospy.logerr(f"Failed to create directory for python playback data: {e}")
+                    return
+
+            # Save python storage data
+            try:
+                with open(self.python_playback_path, "wb") as f:
+                    pickle.dump(self.python_playback_data, f)
+                    rospy.loginfo(f"Saved python playback data to {self.python_playback_path}")
+            except Exception as e:
+                rospy.logerr(f"Failed to save python playback data: {e}")
 
 
     def get_info(self) -> dict:
@@ -210,6 +249,17 @@ class ScanMatchingNode:
                 rospy.loginfo(f"Appended info to existing csv file {csv_file_path}")
 
             writer.writerow(filtered_info)
+
+
+    def store_python_playback_data(self, t, dl, dr, scan, true_pose):
+        entry = {
+            "t": t,
+            "dl": dl,
+            "dr": dr,
+            "scan": scan,
+            "true_pose": true_pose,
+        }
+        self.python_playback_data.append(entry)
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -390,140 +440,166 @@ class ScanMatchingNode:
 
 
     def execute(self):
+        # Wait for rospy time to be zero (for rosbag playback)
+        while rospy.get_time() == 0:
+            rospy.loginfo_throttle(1, "Waiting for ROS time to be non-zero...")
+            rospy.sleep(0.1)
+
+        # Store time jumps
+        time_jumps = 0
+
+        # Set update rate
         update_rate = rospy.Rate(self.update_rate)
 
         # TODO: Create init check for our scan matcher as a function
 
         while not rospy.is_shutdown():
-            # Check if all necessary data is received
-            if(
-                self.link_state_message is not None and
-                self.link_state_index is not None and
-                self.laser_scan is not None and
-                self.distance_left_wheel is not None and
-                self.distance_right_wheel is not None
-            ):
-                # Check if scan matching is necessary
-                min_dist = self.scan_matcher.ogm.grid_resolution_m
-                if self.distance_left_wheel > min_dist or self.distance_right_wheel > min_dist:
+            try:
 
-                    # Lock threads
-                    self.lock.acquire()
+                # Check if all necessary data is received
+                if(
+                    self.link_state_message is not None and
+                    self.link_state_index is not None and
+                    self.laser_scan is not None and
+                    self.distance_left_wheel is not None and
+                    self.distance_right_wheel is not None
+                ):
+                    # Check if scan matching is necessary
+                    min_dist = self.scan_matcher.ogm.grid_resolution_m
+                    if self.distance_left_wheel > min_dist or self.distance_right_wheel > min_dist:
 
-                    # Extract data
-                    # Extract robot pose from link state message
-                    link_state = self.link_state_message
-                    link_state_index = self.link_state_index 
-                    # Extract laser scan data
-                    laser_scan = self.laser_scan
-                    # Extract wheel encoder data
-                    distance_left_wheel = self.distance_left_wheel
-                    distance_right_wheel = self.distance_right_wheel
-                    self.distance_left_wheel = 0.0
-                    self.distance_right_wheel = 0.0
+                        # Lock threads
+                        self.lock.acquire()
 
-                    # Release lock
-                    self.lock.release()
+                        # Extract data
+                        # Extract robot pose from link state message
+                        link_state = self.link_state_message
+                        link_state_index = self.link_state_index 
+                        # Extract laser scan data
+                        laser_scan = self.laser_scan
+                        # Extract wheel encoder data
+                        distance_left_wheel = self.distance_left_wheel
+                        distance_right_wheel = self.distance_right_wheel
+                        self.distance_left_wheel = 0.0
+                        self.distance_right_wheel = 0.0
 
-                    # Transform received data
-                    # Transform link state to planar pose
-                    self.true_pose = self.transform_link_state_pose_to_planar_pose(
-                        link_state=link_state,
-                        link_state_index=link_state_index
-                    )
-                    # Transform measurement to range bearing tuples
-                    measurements = self.transform_laser_scan_to_measurement(laser_scan=laser_scan)
+                        # Release lock
+                        self.lock.release()
 
-                    if len(measurements) < self.min_valid_measurements:
-                        rospy.logwarn_throttle(
-                            5.0,
-                            f"Skipping scan matching because only {len(measurements)} valid beams are available.",
+                        # Transform received data
+                        # Transform link state to planar pose
+                        self.true_pose = self.transform_link_state_pose_to_planar_pose(
+                            link_state=link_state,
+                            link_state_index=link_state_index
                         )
-                        update_rate.sleep()
-                        continue
+                        # Transform measurement to range bearing tuples
+                        measurements = self.transform_laser_scan_to_measurement(laser_scan=laser_scan)
 
-                    # Correct pose by scan matching
-                    self.scan_match_pose, self.predicted_pose = self.scan_matcher.update_pose(
-                        old_pose=self.scan_match_pose,
-                        dl=distance_left_wheel,
-                        dr=distance_right_wheel,
-                        measurements=measurements
-                    )
+                        # Store python playback data 
+                        if self.store_python_playback:
+                            self.store_python_playback_data(
+                                t=rospy.get_time(),
+                                dl=distance_left_wheel,
+                                dr=distance_right_wheel,
+                                scan=measurements,
+                                true_pose=self.true_pose
+                            )
 
-                    # Compute pose error between true pose and predicted pose.
-                    if self.predicted_pose is not None:
-                        self.pose_err_true_pred.translation, rot_err_true_pred, self.pose_err_true_pred.rotation = self.compute_pose_err(
-                            true_pose=self.true_pose,
-                            unaccurate_pose=self.predicted_pose
+                        if len(measurements) < self.min_valid_measurements:
+                            rospy.logwarn_throttle(
+                                5.0,
+                                f"Skipping scan matching because only {len(measurements)} valid beams are available.",
+                            )
+                            update_rate.sleep()
+                            continue
+
+                        # Correct pose by scan matching
+                        self.scan_match_pose, self.predicted_pose = self.scan_matcher.update_pose(
+                            old_pose=self.scan_match_pose,
+                            dl=distance_left_wheel,
+                            dr=distance_right_wheel,
+                            measurements=measurements
                         )
-                    
-                        # Publish predicted pose
+
+                        # Compute pose error between true pose and predicted pose.
+                        if self.predicted_pose is not None:
+                            self.pose_err_true_pred.translation, rot_err_true_pred, self.pose_err_true_pred.rotation = self.compute_pose_err(
+                                true_pose=self.true_pose,
+                                unaccurate_pose=self.predicted_pose
+                            )
+                        
+                            # Publish predicted pose
+                            self.publish_pose(
+                                topic_key=self.PRED_POSE,
+                                pose=self.predicted_pose
+                            )
+
+                            # Publish pose error between true pose and predicted pose
+                            self.publish_pose_err(
+                                topic_key=self.POSE_ERR_TRUE_PRED,
+                                pose_err=(self.pose_err_true_pred.translation, self.pose_err_true_pred.rotation)
+                            )
+
+                            # Log position and orientation error between true pose and predicted pose
+                            rospy.loginfo("\n\nDisplay position and orientation error")
+                            rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
+                            rospy.loginfo(f"Predicted pose: {[f'{x:.2f}' for x in self.predicted_pose]}")
+                            rospy.loginfo(f"Pose error between true pose and predicted pose:")
+                            rospy.loginfo(f"translation error = {self.pose_err_true_pred.translation:.4f}, Rotation error = {self.pose_err_true_pred.rotation:.4f} ")
+                        
+                        else:
+                            rospy.loginfo("\nError occured in the pose update. Not predicted pose available.")
+
+                        # Compute pose error between true pose from gaezebo link states and corrected pose by scan matching 
+                        if self.scan_match_pose is not None:
+                            self.pose_err_true_scan_match.translation, rot_error, self.pose_err_true_scan_match.rotation = self.compute_pose_err(
+                                true_pose=self.true_pose,
+                                unaccurate_pose=self.scan_match_pose
+                            )
+
+                            # Publish scan matching pose
+                            self.publish_pose(
+                                topic_key=self.SCAN_MATCH_POSE,
+                                pose=self.scan_match_pose
+                            )
+
+                            # Publish pose error between true pose and scan matching pose
+                            self.publish_pose_err(
+                                topic_key=self.POSE_ERR_TRUE_SCAN_MATCH,
+                                pose_err=(self.pose_err_true_scan_match.translation, self.pose_err_true_scan_match.rotation)
+                            )
+
+                            # Log position and orientation error between true pose and scan matching pose                                        
+                            rospy.loginfo(f"\nTrue pose: {[f'{x:.2f}' for x in self.true_pose]}")
+                            rospy.loginfo(f"Corrected pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
+                            rospy.loginfo(f"Pose error between true pose and scan matching pose:")
+                            rospy.loginfo(f"translation error = {self.pose_err_true_scan_match.translation:.4f}, Rotation error = {self.pose_err_true_scan_match.rotation:.4f} ")
+
+                        else:
+                            rospy.loginfo("\nError occured in the pose update. Not corrected pose available.")
+
+                        
+                        # Publish true pose
                         self.publish_pose(
-                            topic_key=self.PRED_POSE,
-                            pose=self.predicted_pose
+                            topic_key=self.TRUE_POSE,
+                            pose=self.true_pose
                         )
 
-                        # Publish pose error between true pose and predicted pose
-                        self.publish_pose_err(
-                            topic_key=self.POSE_ERR_TRUE_PRED,
-                            pose_err=(self.pose_err_true_pred.translation, self.pose_err_true_pred.rotation)
+                        # Save info to csv
+                        info = self.get_info()
+                        self.write_info_csv(
+                            info=info,
+                            csv_file_path=self.storage_path,
+                            headers=self.headers_to_write,
                         )
+                                
+                update_rate.sleep()
 
-                         # Log position and orientation error between true pose and predicted pose
-                        rospy.loginfo("\n\nDisplay position and orientation error")
-                        rospy.loginfo(f"True pose: {[f'{x:.2f}' for x in self.true_pose]}")
-                        rospy.loginfo(f"Predicted pose: {[f'{x:.2f}' for x in self.predicted_pose]}")
-                        rospy.loginfo(f"Pose error between true pose and predicted pose:")
-                        rospy.loginfo(f"translation error = {self.pose_err_true_pred.translation:.4f}, Rotation error = {self.pose_err_true_pred.rotation:.4f} ")
-                    
-                    else:
-                        rospy.loginfo("\nError occured in the pose update. Not predicted pose available.")
-
-                    # Compute pose error between true pose from gaezebo link states and corrected pose by scan matching 
-                    if self.scan_match_pose is not None:
-                        self.pose_err_true_scan_match.translation, rot_error, self.pose_err_true_scan_match.rotation = self.compute_pose_err(
-                            true_pose=self.true_pose,
-                            unaccurate_pose=self.scan_match_pose
-                        )
-
-                        # Publish scan matching pose
-                        self.publish_pose(
-                            topic_key=self.SCAN_MATCH_POSE,
-                            pose=self.scan_match_pose
-                        )
-
-                         # Publish pose error between true pose and scan matching pose
-                        self.publish_pose_err(
-                            topic_key=self.POSE_ERR_TRUE_SCAN_MATCH,
-                            pose_err=(self.pose_err_true_scan_match.translation, self.pose_err_true_scan_match.rotation)
-                        )
-
-                        # Log position and orientation error between true pose and scan matching pose                                        
-                        rospy.loginfo(f"\nTrue pose: {[f'{x:.2f}' for x in self.true_pose]}")
-                        rospy.loginfo(f"Corrected pose: {[f'{x:.2f}' for x in self.scan_match_pose]}")
-                        rospy.loginfo(f"Pose error between true pose and scan matching pose:")
-                        rospy.loginfo(f"translation error = {self.pose_err_true_scan_match.translation:.4f}, Rotation error = {self.pose_err_true_scan_match.rotation:.4f} ")
-
-                    else:
-                        rospy.loginfo("\nError occured in the pose update. Not corrected pose available.")
-
-                    
-                    # Publish true pose
-                    self.publish_pose(
-                        topic_key=self.TRUE_POSE,
-                        pose=self.true_pose
-                    )
-
-                    # Save info to csv
-                    info = self.get_info()
-                    self.write_info_csv(
-                        info=info,
-                        csv_file_path=self.storage_path,
-                        headers=self.headers_to_write,
-                    )
-                               
-            update_rate.sleep()
-
+            except rospy.exceptions.ROSTimeMovedBackwardsException:
+                rospy.logwarn("Time jump detected → skipping this iteration")
+                self.time_jumps += 1
+                continue
+                
 
 #__________________________________________________________________________________________________________________________________
 #  Helper for map getting map from map server
@@ -678,13 +754,18 @@ def main():
         "min_dtrans": 1e-3,
         "min_drot": 1e-2
     }
+
+    # Defien icp params
     # Max distance between two datapoints to build an correspondences set
     max_correspond_dist = 0.8
+    # The number of neighbors to use for PCA when computing normals in the ICP scan matcher
+    neighbors_pca = 10   
 
     # init icp 
     icp = IterativeClosestPoint(
         stop_params=stop_params,
         max_correspondence_distance=max_correspond_dist,
+        neighbors_pca=neighbors_pca,
     )
 
     # Define robot parameter for scan matcher
@@ -725,6 +806,7 @@ def main():
         scan_matcher=scan_matcher,
         every_nth_ray=every_nth_ray,
         headers_to_write=headers_to_write,
+        store_python_playback=True,   
     )
 
     # Execute

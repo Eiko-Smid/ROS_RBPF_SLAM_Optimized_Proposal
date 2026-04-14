@@ -42,13 +42,9 @@
     <!--Launch rviz-->
     <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rvc_commander)/rviz/monte_carlo_localization.rviz">
     </node>
-
-    <!-- Launch ros bag -->
-     <!-- <node pkg="rosbag" type="record" name="rosbag_record"
-        args="-O /home/smide/work/ros_workspaces/ros_ws/bags/test_run.bag
-        /clock
-        /tf /tf_static
-        /gazebo/link_states
-        /scan /wheel_encoder"/> -->
-        
+    
+    <!-- Launch rqt ui -->
+    <node pkg="rqt_gui" type="rqt_gui" name="rqt_gui"
+      args="--perspective-file $(find rvc_commander)/rqt_perspectives/Pose_error_scan_matching.perspective"/>
+    
 </launch>
