@@ -11,6 +11,9 @@ logs/
 __pycache__/
 *.pyc
 
+# Python storage
+
+
 # VSCode
 .vscode/
 
