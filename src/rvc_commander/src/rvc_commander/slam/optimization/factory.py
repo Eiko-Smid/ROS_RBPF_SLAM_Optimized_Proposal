@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 
-from dataclasses import dataclass, field
-
 from scan_match_playback_def import (
-    StepData,
-    SensorParam,
-    OccupancyParam,
-    Metadata,
-    ICPParams,
-    ScanMatcherParams,
     PlaybackData,
     ExperimentParams,
 )
@@ -18,9 +10,15 @@ from ogm_scan_matching import OGM
 from scan_matcher import ScanMatcher
 
 
-class ScanMatchFactory:
+class ScanMatcherFactory:
+    '''
+    Factory class for creating ScanMatcher instances.
+    '''
     @staticmethod
     def build(playback_data: PlaybackData, params: ExperimentParams):
+        '''
+        Gets the playback data and experiment parameters, builds a ScanMatcher instance and returns it.
+        '''
         # Extract map data from playback data
         map_data = playback_data.map_data
 
@@ -39,6 +37,8 @@ class ScanMatchFactory:
                 map_data.sensor_param.max_sensor_range,
             ],
         )
+
+        # Init the map
         ogm.init_map_from_map(
             log_odds_map=map_data.log_odds_map,
             grid_resolution=map_data.grid_resolution_m
@@ -73,4 +73,5 @@ class ScanMatchFactory:
             ),
             occ_thres=params.scan_matcher.occ_thres,
         )
+        
         return scan_matcher

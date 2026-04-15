@@ -3,28 +3,30 @@
 import csv
 import json
 import numpy as np
-from typing import List
+from typing import List, Tuple
 from rvc_commander.slam.scan_match_playback_def import (
     StepData,
     SensorParam,
     OccupancyParam,
-    MapData,
+    Metadata,
 )
 
 
-def load_map(map_npy_path: str, map_meta_path: str) -> MapData:
+def load_metadata(map_npy_path: str, meta_path: str) -> Metadata:
     # Load map array
     log_odds_map = np.load(map_npy_path)
 
     # Load metadata
     meta = {}
-    with open(map_meta_path, "r") as f:
+    with open(meta_path, "r") as f:
         reader = csv.reader(f)
         next(reader)  # skip header
         for key, value in reader:
             meta[key] = float(value)
 
-    return MapData(
+    return Metadata(
+        wheel_separation=meta["wheel_separation"],
+        grid_resolution_m=meta["grid_resolution_m"],
         min_distance_to_border=meta["min_distance_to_border"],
         log_odds_map=log_odds_map,
         sensor_param=SensorParam(
@@ -78,15 +80,15 @@ def load_steps(steps_csv_path: str, scans_jsonl_path: str) -> List[StepData]:
     return steps
 
 
-def load_playback_dataset(base_path_prefix: str):
+def load_playback_dataset(base_path_prefix: str) -> Tuple[Metadata, List[StepData]]:
     """
     Example:
     base_path_prefix = "/path/to/123456_python_playback_data"
     """
 
-    map_data = load_map(
+    meta_data = load_metadata(
         map_npy_path=base_path_prefix + "_map.npy",
-        map_meta_path=base_path_prefix + "_map_meta.csv",
+        meta_path=base_path_prefix + "_map_meta.csv",
     )
 
     steps = load_steps(
@@ -94,7 +96,7 @@ def load_playback_dataset(base_path_prefix: str):
         scans_jsonl_path=base_path_prefix + "_scans.jsonl",
     )
 
-    return map_data, steps
+    return meta_data, steps
 
 
 def main():

@@ -44,26 +44,26 @@ from rvc_commander.msg import WheelEncoder
 from rvc_commander.msg import PoseErr2D
 
 # Import Scan matching classes roslaunch
-from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
-from rvc_commander.slam.ogm_scan_matching import OGM
-from rvc_commander.slam.scan_matcher import ScanMatcher
-from rvc_commander.slam.scan_match_playback_def import (
-    StepData,
-    SensorParam,
-    OccupancyParam,
-    MapData,
-)
-
-# Import Scan matching classes programming
-# from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
-# from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
-# from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
-# from rvc_commander.src.rvc_commander.slam.scan_match_playback_def import (
+# from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
+# from rvc_commander.slam.ogm_scan_matching import OGM
+# from rvc_commander.slam.scan_matcher import ScanMatcher
+# from rvc_commander.slam.scan_match_playback_def import (
 #     StepData,
 #     SensorParam,
 #     OccupancyParam,
 #     MapData,
 # )
+
+# Import Scan matching classes programming
+from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
+from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
+from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
+from rvc_commander.src.rvc_commander.slam.scan_match_playback_def import (
+    StepData,
+    SensorParam,
+    OccupancyParam,
+    Metadata,
+)
 
 '''
 Description
@@ -98,7 +98,7 @@ class ScanMatchingNode:
             store_playback_files: bool = False,
             playback_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/",
             playback_prefix: str = "python_playback",
-            map_data: MapData = None,
+            meta_data: Metadata = None,
             metric_storage_filename: str = "scan_matching_metric.csv",
             metric_storage_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/metrics/",
     ) -> None:
@@ -121,7 +121,7 @@ class ScanMatchingNode:
         self.map_npy_path = os.path.join(self.playback_dir, f"{self.playback_prefix}_map.npy")
         self.map_meta_csv_path = os.path.join(self.playback_dir, f"{self.playback_prefix}_map_meta.csv")
 
-        self.map_data = map_data
+        self.meta_data = meta_data
         self._steps_header_written = False
         self._map_written = False
                 
@@ -280,27 +280,29 @@ class ScanMatchingNode:
         '''
         Stores the map inside the numpy array as .npy file and the map metadata as .csv file. 
         '''
-        if not self.store_playback_files or self.map_data is None or self._map_written:
+        if not self.store_playback_files or self.meta_data is None or self._map_written:
             return
 
         # Ensure dir exists
         self.ensure_dir_exists(dir=self.playback_dir)
         
         # Save map array
-        np.save(self.map_npy_path, self.map_data.log_odds_map)
+        np.save(self.map_npy_path, self.meta_data.log_odds_map)
 
         # Save metadata as simple CSV key-value pairs
         with open(self.map_meta_csv_path, mode="w", newline="") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerow(["key", "value"])
-            writer.writerow(["min_distance_to_border", self.map_data.min_distance_to_border])
-            writer.writerow(["min_sensor_range", self.map_data.sensor_param.min_sensor_range])
-            writer.writerow(["max_sensor_range", self.map_data.sensor_param.max_sensor_range])
-            writer.writerow(["prior_probability", self.map_data.occupancy_param.prior_probability])
-            writer.writerow(["increasing_probability", self.map_data.occupancy_param.increasing_probability])
-            writer.writerow(["decreasing_probability", self.map_data.occupancy_param.decreasing_probability])
-            writer.writerow(["min_log_odds", self.map_data.occupancy_param.min_log_odds])
-            writer.writerow(["max_log_odds", self.map_data.occupancy_param.max_log_odds])
+            writer.writerow(["wheel_separation", self.scan_matcher.wheel_separation])
+            writer.writerow(["grid_resolution_m", self.scan_matcher.ogm.grid_resolution_m])
+            writer.writerow(["min_distance_to_border", self.meta_data.min_distance_to_border])
+            writer.writerow(["min_sensor_range", self.meta_data.sensor_param.min_sensor_range])
+            writer.writerow(["max_sensor_range", self.meta_data.sensor_param.max_sensor_range])
+            writer.writerow(["prior_probability", self.meta_data.occupancy_param.prior_probability])
+            writer.writerow(["increasing_probability", self.meta_data.occupancy_param.increasing_probability])
+            writer.writerow(["decreasing_probability", self.meta_data.occupancy_param.decreasing_probability])
+            writer.writerow(["min_log_odds", self.meta_data.occupancy_param.min_log_odds])
+            writer.writerow(["max_log_odds", self.meta_data.occupancy_param.max_log_odds])
 
         # Log storage success and set flag to avoid multiple writes
         self._map_written = True
@@ -936,14 +938,15 @@ def main():
         ogm=ogm,
         icp=icp,
         robo_param=robot_parameter,
-        sensor_parameters=  sensor_parameters_scan_matcher,
+        sensor_parameters=sensor_parameters_scan_matcher,
         occ_thres=occ_thres,
     )
 
     # Init playback file storage if needed
     store_playback_files = True
 
-    playback_map_data = MapData(
+    playback_meta_data = Metadata(
+        grid_resolution_m=grid_resolution,
         min_distance_to_border=min_distance_to_border,
         log_odds_map=log_odds_map,
         sensor_param=SensorParam(
@@ -975,7 +978,7 @@ def main():
         store_playback_files=store_playback_files,
         playback_dir=playback_dir,
         playback_prefix=playback_prefix,
-        map_data=playback_map_data,
+        meta_data=playback_meta_data,
         metric_storage_filename=metric_storage_filename,
         metric_storage_dir=metric_storage_dir,
     )

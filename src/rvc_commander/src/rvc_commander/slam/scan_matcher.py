@@ -176,6 +176,23 @@ class ScanMatcher():
 
         Returns the corrected pose first and the predicted pose second. If scan matching cannot be
         performed safely, the predicted pose is returned for both values.
+
+        Parameters:
+        ---------
+        old_pose: Pose2D
+            The previous pose of the robot.
+        dl: float
+            The distance traveled by the left wheel since the last update.
+        dr: float
+            The distance traveled by the right wheel since the last update.
+        measurements: List[Tuple[float, float]]
+            A list of tuples containing the range and bearing measurements from the robot's sensors.
+        
+        Returns:
+        ---------
+        Tuple[Pose2D, Pose2D]
+            A tuple containing the corrected pose and the predicted pose, in that order. If scan matching cannot be
+            performed by any means, the predicted pose is returned for both values.   
         ''' 
         # Init pose
         pred_pose = None

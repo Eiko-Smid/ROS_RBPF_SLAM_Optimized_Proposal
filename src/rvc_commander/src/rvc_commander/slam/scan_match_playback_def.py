@@ -29,7 +29,9 @@ class OccupancyParam:
 
 
 @dataclass
-class MapData:
+class Metadata:
+    wheel_separation: float
+    grid_resolution_m: float
     min_distance_to_border: float
     log_odds_map: np.ndarray
     sensor_param: SensorParam
@@ -38,5 +40,30 @@ class MapData:
 
 @dataclass
 class PlaybackData:
-    map_data: MapData 
+    map_data: Metadata 
     step_data_list: List[StepData] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ICPParams:
+    max_correspondence_distance: float
+    neighbors_pca: int
+    max_iterations: int
+    epsilon_rel: float
+    no_improvement_limit: int
+    min_error: float
+    min_dtrans: float
+    min_drot: float
+
+
+@dataclass(frozen=True)
+class ScanMatcherParams:
+    occ_thres: float
+    delta_r: float
+
+
+@dataclass(frozen=True)
+class ExperimentParams:
+    icp: ICPParams
+    scan_matcher: ScanMatcherParams
+    tag: str = ""
