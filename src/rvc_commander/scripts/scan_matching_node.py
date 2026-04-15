@@ -9,11 +9,10 @@
 import os
 import sys
 import csv
+import json
 from typing import List, Tuple, Any
 from dataclasses import dataclass, field
 import time
-
-import pickle
 
 # from attr import dataclass
 import rospy
@@ -48,24 +47,22 @@ from rvc_commander.msg import PoseErr2D
 from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
 from rvc_commander.slam.ogm_scan_matching import OGM
 from rvc_commander.slam.scan_matcher import ScanMatcher
-from rvc_commander.slam.scan_match_playback import (
+from rvc_commander.slam.scan_match_playback_def import (
     StepData,
     SensorParam,
     OccupancyParam,
     MapData,
-    PlaybackData,
 )
 
 # Import Scan matching classes programming
 # from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
 # from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
 # from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
-# from rvc_commander.src.rvc_commander.slam.scan_match_playback import (
+# from rvc_commander.src.rvc_commander.slam.scan_match_playback_def import (
 #     StepData,
 #     SensorParam,
 #     OccupancyParam,
 #     MapData,
-#     PlaybackData,
 # )
 
 '''
@@ -83,6 +80,9 @@ class PoseError:
 
 
 class ScanMatchingNode:
+    IDX_X=0
+    IDX_Y=1
+    IDX_THETA=2
     TRUE_POSE = "true_pose"
     PRED_POSE = "pred_pose"
     SCAN_MATCH_POSE = "scan_match_pose"
@@ -95,24 +95,36 @@ class ScanMatchingNode:
             scan_matcher: ScanMatcher,
             every_nth_ray: int,
             headers_to_write: List[str],
-            store_python_playback: bool = False,
-            playback_data: PlaybackData = None,
-            python_playback_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/",
-            python_playback_filename: str = "python_playback_data.pkl",
-            storage_filename: str = "scan_matching_metric.csv",
-            storage_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/metrics/",
+            store_playback_files: bool = False,
+            playback_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/",
+            playback_prefix: str = "python_playback",
+            map_data: MapData = None,
+            metric_storage_filename: str = "scan_matching_metric.csv",
+            metric_storage_dir: str = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/metrics/",
     ) -> None:
         # Extract ros parameter
         link_state_name, link_state_topic, scan_topic, wheel_encoder_topic, update_rate = ros_parameter
-
         self.update_rate = update_rate
-        self.storage_path = storage_dir + str(int(time.time())) + "_" + storage_filename
 
-        # Storage params for python playback
-        self.store_python_playback = store_python_playback
-        self.python_playback_path = python_playback_dir + str(int(time.time())) + "_" + python_playback_filename
-        self.playback_data = playback_data
+        # Define storage path for metrics
+        self.metric_storage_path = metric_storage_dir + str(int(time.time())) + "_" + metric_storage_filename
 
+        # Storage params for portable playback files
+        self.store_playback_files = store_playback_files
+        timestamp_str = str(int(time.time()))
+        self.playback_dir = playback_dir
+        self.playback_prefix = f"{timestamp_str}_{playback_prefix}"
+        
+        # Define storage path for playbacks
+        self.steps_csv_path = os.path.join(self.playback_dir, f"{self.playback_prefix}_steps.csv")
+        self.scans_json_path = os.path.join(self.playback_dir, f"{self.playback_prefix}_scans.jsonl")
+        self.map_npy_path = os.path.join(self.playback_dir, f"{self.playback_prefix}_map.npy")
+        self.map_meta_csv_path = os.path.join(self.playback_dir, f"{self.playback_prefix}_map_meta.csv")
+
+        self.map_data = map_data
+        self._steps_header_written = False
+        self._map_written = False
+                
         self.headers_to_write = headers_to_write
 
         # Define scan matcher member
@@ -182,27 +194,12 @@ class ScanMatchingNode:
         '''
         rospy.loginfo(f"Time jumps occurred: {self.time_jumps}")
         
-        # Store python playback data if enabled and data is available
-        if self.store_python_playback and self.playback_data is not None:
-            # Check if dir exists
-            parent_dir = os.path.dirname(self.python_playback_path)
-
-            # Create dir if not existing
-            if parent_dir and not os.path.exists(parent_dir):
-                try:
-                    os.makedirs(parent_dir, exist_ok=True)
-                    rospy.loginfo(f"Created directory for python playback data: {parent_dir}")
-                except Exception as e:
-                    rospy.logerr(f"Failed to create directory for python playback data: {e}")
-                    return
-
-            # Save python storage data
+        if self.store_playback_files:
             try:
-                with open(self.python_playback_path, "wb") as f:
-                    pickle.dump(self.playback_data, f)
-                    rospy.loginfo(f"Saved python playback data to {self.python_playback_path}")
+                rospy.loginfo(f"Saved playback steps to {self.steps_csv_path}")
+                rospy.loginfo(f"Saved playback scans to {self.scans_json_path}")
             except Exception as e:
-                rospy.logerr(f"Failed to save python playback data: {e}")
+                rospy.logerr(f"Failed to save playback files: {e}")
 
 
     def get_info(self) -> dict:
@@ -270,27 +267,138 @@ class ScanMatchingNode:
             writer.writerow(filtered_info)
 
 
-    def store_python_playback_data(
-            self,
-            t: float,
-            dl: float, dr: float,
-            scan: list,
-            true_pose: Tuple[float, float, float]
+    @staticmethod
+    def ensure_dir_exists(dir: str):
+        '''
+        Helper method that ensure that the given directory exists.
+        '''
+        if dir and not os.path.exists(dir):
+            os.makedirs(dir, exist_ok=True)
+
+
+    def write_map_files_once(self):
+        '''
+        Stores the map inside the numpy array as .npy file and the map metadata as .csv file. 
+        '''
+        if not self.store_playback_files or self.map_data is None or self._map_written:
+            return
+
+        # Ensure dir exists
+        self.ensure_dir_exists(dir=self.playback_dir)
+        
+        # Save map array
+        np.save(self.map_npy_path, self.map_data.log_odds_map)
+
+        # Save metadata as simple CSV key-value pairs
+        with open(self.map_meta_csv_path, mode="w", newline="") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(["key", "value"])
+            writer.writerow(["min_distance_to_border", self.map_data.min_distance_to_border])
+            writer.writerow(["min_sensor_range", self.map_data.sensor_param.min_sensor_range])
+            writer.writerow(["max_sensor_range", self.map_data.sensor_param.max_sensor_range])
+            writer.writerow(["prior_probability", self.map_data.occupancy_param.prior_probability])
+            writer.writerow(["increasing_probability", self.map_data.occupancy_param.increasing_probability])
+            writer.writerow(["decreasing_probability", self.map_data.occupancy_param.decreasing_probability])
+            writer.writerow(["min_log_odds", self.map_data.occupancy_param.min_log_odds])
+            writer.writerow(["max_log_odds", self.map_data.occupancy_param.max_log_odds])
+
+        # Log storage success and set flag to avoid multiple writes
+        self._map_written = True
+        rospy.loginfo(f"Saved playback map to {self.map_npy_path}")
+        rospy.loginfo(f"Saved playback map metadata to {self.map_meta_csv_path}")
+
+
+    def write_step_and_scan(
+        self,
+        step: StepData,
     ):
         '''
-        Appends the given data to the playback data storage object. At the end of the run this data get's
-        stored in a .pkl file which can be used for playback in python. Enables fast scan matching evaluation
-        and parameter tuning without ros later on.
+        Writes the given step data to the steps.csv file and the scan data to the scans.jsonl file.
+
+        Parameters:
+        -----------
+        step: StepData
+            The step data to be written, containing the time, wheel distances, laser scan, and true pose.
         '''
-        self.playback_data.step_data_list.append(
-            StepData(
-                t=t,
-                dl=dl,
-                dr=dr,
-                scan=scan,
-                true_pose=true_pose
-            )
+        if not self.store_playback_files:
+            return
+
+        self.ensure_dir_exists(dir=self.playback_dir)
+
+        # Write steps.csv
+        file_exists = os.path.isfile(self.steps_csv_path)
+        with open(self.steps_csv_path, mode="a", newline="") as csv_file:
+            writer = csv.writer(csv_file)
+            if not file_exists:
+                writer.writerow([
+                    "step_id",
+                    "t",
+                    "dl",
+                    "dr",
+                    "true_pose_x",
+                    "true_pose_y",
+                    "true_pose_yaw",
+                ])
+
+            step_id = sum(1 for _ in open(self.scans_json_path, "r")) if os.path.isfile(self.scans_json_path) else 0
+
+            writer.writerow([
+                step_id,
+                step.t,
+                step.dl,
+                step.dr,
+                step.true_pose[self.IDX_X],
+                step.true_pose[self.IDX_Y],
+                step.true_pose[self.IDX_THETA],
+            ])
+
+        # Write scans.jsonl
+        with open(self.scans_json_path, mode="a") as f:
+            scan_entry = {
+                "step_id": step_id,
+                "scan": [[r, b] for r, b in step.scan],
+            }
+            f.write(json.dumps(scan_entry) + "\n")
+
+    
+    def store_playback_step(
+        self,
+        t: float,
+        dl: float,
+        dr: float,
+        scan: List[Tuple[float, float]],
+        true_pose: Tuple[float, float, float]
+    ):
+        '''
+        Stores a playback step, including the time, wheel distances, laser scan, and true pose.
+
+        Parameters:
+        -----------
+        t: float
+            The time of the step.
+        dl: float
+            The distance traveled by the left wheel since the last step.
+        dr: float
+            The distance traveled by the right wheel since the last step.
+        scan: List[Tuple[float, float]]
+            The laser scan measurements for the step, given as a list of (range, bearing) tuples.
+        true_pose: Tuple[float, float, float]
+            The true pose of the robot for the step, given as a tuple of (x, y, yaw).
+        '''
+        # Check if storage is enabled
+        if not self.store_playback_files:
+            return
+
+        # Summarize data in StepData dataclass 
+        step = StepData(
+            t=t,
+            dl=dl,
+            dr=dr,
+            scan=scan,
+            true_pose=true_pose,
         )
+        # Write step data into file
+        self.write_step_and_scan(step)
 
 
     def link_state_cb(self, link_states: LinkStates):
@@ -476,8 +584,9 @@ class ScanMatchingNode:
             rospy.loginfo_throttle(1, "Waiting for ROS time to be non-zero...")
             rospy.sleep(0.1)
 
-        # Store time jumps
-        time_jumps = 0
+        # Store map data
+        if self.store_playback_files:
+            self.write_map_files_once()
 
         # Set update rate
         update_rate = rospy.Rate(self.update_rate)
@@ -526,9 +635,9 @@ class ScanMatchingNode:
                         # Transform measurement to range bearing tuples
                         measurements = self.transform_laser_scan_to_measurement(laser_scan=laser_scan)
 
-                        # Store python playback data 
-                        if self.store_python_playback:
-                            self.store_python_playback_data(
+                        # Store portable playback data
+                        if self.store_playback_files:
+                            self.store_playback_step(
                                 t=rospy.get_time(),
                                 dl=distance_left_wheel,
                                 dr=distance_right_wheel,
@@ -620,7 +729,7 @@ class ScanMatchingNode:
                         info = self.get_info()
                         self.write_info_csv(
                             info=info,
-                            csv_file_path=self.storage_path,
+                            csv_file_path=self.metric_storage_path,
                             headers=self.headers_to_write,
                         )
                                 
@@ -831,38 +940,44 @@ def main():
         occ_thres=occ_thres,
     )
 
-    # Init PlayBack data if needed
-    store_python_playback = True
+    # Init playback file storage if needed
+    store_playback_files = True
 
-    if store_python_playback:
-        python_playback_data = PlaybackData(
-            map_data=MapData(
-                min_distance_to_border=min_distance_to_border,
-                log_odds_map=log_odds_map,
-                sensor_param=SensorParam(
-                    min_sensor_range=min_sensor_range,
-                    max_sensor_range=max_sensor_range
-                ),
-                occupancy_param=OccupancyParam(
-                    prior_probability=prior_probability,
-                    increasing_probability=increasing_probability,
-                    decreasing_probability=decreasing_probability,
-                    min_log_odds=min_log_odds,
-                    max_log_odds=max_log_odds
-                )
-            )
+    playback_map_data = MapData(
+        min_distance_to_border=min_distance_to_border,
+        log_odds_map=log_odds_map,
+        sensor_param=SensorParam(
+            min_sensor_range=min_sensor_range,
+            max_sensor_range=max_sensor_range
+        ),
+        occupancy_param=OccupancyParam(
+            prior_probability=prior_probability,
+            increasing_probability=increasing_probability,
+            decreasing_probability=decreasing_probability,
+            min_log_odds=min_log_odds,
+            max_log_odds=max_log_odds
         )
-    else:
-        python_playback_data = None
-    
+    )
+
+    # Define storage paths
+    playback_dir = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/"
+    playback_prefix = "python_playback"
+    metric_storage_filename = "scan_matching_metric.csv"
+    metric_storage_dir = "/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/metrics/"
+
+
     # Initialize node class
     scan_matching_node = ScanMatchingNode(
         ros_parameter=ros_parameter,
         scan_matcher=scan_matcher,
         every_nth_ray=every_nth_ray,
         headers_to_write=headers_to_write,
-        store_python_playback=store_python_playback,
-        playback_data=python_playback_data
+        store_playback_files=store_playback_files,
+        playback_dir=playback_dir,
+        playback_prefix=playback_prefix,
+        map_data=playback_map_data,
+        metric_storage_filename=metric_storage_filename,
+        metric_storage_dir=metric_storage_dir,
     )
 
     # Execute

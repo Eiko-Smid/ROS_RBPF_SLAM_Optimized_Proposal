@@ -11,8 +11,11 @@ logs/
 __pycache__/
 *.pyc
 
-# Python storage
+# Python storage ignores
 *.pkl
+*.npy
+*.jsonl
+*.csv
 
 # VSCode
 .vscode/
@@ -39,6 +42,3 @@ maps/*~
 *.jpg
 *.jpeg
 
-
-# csv files
-*.csv
