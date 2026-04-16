@@ -4,7 +4,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 
-from scan_match_playback_def import ExperimentParams
+from ..scan_match_playback_def import ExperimentParams
 
 Pose2D = Tuple[float, float, float]
 
@@ -40,7 +40,7 @@ class RunResult:
 
 class ScanMatcherEvaluator:
     '''
-    Evaluation class for evaluating the results of the scan matcher. 
+    Evaluation class for evaluating the results for one parameter set run of the scan matcher.
     '''
     @staticmethod
     def angle_diff(a: float, b: float) -> float:
@@ -73,7 +73,7 @@ class ScanMatcherEvaluator:
         Computes the translational and rotational error for the predicted and corrected poses, given the true pose. Returns a
         StepResult object that contains the results of this evaluation step, including the errors and the ICP info. 
 
-        Parameters:
+        Parameters
         ----------
         step_idx: int
             index of the current step in the run
@@ -90,7 +90,7 @@ class ScanMatcherEvaluator:
         used_fallback_prediction: bool
             whether a fallback prediction was used instead of a corrected pose
 
-        Returns:
+        Returns
         -------
         StepResult
             an object containing the results of the evaluation for this step, including the errors and ICP info
@@ -132,12 +132,12 @@ class ScanMatcherEvaluator:
         the entire run, such as mean translation and rotation error, number of fallback predictions used, and mean ICP
         iterations. Returns a dictionary containing these summary statistics. 
 
-        Parameters:
+        Parameters
         ----------
         step_results: List[StepResult]
             a list of StepResult objects containing the evaluation results for each step
 
-        Returns:
+        Returns
         -------
         dict
             a dictionary containing the summary statistics for the entire run consisting of:

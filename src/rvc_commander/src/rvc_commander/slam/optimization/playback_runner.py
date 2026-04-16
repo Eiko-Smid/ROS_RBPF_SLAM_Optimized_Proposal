@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
-from factory import ScanMatcherFactory
-from scan_match_playback_def import ExperimentParams
-from evaluator import RunResult, ScanMatcherEvaluator
+from .factory import ScanMatcherFactory
+from .evaluator import RunResult, ScanMatcherEvaluator
 
-from ..scan_match_playback_def import PlaybackData
+from ..scan_match_playback_def import PlaybackData, ExperimentParams
 
 
 class PlaybackRunner:
@@ -13,13 +12,28 @@ class PlaybackRunner:
     Infrastructure for running the scan matcher, evaluating the results and storing them into a RunResult object.
     '''
     def __init__(self, factory: ScanMatcherFactory, evaluator: ScanMatcherEvaluator):
+        '''
+        Initializes the PlaybackRunner with a scan matcher factory and an evaluator.
+        '''
         self.factory = factory
         self.evaluator = evaluator
 
+
     def run(self, playback_data: PlaybackData, params: ExperimentParams) -> RunResult:
         '''
-        Gets the playback data obj that contains the inputs for the scan matcher ay well as the 
-        parameters used for the experiment. 
+        Runs a single playback of the scan matching process using the provided playback data and experiment parameters.
+
+        Parameters
+        ---------
+        playback_data: PlaybackData
+            The data for the playback, including the steps and measurements.
+        params: ExperimentParams
+            The parameters for the experiment, including the scan matcher parameters and other settings.
+        
+        Returns
+        ---------
+        RunResult
+            An object containing the results of the run, including the step results and a summary of the run.
         '''
         # Instantiate the scan matcher using the factory and the given data
         scan_matcher = self.factory.build(playback_data, params)
@@ -60,7 +74,6 @@ class PlaybackRunner:
             run_result.step_results.append(step_result)
             # Update old pose
             old_pose = final_corr_pose
-
 
         run_result.summary = self.evaluator.summarize_run(run_result.step_results)
         return run_result

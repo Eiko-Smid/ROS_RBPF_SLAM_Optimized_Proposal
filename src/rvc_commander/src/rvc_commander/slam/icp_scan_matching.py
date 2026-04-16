@@ -282,7 +282,6 @@ class IterativeClosestPoint():
                 - epsilon_rel: Minimum relative improvement required to continue ICP.
                 - no_improvement_limit: Number of consecutive iterations with insufficient improvement before stopping.
                 - min_error: Minimum mean error threshold for stopping.
-                - epsilon_transform: Minimum transformation change required to continue ICP.
                 - min_dtrans: Minimum translation change required to continue ICP.
                 - min_drot: Minimum rotation change required to continue ICP.
             max_correspondence_distance: The maximum distance between corresponding points to be considered in the ICP
@@ -346,7 +345,7 @@ class IterativeClosestPoint():
         '''
         Returns the current state of the ICP stop condition and other relevant information.
 
-        Returns:
+        Returns
         ----------
             dict: With the following structure:
             {
@@ -367,6 +366,7 @@ class IterativeClosestPoint():
                 "list_of_cleaned_corresp": List[List[Tuple[int, int]]],  # List of cleaned correspondences at each iteration
                 "list_of_cleaned_corresp_numb": List[int]  # List of number of cleaned correspondences at each iteration
                 "list_of_corresp_numb": List[int]  # List of number of correspondences at each iteration
+            }
         '''
         return self.info
 
@@ -837,5 +837,12 @@ class IterativeClosestPoint():
         self.store_info(extended=True)
         self.stop_condition.reset()
         
+        # Print stop reasons
+        # icp_stop_info = self.get_info()
+        # print("\n\nICP Stop Condition Info:")
+        # keys = ['iteration', 'mean_err', 'rel_improvement', 'no_improvement_counter', 'dtrans_norm', 'drot_abs', 'stop_reason']
+        # for key in keys:
+        #     print(f"{key}: {icp_stop_info[key]}")
+
         return transformation_parameter
 

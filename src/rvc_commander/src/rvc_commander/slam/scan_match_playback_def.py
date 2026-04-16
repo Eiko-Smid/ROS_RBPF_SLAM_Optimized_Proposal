@@ -40,7 +40,7 @@ class Metadata:
 
 @dataclass
 class PlaybackData:
-    map_data: Metadata 
+    meta_data: Metadata 
     step_data_list: List[StepData] = field(default_factory=list)
 
 

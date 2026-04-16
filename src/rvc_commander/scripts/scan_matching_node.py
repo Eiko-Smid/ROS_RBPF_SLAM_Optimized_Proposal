@@ -51,7 +51,7 @@ from rvc_commander.msg import PoseErr2D
 #     StepData,
 #     SensorParam,
 #     OccupancyParam,
-#     MapData,
+#     Metadata,
 # )
 
 # Import Scan matching classes programming
@@ -222,6 +222,7 @@ class ScanMatchingNode:
     def write_info_csv(self, info: dict, csv_file_path: str, headers: List[str]=None):
         '''
         Writes only the requested headers that are present in the info dictionary to a csv file.
+        
         Parameters:
         -----------
         info: dict
@@ -892,7 +893,6 @@ def main():
         "epsilon_rel": 1e-3,
         "no_improvement_limit": 3,
         "min_error": 5e-4,
-        "epsilon_transform": 1e-4,
         "min_dtrans": 1e-3,
         "min_drot": 1e-2
     }
@@ -946,6 +946,7 @@ def main():
     store_playback_files = True
 
     playback_meta_data = Metadata(
+        wheel_separation=wheel_separation,
         grid_resolution_m=grid_resolution,
         min_distance_to_border=min_distance_to_border,
         log_odds_map=log_odds_map,
