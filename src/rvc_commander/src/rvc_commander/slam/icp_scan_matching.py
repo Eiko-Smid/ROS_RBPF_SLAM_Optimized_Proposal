@@ -4,12 +4,69 @@ from __future__ import annotations
 
 import time
 from typing import Tuple
+
+from numba import njit
 import numpy as np
 import matplotlib.pyplot as plt
 from math import sin, cos, atan2, pi, inf
 from sklearn.neighbors import NearestNeighbors
 from heapq import heappush, heappop
 
+
+@njit
+def compute_normals_numba(points, indices):
+    n_points = points.shape[0]
+    k = indices.shape[1]
+
+    normals = np.zeros((n_points, 2))
+
+    for i in range(n_points):
+
+        # centroid
+        cx = 0.0
+        cy = 0.0
+        for j in range(k):
+            idx = indices[i, j]
+            cx += points[idx, 0]
+            cy += points[idx, 1]
+        cx /= k
+        cy /= k
+
+        # covariance
+        c00 = 0.0
+        c01 = 0.0
+        c11 = 0.0
+
+        for j in range(k):
+            idx = indices[i, j]
+            dx = points[idx, 0] - cx
+            dy = points[idx, 1] - cy
+
+            c00 += dx * dx
+            c01 += dx * dy
+            c11 += dy * dy
+
+        # 2x2 eigenvector (smallest eigenvalue)
+        trace = c00 + c11
+        det = c00 * c11 - c01 * c01
+
+        tmp = np.sqrt(max(trace*trace/4 - det, 0.0))
+        lambda_min = trace/2 - tmp
+
+        # eigenvector
+        vx = c01
+        vy = lambda_min - c00
+
+        norm = np.sqrt(vx*vx + vy*vy)
+
+        if norm > 1e-9:
+            normals[i, 0] = vx / norm
+            normals[i, 1] = vy / norm
+        else:
+            normals[i, 0] = 0.0
+            normals[i, 1] = 0.0
+
+    return normals
 
 
 class ICPStopCondition:
@@ -891,10 +948,17 @@ class IterativeClosestPoint():
         
         # Compute normals of true data points
         t_ns = time.perf_counter_ns()
-        true_data_normals = self.compute_normals_pca(
-            points=true_data_pointpairs,
-            k=self.neighbors
+        # true_data_normals = self.compute_normals_pca(
+        #     points=true_data_pointpairs,
+        #     k=self.neighbors
+        # )
+
+        _, indicec_normal = self.neighbor.kneighbors(true_data_pointpairs, n_neighbors=self.neighbors)
+        true_data_normals = compute_normals_numba(
+            true_data_pointpairs,
+            indicec_normal
         )
+
         _profile_accumulate("compute_normals_pca_ns", t_ns)
                 
         # Variable to save squared error. 

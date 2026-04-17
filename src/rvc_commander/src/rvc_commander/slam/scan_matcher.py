@@ -238,7 +238,7 @@ class ScanMatcher():
         if len(measurements) < 3:
             self.pose = pred_pose
             _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-            _profile_print_summary()
+            # _profile_print_summary()
             return corr_pose, pred_pose
         
         # Find max measurement range
@@ -257,7 +257,7 @@ class ScanMatcher():
         if scan_points.shape[0] < 3:
             self.pose = pred_pose
             _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-            _profile_print_summary()
+            # _profile_print_summary()
             return corr_pose, pred_pose
 
         # Get map points
@@ -291,7 +291,7 @@ class ScanMatcher():
         if map_points.ndim != 2 or map_points.shape[0] < 3:
             self.pose = pred_pose
             _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-            _profile_print_summary()
+            # _profile_print_summary()
             return corr_pose, pred_pose
 
 
@@ -307,7 +307,7 @@ class ScanMatcher():
         self.pose = corr_pose
 
         _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-        _profile_print_summary()
+        # _profile_print_summary()
 
         return corr_pose, pred_pose
     
