@@ -813,9 +813,41 @@ class IterativeClosestPoint():
         ----------
             transformation_parameter: 3x1 numpy array of the transformation parameters (tx, ty, theta).
         '''
+        profile_totals_ns: dict[str, int] = {}
+        profile_counts: dict[str, int] = {}
+
+        def _profile_accumulate(metric_name: str, start_ns: int) -> int:
+            elapsed_ns = time.perf_counter_ns() - start_ns
+            profile_totals_ns[metric_name] = profile_totals_ns.get(metric_name, 0) + elapsed_ns
+            profile_counts[metric_name] = profile_counts.get(metric_name, 0) + 1
+            return elapsed_ns
+
+        def _profile_print_summary() -> None:
+            if not profile_totals_ns:
+                return
+
+            avg_profile_ns = [
+                (name, profile_totals_ns[name] / max(profile_counts.get(name, 1), 1), profile_counts.get(name, 0), profile_totals_ns[name])
+                for name in profile_totals_ns
+            ]
+            avg_profile_ns.sort(key=lambda x: x[1], reverse=True)
+
+            print("\n[ICP Profiling] find_transformation avg time per measured block (ms), sorted high -> low")
+            for name, avg_ns, n_calls, total_ns in avg_profile_ns:
+                print(
+                    f"  {name}: avg={avg_ns / 1e6:.6f} ms | calls={n_calls} | total={total_ns / 1e6:.6f} ms"
+                )
+
+        t_find_transformation_total_ns = time.perf_counter_ns()
+
         # Santize pointclouds
+        t_ns = time.perf_counter_ns()
         new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
+        _profile_accumulate("sanitize_pointcloud_new_data_ns", t_ns)
+
+        t_ns = time.perf_counter_ns()
         true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
+        _profile_accumulate("sanitize_pointcloud_true_data_ns", t_ns)
 
         # Init vars
         transformation_parameter = np.zeros((3, 1))
@@ -827,6 +859,8 @@ class IterativeClosestPoint():
             new_data_pointpairs.shape[0] < self.MIN_POINTS or
             true_data_pointpairs.shape[0] < self.MIN_POINTS
         ):
+            _profile_accumulate("find_transformation_total_ns", t_find_transformation_total_ns)
+            # _profile_print_summary()
             return transformation_parameter, [new_data_pointpairs.copy()], [], []
 
         # Store number of points for logging
@@ -834,10 +868,12 @@ class IterativeClosestPoint():
         self.n_points_new_data = new_data_pointpairs.shape[0]
 
         # Downsample true data points
+        t_ns = time.perf_counter_ns()
         true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
             pointcloud=true_data_pointpairs,
             max_n_points=self.max_n_points
         )
+        _profile_accumulate("downsample_pointcloud_deterministic_ns", t_ns)
 
         # List to save results
         self.squared_error_list= []
@@ -849,23 +885,36 @@ class IterativeClosestPoint():
         self.list_of_corresp_numb = []
         
         # Train Nearest Neighbor with true data points 
+        t_ns = time.perf_counter_ns()
         self.neighbor.fit(true_data_pointpairs)
+        _profile_accumulate("neighbor_fit_true_data_ns", t_ns)
         
         # Compute normals of true data points
+        t_ns = time.perf_counter_ns()
         true_data_normals = self.compute_normals_pca(
             points=true_data_pointpairs,
             k=self.neighbors
         )
+        _profile_accumulate("compute_normals_pca_ns", t_ns)
                 
         # Variable to save squared error. 
         sum_error= 10**10
         
-        while not self.stop_condition.stop_icp(mean_err, dtransformation):
+        while True:
+            t_ns = time.perf_counter_ns()
+            should_stop = self.stop_condition.stop_icp(mean_err, dtransformation)
+            _profile_accumulate("stop_condition_check_ns", t_ns)
+
+            if should_stop:
+                break
+
             if latest_new_data.shape[0] == 0:
                 break
             
             # Find Nearest Neighbor by euclidean distance
+            t_ns = time.perf_counter_ns()
             distances, indices = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
+            _profile_accumulate("neighbor_kneighbors_ns", t_ns)
             
             correspondences= []
             
@@ -882,7 +931,7 @@ class IterativeClosestPoint():
             # end_time = time.perf_counter()
             # print(f"Outlier rejection took {end_time - start_time:.5f} seconds")
 
-            start_time = time.perf_counter()
+            t_ns = time.perf_counter_ns()
             
             cleaned_correspondences, sum_error = self.vectorized_outlier_rejection(
                 new_data_points=new_data_pointpairs,
@@ -890,15 +939,14 @@ class IterativeClosestPoint():
                 distances=distances,
                 indices=indices,
             )
-
-            end_time = time.perf_counter()
-            print(f"Vectorized outlier rejection took {end_time - start_time:.5f} seconds")
+            _profile_accumulate("vectorized_outlier_rejection_ns", t_ns)
 
 
             if len(cleaned_correspondences) < self.MIN_POINTS:
                 break
             
             # Prepare the system
+            t_ns = time.perf_counter_ns()
             H, g, squared_error = self.prepare_system_point_to_plane(
                 transformation_parameter,
                 latest_new_data,
@@ -906,17 +954,22 @@ class IterativeClosestPoint():
                 cleaned_correspondences,
                 true_data_normals,
             )
+            _profile_accumulate("prepare_system_point_to_plane_ns", t_ns)
 
             # Check if Hessian and g are finite
             if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
                 break
             
             # Compute least Squares Solution
+            t_ns = time.perf_counter_ns()
             dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
+            _profile_accumulate("solve_least_squares_ns", t_ns)
 
             if not np.all(np.isfinite(dtransformation)):
                 break
             
+            t_ns = time.perf_counter_ns()
+
             # Update transformation parameter 
             transformation_parameter+= dtransformation
             
@@ -937,14 +990,18 @@ class IterativeClosestPoint():
                 mean_err = squared_error / len(cleaned_correspondences)
             else:
                 mean_err = inf
+
+            _profile_accumulate("update_transform_and_error_ns", t_ns)
             
             # Append data to lists
+            t_ns = time.perf_counter_ns()
             self.transformed_new_data_list.append(latest_new_data)
             self.list_of_cleaned_corresp.append(cleaned_correspondences)
             self.list_of_cleaned_corresp_numb.append(len(cleaned_correspondences))
             # self.list_of_corresp_numb.append(len(correspondences))
             self.squared_error_list.append(squared_error)
             self.transformation_parameter_list.append(transformation_parameter.copy())
+            _profile_accumulate("append_iteration_logs_ns", t_ns)
         
         if self.list_of_cleaned_corresp:
             self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
@@ -952,8 +1009,13 @@ class IterativeClosestPoint():
             # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
 
         # Store info and reset stop condition for next run
+        t_ns = time.perf_counter_ns()
         self.store_info(extended=True)
         self.stop_condition.reset()
+        _profile_accumulate("store_info_and_reset_stop_condition_ns", t_ns)
+
+        _profile_accumulate("find_transformation_total_ns", t_find_transformation_total_ns)
+        # _profile_print_summary()
         
         # Print stop reasons
         # icp_stop_info = self.get_info()

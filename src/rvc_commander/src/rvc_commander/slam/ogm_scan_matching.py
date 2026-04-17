@@ -3,6 +3,8 @@
 import rospy
 from typing import List, Tuple, Optional
 import threading
+
+from numba import njit
 import numpy as np
 from math import exp, atan2, sin, cos, radians, degrees, floor, ceil, isfinite, log
 import time
@@ -13,6 +15,65 @@ from tf.transformations import euler_from_quaternion
 # from nav_msgs.msg import OccupancyGrid
 from rvc_commander.msg import Measurement
 from rvc_commander.msg import LogOddsMap
+
+
+@njit
+def extract_map_numba(
+    log_map,
+    i_pose,
+    j_pose,
+    r_cells,
+    r_cells_sq,
+    occ_thresh,
+    free_thresh,
+    min_free_count,
+    grid_res,
+    shift_x,
+    shift_y
+):
+    n_rows, n_cols = log_map.shape
+
+    # preallocate (worst case) directly as Nx2 to avoid reshape-size mismatch
+    max_points = (r_cells * 2 + 1) * (r_cells * 2 + 1)
+    points = np.empty((max_points, 2), dtype=np.float64)
+    count = 0
+
+    for di in range(-r_cells, r_cells + 1):
+        for dj in range(-r_cells, r_cells + 1):
+
+            if di*di + dj*dj > r_cells_sq:
+                continue
+
+            i = i_pose + di
+            j = j_pose + dj
+
+            if i < 1 or i >= n_rows-1 or j < 1 or j >= n_cols-1:
+                continue
+
+            if log_map[i, j] < occ_thresh:
+                continue
+
+            # manual neighbor check (NO slicing → faster in numba)
+            free_count = 0
+
+            for ni in range(i-1, i+2):
+                for nj in range(j-1, j+2):
+                    if ni == i and nj == j:
+                        continue
+                    if log_map[ni, nj] < free_thresh:
+                        free_count += 1
+
+            if free_count < min_free_count:
+                continue
+
+            x = j * grid_res - shift_x + grid_res/2
+            y = i * grid_res - shift_y + grid_res/2
+
+            points[count, 0] = x
+            points[count, 1] = y
+            count += 1
+
+    return points[:count]
 
 
 
@@ -581,6 +642,178 @@ class OGM:
 
 
     def extract_map_for_scan_matching(self, pose, radius, delta_r=1.0, occ_thresh=2.0) -> np.ndarray:
+        '''
+        This method extracts a part of the map which is used as a target pointcloud for scan matching. 
+        '''
+        profile_totals_ns: dict[str, int] = {}
+        profile_counts: dict[str, int] = {}
+
+        def _profile_accumulate(metric_name: str, start_ns: int) -> int:
+            elapsed_ns = time.perf_counter_ns() - start_ns
+            profile_totals_ns[metric_name] = profile_totals_ns.get(metric_name, 0) + elapsed_ns
+            profile_counts[metric_name] = profile_counts.get(metric_name, 0) + 1
+            return elapsed_ns
+
+        def _profile_print_summary() -> None:
+            if not profile_totals_ns:
+                return
+
+            sorted_profile = sorted(
+                profile_totals_ns.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            print("\n[OGM Profiling] extract_map_for_scan_matching timings (ms), sorted high -> low")
+            for name, total_ns in sorted_profile:
+                calls = profile_counts.get(name, 0)
+                avg_ns = total_ns / max(calls, 1)
+                print(
+                    f"  {name}: total={total_ns / 1e6:.6f} ms | calls={calls} | avg={avg_ns / 1e6:.6f} ms"
+                )
+
+        t_extract_map_total_ns = time.perf_counter_ns()
+
+        # TODO: Ensure that extracted map size is not too big. Right now it can happen that we are at teh border of the 
+        # map array and accidentally jump over and extract a huge part of the map. This is especially the case fpr the method
+        # "cell_belongs_to_surface".
+        valid_points = []
+
+        # Convert radius into cell numbers
+        r_cells = ceil((radius + delta_r) / self.grid_resolution_m)
+        r_cells_squared = r_cells * r_cells
+
+        # Transform pose into grid cell
+        t_ns = time.perf_counter_ns()
+        i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
+        _profile_accumulate("transform_point_to_grid_cell_ns", t_ns)
+
+        # With the for loops we define a general square with center cell and it has the size of the radius*2 + 1 
+        for di in range(-r_cells, r_cells + 1):
+            for dj in range(-r_cells, r_cells + 1):
+
+                # For every cell in the general square we check if the cell is inside the radius (from the center point)
+                # Using squared values to avoid sqrt -> faster
+                # Skip if not inside circle area
+                if di * di + dj * dj > r_cells_squared:
+                    continue
+                
+                # Compute the actual cell indices in the map/array from our general square and the center point
+                i = i_pose + di
+                j = j_pose + dj
+
+                # Check if cell is indeed inside our map 
+                t_ns = time.perf_counter_ns()
+                inside_map = self.cell_inside_map((i, j))
+                _profile_accumulate("cell_inside_map_ns", t_ns)
+                if not inside_map:
+                    continue
+                
+                # Check if cell is occupied -> extract point coordinates
+                if self.log_odds_map[i, j] < occ_thresh:
+                    continue
+
+                # Check if cell belongs to surface
+                t_ns = time.perf_counter_ns()
+                belongs_to_surface = self.cell_belongs_to_surface(
+                    cell=(i,j),
+                    free_thresh=-2.0,
+                    min_free_count=2,
+                )
+                _profile_accumulate("cell_belongs_to_surface_ns", t_ns)
+                if not belongs_to_surface:
+                    continue
+                
+                # Transform cell to point and append 
+                t_ns = time.perf_counter_ns()
+                x, y = self.transform_grid_cell_to_point((i, j))
+                _profile_accumulate("transform_grid_cell_to_point_ns", t_ns)
+                valid_points.append((x, y))
+
+        _profile_accumulate("extract_map_for_scan_matching_total_ns", t_extract_map_total_ns)
+        _profile_print_summary()
+
+        return np.copy(valid_points)
+
+
+    def extract_map_for_scan_matching_np_optm(self, pose, radius, delta_r=1.0, occ_thresh=2.0) -> np.ndarray:
+        '''
+        This method extracts a part of the map which is used as a target pointcloud for scan matching. 
+        '''
+        valid_points = []
+
+        # Precompute
+        r_cells = int(np.ceil((radius + delta_r) / self.grid_resolution_m))
+        r_cells_sq = r_cells * r_cells
+
+        i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
+
+        log_map = self.log_odds_map
+        n_rows, n_cols = log_map.shape
+
+        # Loop
+        for di in range(-r_cells, r_cells + 1):
+            for dj in range(-r_cells, r_cells + 1):
+
+                # circle mask
+                if di*di + dj*dj > r_cells_sq:
+                    continue
+
+                i = i_pose + di
+                j = j_pose + dj
+
+                # inline bounds check (faster than function)
+                if i < 1 or i >= n_rows-1 or j < 1 or j >= n_cols-1:
+                    continue
+
+                # occupancy check
+                if log_map[i, j] < occ_thresh:
+                    continue
+
+                # --- INLINE surface check ---
+                sub = log_map[i-1:i+2, j-1:j+2]
+
+                # count free neighbors
+                free_count = np.sum(sub < -2.0) - (sub[1,1] < -2.0)
+
+                if free_count < 2:
+                    continue
+
+                # inline transform (avoid function call)
+                x = j * self.grid_resolution_m - self.shift_x + self.grid_resolution_m/2
+                y = i * self.grid_resolution_m - self.shift_y + self.grid_resolution_m/2
+
+                valid_points.append((x, y))
+
+        return np.asarray(valid_points)
+    
+
+
+    def extract_map_for_scan_matching_numba(self, pose, radius, delta_r=1.0, occ_thresh=2.0):
+
+        r_cells = int(np.ceil((radius + delta_r) / self.grid_resolution_m))
+        r_cells_sq = r_cells * r_cells
+
+        i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
+
+        points = extract_map_numba(
+            self.log_odds_map,
+            i_pose,
+            j_pose,
+            r_cells,
+            r_cells_sq,
+            occ_thresh,
+            -2.0,
+            2,
+            self.grid_resolution_m,
+            self.shift_x,
+            self.shift_y
+        )
+
+        return points
+
+
+    def extract_map_for_scan_matching_copy(self, pose, radius, delta_r=1.0, occ_thresh=2.0) -> np.ndarray:
         '''
         This method extracts a part of the map which is used as a target pointcloud for scan matching. 
         '''

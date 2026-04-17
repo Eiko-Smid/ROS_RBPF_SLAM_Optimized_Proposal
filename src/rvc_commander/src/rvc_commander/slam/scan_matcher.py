@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 
 # For math
 import numpy as np
@@ -194,6 +195,154 @@ class ScanMatcher():
             A tuple containing the corrected pose and the predicted pose, in that order. If scan matching cannot be
             performed by any means, the predicted pose is returned for both values.   
         ''' 
+        profile_totals_ns: dict[str, int] = {}
+        profile_counts: dict[str, int] = {}
+
+        def _profile_accumulate(metric_name: str, start_ns: int) -> int:
+            elapsed_ns = time.perf_counter_ns() - start_ns
+            profile_totals_ns[metric_name] = profile_totals_ns.get(metric_name, 0) + elapsed_ns
+            profile_counts[metric_name] = profile_counts.get(metric_name, 0) + 1
+            return elapsed_ns
+
+        def _profile_print_summary() -> None:
+            if not profile_totals_ns:
+                return
+
+            avg_profile_ns = [
+                (name, profile_totals_ns[name] / max(profile_counts.get(name, 1), 1), profile_counts.get(name, 0), profile_totals_ns[name])
+                for name in profile_totals_ns
+            ]
+            avg_profile_ns.sort(key=lambda x: x[1], reverse=True)
+
+            print("\n[ScanMatcher Profiling] update_pose avg time per measured block (ms), sorted high -> low")
+            for name, avg_ns, n_calls, total_ns in avg_profile_ns:
+                print(
+                    f"  {name}: avg={avg_ns / 1e6:.6f} ms | calls={n_calls} | total={total_ns / 1e6:.6f} ms"
+                )
+
+        t_update_pose_total_ns = time.perf_counter_ns()
+
+        # Init pose
+        pred_pose = None
+        corr_pose = None
+
+        # Predict psoe based on wheel encoder information
+        t_ns = time.perf_counter_ns()
+        pred_pose = self.predict_pose(
+            pose=old_pose,
+            dl=dl,
+            dr=dr,
+        )
+        _profile_accumulate("predict_pose_ns", t_ns)
+
+        if len(measurements) < 3:
+            self.pose = pred_pose
+            _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
+            _profile_print_summary()
+            return corr_pose, pred_pose
+        
+        # Find max measurement range
+        max_meas_range = max([m[0] for m in measurements])
+
+        # Transform measurements (range, bearing) -> point cloud
+        t_ns = time.perf_counter_ns()
+        scan_points = self.transform_measurements_to_points(
+            pose=pred_pose,
+            measurements=measurements
+        )
+        _profile_accumulate("transform_measurements_to_points_ns", t_ns)
+
+        scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
+
+        if scan_points.shape[0] < 3:
+            self.pose = pred_pose
+            _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
+            _profile_print_summary()
+            return corr_pose, pred_pose
+
+        # Get map points
+        t_ns = time.perf_counter_ns()
+        # map_points = self.ogm.extract_map_for_scan_matching(
+        #     pose=pred_pose,
+        #     radius=max_meas_range,
+        #     delta_r=self.delta_r,
+        #     occ_thresh=self.occ_thres,
+        # )
+        
+        # map_points = self.ogm.extract_map_for_scan_matching_np_optm(
+        #     pose=pred_pose,
+        #     radius=max_meas_range,
+        #     delta_r=self.delta_r,
+        #     occ_thresh=self.occ_thres,
+        # )
+
+        map_points = self.ogm.extract_map_for_scan_matching_numba(
+            pose=pred_pose,
+            radius=max_meas_range,
+            delta_r=self.delta_r,
+            occ_thresh=self.occ_thres,
+        )
+
+        _profile_accumulate("extract_map_for_scan_matching_ns", t_ns)
+
+        # Filter map points -> only finite and shape must be valid
+        map_points = np.asarray(map_points, dtype=float)
+        map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
+        if map_points.ndim != 2 or map_points.shape[0] < 3:
+            self.pose = pred_pose
+            _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
+            _profile_print_summary()
+            return corr_pose, pred_pose
+
+
+        # Correct pose
+        t_ns = time.perf_counter_ns()
+        corr_pose = self.correct_pose(
+            pose=pred_pose, 
+            scan_points=scan_points,
+            map_points=map_points,
+        )
+        _profile_accumulate("correct_pose_ns", t_ns)
+
+        self.pose = corr_pose
+
+        _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
+        _profile_print_summary()
+
+        return corr_pose, pred_pose
+    
+
+
+    def update_pose_copy(
+            self,
+            old_pose: Pose2D,
+            dl: float, dr: float, 
+            measurements: List[Tuple[float, float]],
+    ) -> Tuple[Pose2D, Pose2D]:
+        '''
+        Updates the pose of the robot by first predicting it based on the control values and then correcting it
+        by scan matching the measurement against the current map.
+
+        Returns the corrected pose first and the predicted pose second. If scan matching cannot be
+        performed safely, the predicted pose is returned for both values.
+
+        Parameters:
+        ---------
+        old_pose: Pose2D
+            The previous pose of the robot.
+        dl: float
+            The distance traveled by the left wheel since the last update.
+        dr: float
+            The distance traveled by the right wheel since the last update.
+        measurements: List[Tuple[float, float]]
+            A list of tuples containing the range and bearing measurements from the robot's sensors.
+        
+        Returns:
+        ---------
+        Tuple[Pose2D, Pose2D]
+            A tuple containing the corrected pose and the predicted pose, in that order. If scan matching cannot be
+            performed by any means, the predicted pose is returned for both values.   
+        ''' 
         # Init pose
         pred_pose = None
         corr_pose = None
@@ -250,6 +399,7 @@ class ScanMatcher():
         self.pose = corr_pose
 
         return corr_pose, pred_pose
+
 
 
 
