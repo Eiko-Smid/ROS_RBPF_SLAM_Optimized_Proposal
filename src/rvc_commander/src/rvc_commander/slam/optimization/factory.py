@@ -54,6 +54,7 @@ class ScanMatcherFactory:
                 "min_dtrans": params.icp.min_dtrans,
                 "min_drot": params.icp.min_drot,
             },
+            max_n_points=params.icp.max_n_points,
             max_correspondence_distance=params.icp.max_correspondence_distance,
             neighbors_pca=params.icp.neighbors_pca,
         )

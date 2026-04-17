@@ -208,6 +208,9 @@ class ScanMatcher():
         if len(measurements) < 3:
             self.pose = pred_pose
             return corr_pose, pred_pose
+        
+        # Find max measurement range
+        max_meas_range = max([m[0] for m in measurements])
 
         # Transform measurements (range, bearing) -> point cloud
         scan_points = self.transform_measurements_to_points(
@@ -224,7 +227,7 @@ class ScanMatcher():
         # Get map points
         map_points = self.ogm.extract_map_for_scan_matching(
             pose=pred_pose,
-            radius=self.max_sensor_range,
+            radius=max_meas_range,
             delta_r=self.delta_r,
             occ_thresh=self.occ_thres,
         )

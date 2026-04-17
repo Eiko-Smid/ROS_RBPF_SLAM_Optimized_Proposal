@@ -13,8 +13,8 @@ from .optimizer import ScanMatcherOptimizer
 from .result_writer import ResultWriter
 
 
-PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/1776349331_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/optimization_results/1776349331_optimization_results.csv'
+PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/1776425398_python_playback'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/optimization_results/1776425398_max_range_again.csv'
 
 
 def generate_param_grid():
@@ -22,19 +22,21 @@ def generate_param_grid():
     Defined the parameter grid for the scan matcher optimization. This is a generator that yields ExperimentParams for
     each combination of parameters in the grid.
     '''
-    max_corrs = [0.4, 0.6, 0.8]         # Max correspondence distance for ICP
-    neighbors = [5, 10, 15]             # Number of neighbors for PCA in ICP
-    occ_thres = [49.0]                  # Occupancy threshold for scan matcher. Considers only cells with log-odds above this threshold
-    delta_r = [0.6, 0.8, 1.0]           # We search in circular area around the pred robots pose (max_sensor_range+dr) to extract the map
+    max_corrs = [0.6]               # Max correspondence distance for ICP
+    neighbors = [10]                # Number of neighbors for PCA in ICP
+    occ_thres = [49.0]              # Occupancy threshold for scan matcher. Considers only cells with log-odds above this threshold
+    delta_r = [0.6]                 # We search in circular area around the pred robots pose (max_sensor_range+dr) to extract the map
+    max_n_points = [200, 400, 600, 800]  # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc)
 
-    for max_corr, k, occ, delta_r_ in itertools.product(
-        max_corrs, neighbors, occ_thres, delta_r
+    for max_corr, k, occ, delta_r_, max_n in itertools.product(
+        max_corrs, neighbors, occ_thres, delta_r, max_n_points
     ):
         yield ExperimentParams(
             icp=ICPParams(
+                max_n_points=max_n,
                 max_correspondence_distance=max_corr,
                 neighbors_pca=k,
-                max_iterations=10,
+                max_iterations=6,      # TODO: test with reduced max iterations (10->6)
                 epsilon_rel=1e-3,
                 no_improvement_limit=3,
                 min_error=5e-4,
@@ -45,7 +47,7 @@ def generate_param_grid():
                 occ_thres=occ,
                 delta_r=delta_r_,
             ), 
-            tag=f"corr{max_corr}_k{k}_occ{occ}_dr{delta_r_}",
+            tag=f"corr{max_corr}_k{k}_occ{occ}_dr{delta_r_}_maxn{max_n}",
         )
 
 

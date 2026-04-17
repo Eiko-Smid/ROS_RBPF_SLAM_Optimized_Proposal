@@ -25,6 +25,7 @@ class StepResult:
     translation_error_corr: Optional[float]
     rotation_error_corr: Optional[float]
     icp_info: dict = field(default_factory=dict)
+    step_duration: Optional[float] = None
 
 
 @dataclass
@@ -68,6 +69,7 @@ class ScanMatcherEvaluator:
         icp_info: dict,
 
         used_fallback_prediction: bool,
+        step_duration: Optional[float],
     ) -> StepResult:
         '''
         Computes the translational and rotational error for the predicted and corrected poses, given the true pose. Returns a
@@ -123,6 +125,7 @@ class ScanMatcherEvaluator:
             translation_error_corr=corr_trans_err,
             rotation_error_corr=corr_rot_err,
             icp_info=icp_info.copy() if icp_info else {},
+            step_duration=step_duration
         )
 
 
@@ -147,11 +150,13 @@ class ScanMatcherEvaluator:
             - mean_rotation_error: mean rotation error across all steps (only considering corrected poses)
             - fallback_count: total number of steps where a fallback prediction was used instead of a corrected pose
             - mean_icp_iterations: mean number of ICP iterations across all steps (only considering steps where ICP info is available)
+            - mean_step_duration: mean duration of each step in the run
         '''
         # Clean the translation and rotation errors by filtering out None values
         cleaned_trans_err = [s.translation_error_corr for s in step_results if s.translation_error_corr is not None]
         cleaned_rot_err = [s.rotation_error_corr for s in step_results if s.rotation_error_corr is not None]
         fallback_count = sum(s.used_fallback_prediction for s in step_results)
+        step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
 
         # Extract the number of ICP iterations
         icp_iterations = [
@@ -167,4 +172,5 @@ class ScanMatcherEvaluator:
             "mean_rotation_error": float(np.mean(cleaned_rot_err)) if cleaned_rot_err else float("inf"),
             "fallback_count": int(fallback_count),
             "mean_icp_iterations": float(np.mean(icp_iterations)) if icp_iterations else float("inf"),
+            "mean_step_duration": float(np.mean(step_durations)) if step_durations else 0.0
         }

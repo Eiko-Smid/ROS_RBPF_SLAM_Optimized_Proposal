@@ -46,6 +46,7 @@ class PlaybackData:
 
 @dataclass(frozen=True)
 class ICPParams:
+    max_n_points: int
     max_correspondence_distance: float
     neighbors_pca: int
     max_iterations: int

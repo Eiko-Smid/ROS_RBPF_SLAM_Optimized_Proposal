@@ -271,7 +271,7 @@ class IterativeClosestPoint():
     MIN_POINTS = 3
     EPSILON = 1e-9
 
-    def __init__(self, stop_params: dict, max_correspondence_distance= 2.0, neighbors_pca: int = 10):
+    def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, neighbors_pca: int = 10):
         '''
         Initializes the ICP scan matcher with the given stop parameters and maximum correspondence distance.
 
@@ -288,10 +288,16 @@ class IterativeClosestPoint():
             neighbors_pca: The number of neighbors to use for PCA when computing normals.
     
         '''    
-        # Init Nearest Neighbor
+        # Init NN
         self.neighbor= NearestNeighbors(n_neighbors=1, algorithm='kd_tree')        
+        
+        # Init params
+        # Max dist for correspondences. All correspondences with a bigger distance will be rejected as outliers
         self.max_correspond_dist= max_correspondence_distance
+        # Number of neighbors to use for PCA when computing normals
         self.neighbors_pca = neighbors_pca
+        # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc) 
+        self.max_n_points = max_n_points
 
         # Init numpys random generator
         self.rng = np.random.default_rng()
@@ -559,14 +565,14 @@ class IterativeClosestPoint():
 
         # Search for best pairs
         for i in range(len(correspondences)):
-            j, i ,dist= heappop(correspondences)
+            j, i ,dist = heappop(correspondences)
             if(j != current_j):
-                current_j= j
+                current_j = j
                 cleaned_correspondences.append(c)
-                shortest_dist= 10**10
-                c= (i, j)
+                shortest_dist = inf
+                c = (i, j)
             elif(dist < shortest_dist):
-                c= (i, j)
+                c = (i, j)
         
         cleaned_correspondences.append(c)
         
@@ -657,7 +663,7 @@ class IterativeClosestPoint():
         return H, g, squared_error
 
 
-    def downsample_pointcloud(self, pointcloud: np.ndarray, max_n_points: int=800) -> np.ndarray:
+    def downsample_pointcloud_rand(self, pointcloud: np.ndarray, max_n_points: int=800) -> np.ndarray:
         '''
         Downsamples the given pointcloud to the given max number of points, randomly.
         '''
@@ -737,7 +743,7 @@ class IterativeClosestPoint():
         # Downsample true data points
         true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
             pointcloud=true_data_pointpairs,
-            max_n_points=800
+            max_n_points=self.max_n_points
         )
 
         # List to save results

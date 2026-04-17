@@ -63,10 +63,12 @@ class ResultWriter:
                     "neighbors_pca",
                     "occ_thres",
                     "delta_r",
+                    "max_n_points",
                     "mean_translation_error",
                     "rmse_translation_error",
                     "mean_rotation_error",
                     "fallback_count",
+                    "mean_step_duration",
                     "mean_icp_iterations",
                 ])
 
@@ -78,10 +80,12 @@ class ResultWriter:
                         r.params.icp.neighbors_pca,
                         r.params.scan_matcher.occ_thres,
                         r.params.scan_matcher.delta_r,
+                        r.params.icp.max_n_points,
                         r.summary["mean_translation_error"],
                         r.summary["rmse_translation_error"],
                         r.summary["mean_rotation_error"],
                         r.summary["fallback_count"],
+                        r.summary["mean_step_duration"],
                         r.summary["mean_icp_iterations"],
                     ])
             print(f"\nOptimization run has been saved to:\n{path}")

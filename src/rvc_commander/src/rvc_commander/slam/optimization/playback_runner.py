@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import time
 
 from .factory import ScanMatcherFactory
 from .evaluator import RunResult, ScanMatcherEvaluator
@@ -44,9 +45,12 @@ class PlaybackRunner:
         # Instantiate the RunResult object that will hold the results of this run
         run_result = RunResult(params=params)
         old_pose = steps[0].true_pose
-
+        
         # Loop through the steps containing the inputs for the entire run
         for step_idx, step in enumerate(steps):
+            # Measure step start time
+            step_start_time = time.time()
+
             # Runs scan matching process -> pred and corrected pose for given inputs
             corr_pose, pred_pose = scan_matcher.update_pose(
                 old_pose=old_pose,
@@ -54,6 +58,10 @@ class PlaybackRunner:
                 dr=step.dr,
                 measurements=step.scan,
             )
+
+            # Measure step end time and compute duration
+            step_end_time = time.time()
+            step_duration = step_end_time - step_start_time
 
             used_fallback = corr_pose is None
             # Determines the final corrected pose to use for evaluation
@@ -68,6 +76,7 @@ class PlaybackRunner:
                 corr_pose=final_corr_pose,
                 icp_info=scan_matcher.get_info(),
                 used_fallback_prediction=used_fallback,
+                step_duration=step_duration
             )
 
             # Stores results into step_results list
@@ -75,5 +84,6 @@ class PlaybackRunner:
             # Update old pose
             old_pose = final_corr_pose
 
+        
         run_result.summary = self.evaluator.summarize_run(run_result.step_results)
         return run_result

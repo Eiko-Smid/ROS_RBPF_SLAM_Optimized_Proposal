@@ -44,26 +44,26 @@ from rvc_commander.msg import WheelEncoder
 from rvc_commander.msg import PoseErr2D
 
 # Import Scan matching classes roslaunch
-# from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
-# from rvc_commander.slam.ogm_scan_matching import OGM
-# from rvc_commander.slam.scan_matcher import ScanMatcher
-# from rvc_commander.slam.scan_match_playback_def import (
-#     StepData,
-#     SensorParam,
-#     OccupancyParam,
-#     Metadata,
-# )
-
-# Import Scan matching classes programming
-from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
-from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
-from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
-from rvc_commander.src.rvc_commander.slam.scan_match_playback_def import (
+from rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
+from rvc_commander.slam.ogm_scan_matching import OGM
+from rvc_commander.slam.scan_matcher import ScanMatcher
+from rvc_commander.slam.scan_match_playback_def import (
     StepData,
     SensorParam,
     OccupancyParam,
     Metadata,
 )
+
+# Import Scan matching classes programming
+# from rvc_commander.src.rvc_commander.slam.icp_scan_matching import IterativeClosestPoint
+# from rvc_commander.src.rvc_commander.slam.ogm_scan_matching import OGM
+# from rvc_commander.src.rvc_commander.slam.scan_matcher import ScanMatcher
+# from rvc_commander.src.rvc_commander.slam.scan_match_playback_def import (
+#     StepData,
+#     SensorParam,
+#     OccupancyParam,
+#     Metadata,
+# )
 
 '''
 Description
