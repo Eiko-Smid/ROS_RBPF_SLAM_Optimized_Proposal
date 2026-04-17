@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
@@ -630,6 +631,58 @@ class IterativeClosestPoint():
         return cleaned_correspondences, sum_error
 
 
+    def vectorized_outlier_rejection(
+        self,
+        new_data_points: np.ndarray,
+        true_data_points: np.ndarray,
+        distances: np.ndarray,
+        indices: np.ndarray,
+    ):
+        """
+        Vectorized replacement for:
+        - correspondence building
+        - multiple pairing rejection
+        - max distance rejection
+        """
+
+        # Flatten NN output
+        j = indices[:, 0]          # index in true_data
+        i = np.arange(len(j))      # index in new_data
+        d = distances[:, 0]        # distances
+
+        # Step 1: max distance rejection
+        mask = np.isfinite(d) & (d < self.max_correspond_dist)
+
+        i = i[mask]
+        j = j[mask]
+        d = d[mask]
+
+        if len(i) == 0:
+            return np.empty((0, 2), dtype=int), 0.0
+
+        # Step 2: multiple pairing rejection (keep best per j)
+        # Sort by j, then by distance
+        order = np.lexsort((d, j))
+        i = i[order]
+        j = j[order]
+        d = d[order]
+
+        # Keep only first occurrence of each j (smallest distance due to sorting)
+        unique_j, unique_indices = np.unique(j, return_index=True)
+
+        i = i[unique_indices]
+        j = j[unique_indices]
+        d = d[unique_indices]
+
+        # Compute sum error (same as before)
+        sum_error = np.sum(d)
+
+        # Return correspondences as Nx2 array instead of list
+        correspondences = np.column_stack((i, j))
+
+        return correspondences, sum_error
+
+
     @staticmethod
     def compute_jacobian_point_to_plane(normal: np.ndarray, theta: float, point: np.ndarray) -> np.ndarray:        
         theta = float(np.asarray(theta).item())
@@ -799,12 +852,6 @@ class IterativeClosestPoint():
         self.neighbor.fit(true_data_pointpairs)
         
         # Compute normals of true data points
-        # true_data_normals= self.compute_normals(true_data_pointpairs)
-        # true_data_normals = self.compute_normals_knn_pca(
-        #     points=true_data_pointpairs,
-        #     k=self.neighbors
-        # )
-
         true_data_normals = self.compute_normals_pca(
             points=true_data_pointpairs,
             k=self.neighbors
@@ -814,19 +861,39 @@ class IterativeClosestPoint():
         sum_error= 10**10
         
         while not self.stop_condition.stop_icp(mean_err, dtransformation):
-            # Find Nearest Neighbor by euclidean distance
-            correspondences= []
-
             if latest_new_data.shape[0] == 0:
                 break
-
-            distances, indices = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
-            for i in range(np.shape(latest_new_data)[0]):
-                # Push correspondences to heap, sorted by the index of the true data pointcloud j
-                heappush(correspondences, (indices.item(i), i, distances[i]))
             
-            # Outlier Rejection            
-            cleaned_correspondences, sum_error = self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)
+            # Find Nearest Neighbor by euclidean distance
+            distances, indices = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
+            
+            correspondences= []
+            
+            # # 
+            # start_time = time.perf_counter()
+
+            # for i in range(np.shape(latest_new_data)[0]):
+            #     # Push correspondences to heap, sorted by the index of the true data pointcloud j
+            #     heappush(correspondences, (indices.item(i), i, distances[i]))
+            
+            # # Outlier Rejection            
+            # cleaned_correspondences, sum_error = self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)
+
+            # end_time = time.perf_counter()
+            # print(f"Outlier rejection took {end_time - start_time:.5f} seconds")
+
+            start_time = time.perf_counter()
+            
+            cleaned_correspondences, sum_error = self.vectorized_outlier_rejection(
+                new_data_points=new_data_pointpairs,
+                true_data_points=true_data_pointpairs,
+                distances=distances,
+                indices=indices,
+            )
+
+            end_time = time.perf_counter()
+            print(f"Vectorized outlier rejection took {end_time - start_time:.5f} seconds")
+
 
             if len(cleaned_correspondences) < self.MIN_POINTS:
                 break
@@ -875,14 +942,14 @@ class IterativeClosestPoint():
             self.transformed_new_data_list.append(latest_new_data)
             self.list_of_cleaned_corresp.append(cleaned_correspondences)
             self.list_of_cleaned_corresp_numb.append(len(cleaned_correspondences))
-            self.list_of_corresp_numb.append(len(correspondences))
+            # self.list_of_corresp_numb.append(len(correspondences))
             self.squared_error_list.append(squared_error)
             self.transformation_parameter_list.append(transformation_parameter.copy())
         
         if self.list_of_cleaned_corresp:
             self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
             self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
-            self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
+            # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
 
         # Store info and reset stop condition for next run
         self.store_info(extended=True)
