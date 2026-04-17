@@ -56,7 +56,7 @@ class ScanMatcherFactory:
             },
             max_n_points=params.icp.max_n_points,
             max_correspondence_distance=params.icp.max_correspondence_distance,
-            neighbors_pca=params.icp.neighbors_pca,
+            neighbors=params.icp.neighbors_pca,
         )
 
         # Define initial pose for scan matcher = first pose recorded

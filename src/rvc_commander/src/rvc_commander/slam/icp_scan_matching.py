@@ -271,7 +271,7 @@ class IterativeClosestPoint():
     MIN_POINTS = 3
     EPSILON = 1e-9
 
-    def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, neighbors_pca: int = 10):
+    def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, neighbors: int = 10):
         '''
         Initializes the ICP scan matcher with the given stop parameters and maximum correspondence distance.
 
@@ -289,13 +289,13 @@ class IterativeClosestPoint():
     
         '''    
         # Init NN
-        self.neighbor= NearestNeighbors(n_neighbors=1, algorithm='kd_tree')        
+        self.neighbor= NearestNeighbors(n_neighbors=neighbors, algorithm='kd_tree')        
         
         # Init params
         # Max dist for correspondences. All correspondences with a bigger distance will be rejected as outliers
         self.max_correspond_dist= max_correspondence_distance
         # Number of neighbors to use for PCA when computing normals
-        self.neighbors_pca = neighbors_pca
+        self.neighbors = neighbors
         # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc) 
         self.max_n_points = max_n_points
 
@@ -505,6 +505,46 @@ class IterativeClosestPoint():
             normal = eigvecs[:, 0]
 
             # Normalize
+            norm = np.linalg.norm(normal)
+            if norm > 1e-9:
+                normal = normal / norm
+            else:
+                normal = np.array([0.0, 0.0])
+
+            normals[i] = normal
+
+        return normals
+
+
+    def compute_normals_pca(self, points: np.ndarray, k: int = 10):
+        # Check if we have enough points
+        n_points = points.shape[0]
+        if n_points < k:
+            return np.zeros((n_points, 2))
+        
+        _, indices = self.neighbor.kneighbors(points, n_neighbors=k)
+
+        normals = np.zeros((n_points, 2))
+
+        # For each point, compute normal based on direction with lowest variance (ICP)
+        for i in range(n_points):
+            # get k neighbors
+            neighbors = points[indices[i]]
+
+            # Center neighbors
+            centroid = np.mean(neighbors, axis=0)
+            centered = neighbors - centroid
+
+            # Covariance matrix (2x2)
+            cov = centered.T @ centered
+
+            # Eigen decomposition
+            eigvals, eigvecs = np.linalg.eigh(cov)
+
+            # Smallest eigenvector = lowest variance = normal direction
+            normal = eigvecs[:, 0]
+
+            # Normalize vectors
             norm = np.linalg.norm(normal)
             if norm > 1e-9:
                 normal = normal / norm
@@ -760,9 +800,14 @@ class IterativeClosestPoint():
         
         # Compute normals of true data points
         # true_data_normals= self.compute_normals(true_data_pointpairs)
-        true_data_normals = self.compute_normals_knn_pca(
+        # true_data_normals = self.compute_normals_knn_pca(
+        #     points=true_data_pointpairs,
+        #     k=self.neighbors
+        # )
+
+        true_data_normals = self.compute_normals_pca(
             points=true_data_pointpairs,
-            k=self.neighbors_pca
+            k=self.neighbors
         )
                 
         # Variable to save squared error. 
@@ -775,13 +820,13 @@ class IterativeClosestPoint():
             if latest_new_data.shape[0] == 0:
                 break
 
-            distances, indices= self.neighbor.kneighbors(latest_new_data)
+            distances, indices = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
             for i in range(np.shape(latest_new_data)[0]):
                 # Push correspondences to heap, sorted by the index of the true data pointcloud j
                 heappush(correspondences, (indices.item(i), i, distances[i]))
             
             # Outlier Rejection            
-            cleaned_correspondences, sum_error= self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)
+            cleaned_correspondences, sum_error = self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)
 
             if len(cleaned_correspondences) < self.MIN_POINTS:
                 break

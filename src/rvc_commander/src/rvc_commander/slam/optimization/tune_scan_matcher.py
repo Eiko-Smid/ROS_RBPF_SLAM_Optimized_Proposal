@@ -14,7 +14,7 @@ from .result_writer import ResultWriter
 
 
 PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/optimization_results/1776425398_max_range_again.csv'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/optimization_results/1776425398_nn_optimized.csv'
 
 
 def generate_param_grid():
@@ -26,7 +26,7 @@ def generate_param_grid():
     neighbors = [10]                # Number of neighbors for PCA in ICP
     occ_thres = [49.0]              # Occupancy threshold for scan matcher. Considers only cells with log-odds above this threshold
     delta_r = [0.6]                 # We search in circular area around the pred robots pose (max_sensor_range+dr) to extract the map
-    max_n_points = [200, 400, 600, 800]  # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc)
+    max_n_points = [400]            # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc)
 
     for max_corr, k, occ, delta_r_, max_n in itertools.product(
         max_corrs, neighbors, occ_thres, delta_r, max_n_points
