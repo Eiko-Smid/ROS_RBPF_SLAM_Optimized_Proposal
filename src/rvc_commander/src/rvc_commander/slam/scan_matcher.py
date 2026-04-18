@@ -99,9 +99,26 @@ class ScanMatcher():
 
     def transform_measurements_to_points(
             self, 
-                pose: Pose2D,
+            pose: Pose2D,
             measurements: List[Tuple[float, float]],
     ) -> np.ndarray:
+        '''
+        Get's a 2d pose and a list of measurements (range, bearing) and transforms them to a point cloud in 
+        map frame, based on the given pose.
+
+        Parameters
+        ----------
+        pose: Pose2D
+            The pose of the robot in the map frame, given as a tuple (x, y, theta).
+        measurements: List[Tuple[float, float]]
+            A list of tuples containing the range and bearing measurements from the robot's sensors
+
+        Returns
+        -------
+        np.ndarray
+            A 2D numpy array of shape (N, 2) containing the x and y coordinates of the points in the map frame, 
+            where N is the number of measurements.
+        '''
         # Extract pose
         x, y, theta = pose
 
@@ -125,6 +142,21 @@ class ScanMatcher():
     def predict_pose(self, pose: Pose2D, dl: float, dr: float) -> Pose2D:
         '''
         Predicts the pose based in the given control values and the wheel separation of the DDMR.
+
+        Parameters
+        ----------
+        pose: Pose2D
+            The current pose of the robot, given as a tuple (x, y, theta).
+        dl: float
+            The distance traveled by the left wheel since the last update.
+        dr: float
+            The distance traveled by the right wheel since the last update. 
+        
+        Returns
+        -------
+        Pose2D
+            The predicted pose of the robot (x, y, theta) 
+
         '''
         # Extract pose
         x, y, theta = pose
@@ -149,6 +181,23 @@ class ScanMatcher():
     def correct_pose(self, pose: Pose2D, scan_points: np.ndarray, map_points: np.ndarray) -> Pose2D:
         '''
         Corrects the robots pose by scan matching the measurement against the current map. 
+
+        Parameters
+        ----------
+        pose: Pose2D
+            The current pose of the robot, given as a tuple (x, y, theta).
+        scan_points: np.ndarray
+            A 2D numpy array of shape (N, 2) containing the x and y coordinates of the points in the scan, 
+            where N is the number of points.
+        map_points: np.ndarray
+            A 2D numpy array of shape (N, 2) containing the x and y coordinates of the points in the map, 
+            where N is the number of points.
+
+        Returns
+        -------
+        Pose2D
+            The corrected pose of the robot (x, y, theta) 
+
         '''
         # Find best transformation for given points
         transf_param = self.icp.find_transformation(
@@ -195,73 +244,37 @@ class ScanMatcher():
             A tuple containing the corrected pose and the predicted pose, in that order. If scan matching cannot be
             performed by any means, the predicted pose is returned for both values.   
         ''' 
-        profile_totals_ns: dict[str, int] = {}
-        profile_counts: dict[str, int] = {}
-
-        def _profile_accumulate(metric_name: str, start_ns: int) -> int:
-            elapsed_ns = time.perf_counter_ns() - start_ns
-            profile_totals_ns[metric_name] = profile_totals_ns.get(metric_name, 0) + elapsed_ns
-            profile_counts[metric_name] = profile_counts.get(metric_name, 0) + 1
-            return elapsed_ns
-
-        def _profile_print_summary() -> None:
-            if not profile_totals_ns:
-                return
-
-            avg_profile_ns = [
-                (name, profile_totals_ns[name] / max(profile_counts.get(name, 1), 1), profile_counts.get(name, 0), profile_totals_ns[name])
-                for name in profile_totals_ns
-            ]
-            avg_profile_ns.sort(key=lambda x: x[1], reverse=True)
-
-            print("\n[ScanMatcher Profiling] update_pose avg time per measured block (ms), sorted high -> low")
-            for name, avg_ns, n_calls, total_ns in avg_profile_ns:
-                print(
-                    f"  {name}: avg={avg_ns / 1e6:.6f} ms | calls={n_calls} | total={total_ns / 1e6:.6f} ms"
-                )
-
-        t_update_pose_total_ns = time.perf_counter_ns()
-
         # Init pose
         pred_pose = None
         corr_pose = None
 
         # Predict psoe based on wheel encoder information
-        t_ns = time.perf_counter_ns()
         pred_pose = self.predict_pose(
             pose=old_pose,
             dl=dl,
             dr=dr,
         )
-        _profile_accumulate("predict_pose_ns", t_ns)
 
         if len(measurements) < 3:
             self.pose = pred_pose
-            _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-            # _profile_print_summary()
             return corr_pose, pred_pose
         
         # Find max measurement range
         max_meas_range = max([m[0] for m in measurements])
 
         # Transform measurements (range, bearing) -> point cloud
-        t_ns = time.perf_counter_ns()
         scan_points = self.transform_measurements_to_points(
             pose=pred_pose,
             measurements=measurements
         )
-        _profile_accumulate("transform_measurements_to_points_ns", t_ns)
 
         scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
 
         if scan_points.shape[0] < 3:
             self.pose = pred_pose
-            _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-            # _profile_print_summary()
             return corr_pose, pred_pose
 
         # Get map points
-        t_ns = time.perf_counter_ns()
         # map_points = self.ogm.extract_map_for_scan_matching(
         #     pose=pred_pose,
         #     radius=max_meas_range,
@@ -283,31 +296,22 @@ class ScanMatcher():
             occ_thresh=self.occ_thres,
         )
 
-        _profile_accumulate("extract_map_for_scan_matching_ns", t_ns)
-
         # Filter map points -> only finite and shape must be valid
         map_points = np.asarray(map_points, dtype=float)
         map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
         if map_points.ndim != 2 or map_points.shape[0] < 3:
             self.pose = pred_pose
-            _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-            # _profile_print_summary()
             return corr_pose, pred_pose
 
 
         # Correct pose
-        t_ns = time.perf_counter_ns()
         corr_pose = self.correct_pose(
             pose=pred_pose, 
             scan_points=scan_points,
             map_points=map_points,
         )
-        _profile_accumulate("correct_pose_ns", t_ns)
 
         self.pose = corr_pose
-
-        _profile_accumulate("update_pose_total_ns", t_update_pose_total_ns)
-        # _profile_print_summary()
 
         return corr_pose, pred_pose
     
