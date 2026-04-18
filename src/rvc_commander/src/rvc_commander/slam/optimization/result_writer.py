@@ -85,10 +85,10 @@ class ResultWriter:
                         r.summary["rmse_translation_error"],
                         r.summary["mean_rotation_error"],
                         r.summary["fallback_count"],
-                        r.summary["mean_step_duration"],
+                        r.summary["mean_step_duration"] *1000,  # convert to ms
                         r.summary["mean_icp_iterations"],
                     ])
             print(f"\nOptimization run has been saved to:\n{path}")
         else:
-            print(f"\nOptimization has not been saved to:\n{path}")
+            print(f"\nOptimization has not been saved cause file already exists and override is set to False!")
 

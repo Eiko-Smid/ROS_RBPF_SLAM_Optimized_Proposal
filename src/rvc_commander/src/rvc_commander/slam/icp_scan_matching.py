@@ -690,8 +690,6 @@ class IterativeClosestPoint():
 
     def vectorized_outlier_rejection(
         self,
-        new_data_points: np.ndarray,
-        true_data_points: np.ndarray,
         distances: np.ndarray,
         indices: np.ndarray,
     ):
@@ -809,6 +807,97 @@ class IterativeClosestPoint():
             
             # Accumulate the squared errors
             squared_error+= normal_error**2
+
+        return H, g, squared_error
+
+
+    def prepare_system_point_to_plane_vec(
+        self,
+        transformation_parameter,
+        latest_new_data,
+        true_data_pointpairs,
+        correspondences,
+        true_data_normals
+    ):
+
+        if len(correspondences) == 0:
+            return np.zeros((3,3)), np.zeros((3,1)), 0.0
+
+        # Extract indices
+        i = correspondences[:, 0]
+        j = correspondences[:, 1]
+
+        # Gather data
+        new_pts = latest_new_data[i]
+        true_pts = true_data_pointpairs[j]
+        normals = true_data_normals[j]
+
+        # Filter finite
+        mask = (
+            np.all(np.isfinite(new_pts), axis=1) &
+            np.all(np.isfinite(true_pts), axis=1) &
+            np.all(np.isfinite(normals), axis=1)
+        )
+
+        new_pts = new_pts[mask]
+        true_pts = true_pts[mask]
+        normals = normals[mask]
+
+        if new_pts.shape[0] == 0:
+            return np.zeros((3,3)), np.zeros((3,1)), 0.0
+
+        # Remove zero normals
+        norm_mask = np.linalg.norm(normals, axis=1) > self.EPSILON
+
+        new_pts = new_pts[norm_mask]
+        true_pts = true_pts[norm_mask]
+        normals = normals[norm_mask]
+
+        if new_pts.shape[0] == 0:
+            return np.zeros((3,3)), np.zeros((3,1)), 0.0
+
+        # Distance error
+        diff = new_pts - true_pts
+
+        # Point-to-plane error
+        normal_error = np.sum(normals * diff, axis=1)
+
+        valid_mask = np.isfinite(normal_error)
+
+        normal_error = normal_error[valid_mask]
+        normals = normals[valid_mask]
+        new_pts = new_pts[valid_mask]
+
+        if normal_error.shape[0] == 0:
+            return np.zeros((3,3)), np.zeros((3,1)), 0.0
+
+        # Weights
+        weights = 1.0 / (1.0 + normal_error**2)
+
+        # --- Jacobian (vectorized) ---
+        theta = float(transformation_parameter[self.IDX_THETA])
+
+        x = new_pts[:, 0]
+        y = new_pts[:, 1]
+        nx = normals[:, 0]
+        ny = normals[:, 1]
+
+        third = nx * (-x*np.sin(theta) - y*np.cos(theta)) + \
+                ny * ( x*np.cos(theta) - y*np.sin(theta))
+
+        J = np.stack([nx, ny, third], axis=1)   # shape (N, 3)
+
+        # Apply weights
+        W = weights[:, None]
+
+        # Hessian
+        H = (J * W).T @ J
+
+        # Gradient
+        g = (J * W).T @ normal_error.reshape(-1,1)
+
+        # Error
+        squared_error = np.sum(normal_error**2)
 
         return H, g, squared_error
 
@@ -997,9 +1086,7 @@ class IterativeClosestPoint():
 
             t_ns = time.perf_counter_ns()
             
-            cleaned_correspondences, sum_error = self.vectorized_outlier_rejection(
-                new_data_points=new_data_pointpairs,
-                true_data_points=true_data_pointpairs,
+            cleaned_correspondences, sum_error = self.vectorized_outlier_rejection(                
                 distances=distances,
                 indices=indices,
             )
@@ -1011,7 +1098,7 @@ class IterativeClosestPoint():
             
             # Prepare the system
             t_ns = time.perf_counter_ns()
-            H, g, squared_error = self.prepare_system_point_to_plane(
+            H, g, squared_error = self.prepare_system_point_to_plane_vec(
                 transformation_parameter,
                 latest_new_data,
                 true_data_pointpairs,
