@@ -36,7 +36,7 @@ def extract_map_numba(
     # Define maximum number of points that can be extracted and pre-allocate array for points
     max_points = (r_cells * 2 + 1) * (r_cells * 2 + 1)
     # points = np.empty((max_points, 2), dtype=np.float64)
-    points = np.full((max_points, 2), np.nan, dtype=np.float64)
+    map_points = np.full((max_points, 2), np.nan, dtype=np.float64)
     count = 0
 
     # With the for loops we define a general square with center cell and it has the size of the radius*2 + 1 
@@ -80,11 +80,11 @@ def extract_map_numba(
             x = j * grid_res - shift_x + grid_res/2
             y = i * grid_res - shift_y + grid_res/2
 
-            points[count, 0] = x
-            points[count, 1] = y
+            map_points[count, 0] = x
+            map_points[count, 1] = y
             count += 1
 
-    return points[:count]
+    return map_points[:count]
 
 
 
@@ -733,7 +733,7 @@ class OGM:
 
         i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
 
-        points = extract_map_numba(
+        map_points = extract_map_numba(
             self.log_odds_map,
             i_pose,
             j_pose,
@@ -747,7 +747,10 @@ class OGM:
             self.shift_y
         )
 
-        return points
+        # Filter inf and nan values from pre allocated map points
+        map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
+        
+        return map_points
 
     #_______________________________________________________________________________________________________________
     # Grid Cell manipulation

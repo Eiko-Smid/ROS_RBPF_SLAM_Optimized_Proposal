@@ -871,8 +871,8 @@ class IterativeClosestPoint():
         true_data_normals
     ):
         '''
-        Preppares the system of equations for the point-to-plane ICP algorithm in a vectorized way. Method computes the gradient vector g
-        and the Hessian matrix H to minimize the point-to-plane error for the given correspondences later on.
+        Preppares the system of equations for the point-to-plane ICP algorithm in a vectorized way (faster). Method computes the gradient 
+        vector g and the Hessian matrix H to minimize the point-to-plane error for the given correspondences later on.
 
         Parameters
         ----------

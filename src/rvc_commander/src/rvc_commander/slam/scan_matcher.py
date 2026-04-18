@@ -268,27 +268,13 @@ class ScanMatcher():
             measurements=measurements
         )
 
+        # Filter inf and nan values from measurements and check if enough scans are left, else break
         scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
-
         if scan_points.shape[0] < 3:
             self.pose = pred_pose
             return corr_pose, pred_pose
 
         # Get map points
-        # map_points = self.ogm.extract_map_for_scan_matching(
-        #     pose=pred_pose,
-        #     radius=max_meas_range,
-        #     delta_r=self.delta_r,
-        #     occ_thresh=self.occ_thres,
-        # )
-        
-        # map_points = self.ogm.extract_map_for_scan_matching_np_optm(
-        #     pose=pred_pose,
-        #     radius=max_meas_range,
-        #     delta_r=self.delta_r,
-        #     occ_thresh=self.occ_thres,
-        # )
-
         map_points = self.ogm.extract_map_for_scan_matching_numba(
             pose=pred_pose,
             radius=max_meas_range,
@@ -296,102 +282,10 @@ class ScanMatcher():
             occ_thresh=self.occ_thres,
         )
 
-        # Filter map points -> only finite and shape must be valid
-        map_points = np.asarray(map_points, dtype=float)
-        map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
+        # Check if array shape is correct and has enough elemtns, else break
         if map_points.ndim != 2 or map_points.shape[0] < 3:
             self.pose = pred_pose
             return corr_pose, pred_pose
-
-
-        # Correct pose
-        corr_pose = self.correct_pose(
-            pose=pred_pose, 
-            scan_points=scan_points,
-            map_points=map_points,
-        )
-
-        self.pose = corr_pose
-
-        return corr_pose, pred_pose
-    
-
-
-    def update_pose_copy(
-            self,
-            old_pose: Pose2D,
-            dl: float, dr: float, 
-            measurements: List[Tuple[float, float]],
-    ) -> Tuple[Pose2D, Pose2D]:
-        '''
-        Updates the pose of the robot by first predicting it based on the control values and then correcting it
-        by scan matching the measurement against the current map.
-
-        Returns the corrected pose first and the predicted pose second. If scan matching cannot be
-        performed safely, the predicted pose is returned for both values.
-
-        Parameters:
-        ---------
-        old_pose: Pose2D
-            The previous pose of the robot.
-        dl: float
-            The distance traveled by the left wheel since the last update.
-        dr: float
-            The distance traveled by the right wheel since the last update.
-        measurements: List[Tuple[float, float]]
-            A list of tuples containing the range and bearing measurements from the robot's sensors.
-        
-        Returns:
-        ---------
-        Tuple[Pose2D, Pose2D]
-            A tuple containing the corrected pose and the predicted pose, in that order. If scan matching cannot be
-            performed by any means, the predicted pose is returned for both values.   
-        ''' 
-        # Init pose
-        pred_pose = None
-        corr_pose = None
-
-        # Predict psoe based on wheel encoder information
-        pred_pose = self.predict_pose(
-            pose=old_pose,
-            dl=dl,
-            dr=dr,
-        )
-
-        if len(measurements) < 3:
-            self.pose = pred_pose
-            return corr_pose, pred_pose
-        
-        # Find max measurement range
-        max_meas_range = max([m[0] for m in measurements])
-
-        # Transform measurements (range, bearing) -> point cloud
-        scan_points = self.transform_measurements_to_points(
-            pose=pred_pose,
-            measurements=measurements
-        )
-
-        scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
-
-        if scan_points.shape[0] < 3:
-            self.pose = pred_pose
-            return corr_pose, pred_pose
-
-        # Get map points
-        map_points = self.ogm.extract_map_for_scan_matching(
-            pose=pred_pose,
-            radius=max_meas_range,
-            delta_r=self.delta_r,
-            occ_thresh=self.occ_thres,
-        )
-
-        # Filter map points -> only finite and shape must be valid
-        map_points = np.asarray(map_points, dtype=float)
-        map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
-        if map_points.ndim != 2 or map_points.shape[0] < 3:
-            self.pose = pred_pose
-            return corr_pose, pred_pose
-
 
         # Correct pose
         corr_pose = self.correct_pose(
