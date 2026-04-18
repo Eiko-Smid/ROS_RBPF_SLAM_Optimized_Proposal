@@ -657,12 +657,18 @@ class ScanMatchingNode:
                             continue
 
                         # Correct pose by scan matching
-                        self.scan_match_pose, self.predicted_pose = self.scan_matcher.update_pose(
+                        corrected_pose, self.predicted_pose = self.scan_matcher.update_pose(
                             old_pose=self.scan_match_pose,
                             dl=distance_left_wheel,
                             dr=distance_right_wheel,
                             measurements=measurements
                         )
+
+                        # Keep a valid pose for the next cycle even when scan correction is not available.
+                        if corrected_pose is not None:
+                            self.scan_match_pose = corrected_pose
+                        elif self.predicted_pose is not None:
+                            self.scan_match_pose = self.predicted_pose
 
                         # Compute pose error between true pose and predicted pose.
                         if self.predicted_pose is not None:
@@ -880,16 +886,16 @@ def main():
     # Define senor param 
     min_sensor_range= 0.1
     max_sensor_range= 10.0
-    delta_r = 1.5
+    delta_r = 0.6
     sensor_parameters_ogm= (min_sensor_range, max_sensor_range)
     sensor_parameters_scan_matcher= (min_sensor_range, max_sensor_range, delta_r)
     # Define occ threshold for map point extraction for scan matching
     # Only cells > occ_thres will be considered as occupied and used for scan matching
-    occ_thres = 50.0
+    occ_thres = 49.0
 
     # Define icp scan matching param
     stop_params = {
-        "max_iterations": 10,           
+        "max_iterations": 6,           
         "epsilon_rel": 1e-3,
         "no_improvement_limit": 3,
         "min_error": 5e-4,
@@ -899,15 +905,18 @@ def main():
 
     # Defien icp params
     # Max distance between two datapoints to build an correspondences set
-    max_correspond_dist = 0.8
+    max_correspond_dist = 0.6
+    # Max number of points to use from extracted map
+    max_n_points = 400
     # The number of neighbors to use for PCA when computing normals in the ICP scan matcher
     neighbors_pca = 10   
 
     # init icp 
     icp = IterativeClosestPoint(
         stop_params=stop_params,
+        max_n_points=max_n_points,
         max_correspondence_distance=max_correspond_dist,
-        neighbors_pca=neighbors_pca,
+        neighbors=neighbors_pca,
     )
 
     # Define robot parameter for scan matcher
@@ -952,7 +961,7 @@ def main():
         log_odds_map=log_odds_map,
         sensor_param=SensorParam(
             min_sensor_range=min_sensor_range,
-            max_sensor_range=max_sensor_range
+            max_sensor_range=max_sensor_range,
         ),
         occupancy_param=OccupancyParam(
             prior_probability=prior_probability,
