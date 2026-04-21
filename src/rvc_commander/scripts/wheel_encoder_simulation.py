@@ -4,6 +4,8 @@ import rospy
 
 # Python library's 
 from math import sqrt, sin, cos, atan2
+import random
+
 import threading
 # Messages
 from geometry_msgs.msg import Pose, Twist
@@ -19,9 +21,16 @@ class SimulateWheelEncoder():
     which is expected to be published by a localization node. The simulated wheel encoder data is then
     published to a topic, which can be used by the controller node.
     '''
-    def __init__(self, robot_width, link_state_name, link_state_topic= "gazebo/link_states", wheelencoder_topic="encoder", publish_rate= 10):
+    def __init__(
+            self,
+            robot_param, 
+            link_state_name,
+            link_state_topic= "gazebo/link_states",
+            wheelencoder_topic="encoder",
+            publish_rate= 10
+    ):
         # Robot parameter
-        self.robot_width= robot_width
+        self.robot_width, self.wheel_encoder_motion_error_factor, self.wheel_encoder_turn_error_factor = robot_param
         # Init Wheel encoder message 
         self.distance= WheelEncoder()
         # Subscriber for link state -> pose
@@ -123,6 +132,33 @@ class SimulateWheelEncoder():
         return (left_control, right_control)        
 
 
+    def add_noise(self, left_control, right_control):
+        '''
+        Added artificial noise to the simulated wheel encoder data, based on the motion and turn error factors. The noise
+        is added as gaussian noise, with a standard deviation proportional to the control input. The turn error factor adds 
+        additional noise based on the difference between the left and right control inputs. This is because a turn is more
+        likely to introduce error in the wheel encoder data.
+        '''
+        if self.wheel_encoder_motion_error_factor > 0.0 and self.wheel_encoder_turn_error_factor > 0.0:
+            control_diff = left_control - right_control
+
+            # Calculate error standarddeviation
+            control_turn_variance= (self.wheel_encoder_turn_error_factor * control_diff)**2
+            left_control_variance= (self.wheel_encoder_motion_error_factor * left_control)**2 + control_turn_variance
+            right_control_variance= (self.wheel_encoder_motion_error_factor * right_control)**2 + control_turn_variance
+            left_encoder_stddv= sqrt(left_control_variance)
+            right_encoder_stddv= sqrt(right_control_variance)
+            
+            # Calculate distances with gaussian error. 
+            left_distance_with_error= random.gauss(left_control, left_encoder_stddv)
+            right_distance_with_error=random.gauss(right_control, right_encoder_stddv)
+        else:
+            left_distance_with_error = left_control
+            right_distance_with_error = right_control
+
+        return left_distance_with_error, right_distance_with_error
+
+
     def execute(self):
         '''Main loop to simulate wheel encoder data and publish it.'''
         # Initialize Wheel Encoder Message 
@@ -147,6 +183,8 @@ class SimulateWheelEncoder():
                     rospy.loginfo_once("Wheel encoder simulation initialized.")
                     # Simulate encoder data
                     left_control, right_control= self.wheelencoder_simulation(old_pose, new_pose, self.robot_width)
+                    # Add noise to data 
+                    left_control, right_control = self.add_noise(left_control, right_control)
                     # Publish wheel distances 
                     distance.left= left_control
                     distance.right= right_control
@@ -158,7 +196,14 @@ class SimulateWheelEncoder():
 
 def main():
     # Start node
-    rospy.init_node("wheel_encoder_simulation_node", anonymous= True)
+    rospy.init_node("wheel_encoder_simulation_node", anonymous= False)
+
+    # Get uncertainty params
+    wheel_encoder_motion_error_factor = rospy.get_param("~wheel_encoder_motion_error_factor", 0.0)
+    wheel_encoder_turn_error_factor = rospy.get_param("~wheel_encoder_turn_error_factor", 0.0)
+    rospy.loginfo(f"\nWheel encoder error values")
+    rospy.loginfo(f"wheel_encoder_motion_error_factor = {wheel_encoder_motion_error_factor}")
+    rospy.loginfo(f"wheel_encoder_turn_error_factor = {wheel_encoder_turn_error_factor}")
     
     # Calculate wheel separation
     h_chassis= 0.15
@@ -168,12 +213,15 @@ def main():
     r_chassis= 0.25
     wheel_separation= 2 * r_chassis + w_wheel
 
+    # Summarize robot params
+    robot_param = (wheel_separation, wheel_encoder_motion_error_factor, wheel_encoder_turn_error_factor)
+
     # Init SimulateWheelEncoder
     link_state_topic= "gazebo/link_states"
     link_state_name = "robot_vacuum_cleaner::base_link"
     wheelencoder_topic= "wheel_encoder" 
     publish_rate= 10
-    wheel_encoder_simulation= SimulateWheelEncoder(robot_width= wheel_separation, link_state_name= link_state_name, link_state_topic=link_state_topic, 
+    wheel_encoder_simulation= SimulateWheelEncoder(robot_param=robot_param, link_state_name= link_state_name, link_state_topic=link_state_topic, 
                                 wheelencoder_topic= wheelencoder_topic, publish_rate= publish_rate)
     # Execute 
     wheel_encoder_simulation.execute()

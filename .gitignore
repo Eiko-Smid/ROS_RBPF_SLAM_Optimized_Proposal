@@ -11,6 +11,12 @@ logs/
 __pycache__/
 *.pyc
 
+# Python storage ignores
+*.pkl
+*.npy
+*.jsonl
+*.csv
+
 # VSCode
 .vscode/
 

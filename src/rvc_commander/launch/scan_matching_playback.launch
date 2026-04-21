@@ -1,0 +1,25 @@
+<launch>
+
+    <!-- Use simulated time -->
+    <param name="use_sim_time" value="true"/>
+
+    <!--Launch the map server-->
+    <arg name="map_file" default="$(find rvc_commander)/maps/Maps_by_occupancy_Grid_Mapping/Cafe_Maps/final_occupancy_map_occ_95_free_5.yaml"/>
+    <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)" output="screen" />
+
+    <!--Run scan matcher node-->
+    <node pkg="rvc_commander" name="scan_matching_node" type="scan_matching_node.py" output="screen">
+    </node >
+
+    <!--Launch rviz-->
+    <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rvc_commander)/rviz/monte_carlo_localization.rviz">
+    </node>
+
+    <!-- Playback bag file -->
+    <arg name="bag_file" default="/home/smide/work/ros_workspaces/ros_ws/bags/test_run.bag"/>
+
+    <node pkg="rosbag" type="play" name="rosbag_play"
+        launch-prefix="bash -c 'sleep 5; $0 $@'"
+        args="--clock $(arg bag_file)"/>
+
+</launch>
