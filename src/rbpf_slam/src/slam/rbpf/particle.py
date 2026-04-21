@@ -3,7 +3,7 @@ from typing import Tuple
 import numpy as np
 
 
-from slam.infrascruture.defs import Pose2D
+from slam.infrastructure.defs import Pose2D
 from slam.scan_matcher.scan_matcher import ScanMatcher
 
 

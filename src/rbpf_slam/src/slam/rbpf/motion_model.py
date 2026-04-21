@@ -1,7 +1,7 @@
 from math import cos, sin, pi, atan2
 import numpy as np
 
-from slam.infrascruture.defs import Pose2D
+from slam.infrastructure.defs import Pose2D
 
 
 class MotionModel:
