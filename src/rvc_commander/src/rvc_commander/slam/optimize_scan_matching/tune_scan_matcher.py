@@ -6,7 +6,7 @@ from ..scan_match_playback_def import ExperimentParams, ICPParams, ScanMatcherPa
 from ..playback_loader import load_playback_dataset
 
 from .evaluator import ScanMatcherEvaluator
-from .factory import ScanMatcherFactory
+from .scan_matcher_factory import ScanMatcherFactory
 from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
 from .optimizer import ScanMatcherOptimizer

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import time
 
-from .factory import ScanMatcherFactory
+from .scan_matcher_factory import ScanMatcherFactory
 from .evaluator import RunResult, ScanMatcherEvaluator
 
 from ..scan_match_playback_def import PlaybackData, ExperimentParams
