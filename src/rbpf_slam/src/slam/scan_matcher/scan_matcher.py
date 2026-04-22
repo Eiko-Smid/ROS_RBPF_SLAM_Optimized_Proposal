@@ -236,9 +236,10 @@ class ScanMatcher():
         by scan matching the measurement against the current map.
 
         Returns the corrected pose first and the predicted pose second. If scan matching cannot be
-        performed safely, the predicted pose is returned for both values.
+        performed safely, the corrected pose is None. In this case the self.pose member will be set to the predicted pose.
+        If succeed the self.member will be set to the corrected pose.
 
-        Parameters:
+        Parameters
         ---------
         old_pose: Pose2D
             The previous pose of the robot.
@@ -249,11 +250,12 @@ class ScanMatcher():
         measurements: List[Tuple[float, float]]
             A list of tuples containing the range and bearing measurements from the robot's sensors.
         
-        Returns:
+        Returns
         ---------
         Tuple[Pose2D, Pose2D]
             A tuple containing the corrected pose and the predicted pose, in that order. If scan matching cannot be
-            performed by any means, the predicted pose is returned for both values.   
+            performed by any means, the corrected pose is None and the predicted pose is returned as the second element
+            of the tuple.    
         ''' 
         # Init pose
         pred_pose = None

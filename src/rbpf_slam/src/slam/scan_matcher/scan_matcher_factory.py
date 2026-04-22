@@ -38,9 +38,16 @@ class ScanMatcherFactory:
             ],
         )
 
-        # Init the map
-        ogm.init_map_from_map(
-            log_odds_map=meta_data.log_odds_map,
+        # # Init the map randomly
+        # ogm.init_map_from_map(
+        #     log_odds_map=meta_data.log_odds_map,
+        #     grid_resolution=meta_data.grid_resolution_m
+        # )
+
+        # Init empty map with predefined prior probs
+        ogm.init_map(
+            map_width=meta_data.map_width,
+            map_height=meta_data.map_height,
             grid_resolution=meta_data.grid_resolution_m
         )
 

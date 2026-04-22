@@ -47,7 +47,9 @@ class Metadata:
     wheel_separation: float
     grid_resolution_m: float
     min_distance_to_border: float
-    log_odds_map: np.ndarray
+    # log_odds_map: np.ndarray
+    map_width: float = 10.0
+    map_height: float = 10.0
     sensor_param: SensorParam
     occupancy_param: OccupancyParam
 

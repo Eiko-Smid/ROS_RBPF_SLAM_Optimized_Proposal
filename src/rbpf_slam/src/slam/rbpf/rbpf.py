@@ -97,9 +97,59 @@ class RBPF:
         self.particles = particles
 
     
-    def update_particle():
-        pass
+    @staticmethod
+    def update_particle(
+        particle: Particle,
+        motion_model: MotionModel,
+        measurement_model: MeasurementModel,
+        proposal: ProposalEstimator,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+    ):
+        # Extract data
+        dl, dr = odom
+
+        # Scan match particle  
+        corr_pose, pred_pose = particle.scan_matcher.update_pose(
+            old_pose=particle.pose,
+            dl=dl,
+            dr=dr, 
+            measurements=measurements,
+        )
+
+        # TODO: Handle case when scan matching fails
+        if corr_pose is None:
+            pass
+        else:
+            # Compute proposal
+            new_pose, p_weight = proposal.estimate_proposal(
+                scan_match_pose=corr_pose,
+                particle=particle,
+                measurements=measurements,
+                neighbor=particle.scan_matcher.get_trained_nn_tree(),
+                motion_model=motion_model,
+                measurement_model=measurement_model,
+            )
+
+        # Update map
+        # Extend map if necessary
+        extension_needed = True
+        while(extension_needed):
+            extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(new_pose)
         
+        particle.scan_matcher.ogm.update_map(
+            measurements=measurements,
+            pose=new_pose
+        )
+
+        return Particle(
+            pose=new_pose,
+            weight=particle.weight * p_weight,
+            scan_matcher=particle.scan_matcher,
+        )
+
+
+
 
     def step():
         pass

@@ -87,13 +87,46 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        return mu, cov
+        return mu, cov, norm
     
 
-    def sample_pose(self, mu, cov):
+    def sample_from_proposal(self, mu, cov):
         '''
         Sample a new pose from a Gaussian distribution with mean mu and covariance sigma. Ensures angles are normalized.
         '''
         new_pose = np.random.multivariate_normal(mean=mu, cov=cov)
         new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
         return new_pose
+    
+
+    def estimate_proposal(
+        self,
+        scan_match_pose: Pose2D,
+        particle: Particle,
+        measurements: List[Tuple[float, float]],
+        neighbor: NearestNeighbors,
+        motion_model: MotionModel,
+        measurement_model: MeasurementModel,
+        sigma_xy: float=1.0,
+        n_samples: int=10,
+    ):
+        '''
+
+        '''
+        # COmpute proposal params
+        mu, cov, p_weight = self.compute_proposal_param(
+            scan_match_pose=scan_match_pose,
+            particle=particle,
+            measurements=measurements,
+            neighbor=neighbor,
+            motion_model=motion_model,
+            measurement_model=measurement_model,
+            sigma_xy=sigma_xy,
+            n_samples=n_samples,
+        )
+
+        # Sample pose
+        new_pose = self.sample_from_proposal(mu, cov)
+
+        
+        return new_pose, p_weight
