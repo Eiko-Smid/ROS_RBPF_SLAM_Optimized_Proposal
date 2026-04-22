@@ -364,7 +364,7 @@ class IterativeClosestPoint():
     MIN_POINTS = 3
     EPSILON = 1e-9
 
-    def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, neighbors: int = 10):
+    def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, n_neighbors: int = 10):
         '''
         Initializes the ICP scan matcher with the given stop parameters and maximum correspondence distance.
 
@@ -382,13 +382,13 @@ class IterativeClosestPoint():
     
         '''    
         # Init NN
-        self.neighbor= NearestNeighbors(n_neighbors=neighbors, algorithm='kd_tree')        
+        self.neighbor= NearestNeighbors(n_neighbors=n_neighbors, algorithm='kd_tree')        
         
         # Init params
         # Max dist for correspondences. All correspondences with a bigger distance will be rejected as outliers
         self.max_correspond_dist= max_correspondence_distance
         # Number of neighbors to use for PCA when computing normals
-        self.neighbors = neighbors
+        self.neighbors = n_neighbors
         # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc) 
         self.max_n_points = max_n_points
 
@@ -1193,6 +1193,6 @@ class IterativeClosestPoint():
         # for key in keys:
         #     print(f"{key}: {icp_stop_info[key]}")
 
-        return transformation_parameter
+        return transformation_parameter, self.neighbor.copy()
 
 

@@ -12,6 +12,9 @@ class Particle:
     Class representing a single particle.  
     '''
     def __init__(self, pose: Pose2D, weight: float, scan_matcher: ScanMatcher):
+        if pose is None or weight is None or scan_matcher is None:
+            raise ValueError("Invalid Particle initialization")
+
         self.pose = pose
         self.weight = weight
         self.scan_matcher = scan_matcher

@@ -56,9 +56,20 @@ class ScanMatcher():
 
     def get_ogm(self):
         '''
-        Returns a log odds map mgit essage object containing the map and the map metadata.
+        Returns a log odds map message object containing the map and the map metadata.
         '''
         return self.ogm.return_log_odds_map_object()
+
+
+    def get_trained_nn_tree(self):
+        '''
+        Returns the NN tree that has been trained on the map points, if exists, otherwise returns None. 
+        '''
+        if hasattr(self.icp.neighbor, "_fit_X"):
+            return self.icp.neighbor
+        else:
+            return None
+
 
 
     def get_info(self) -> dict:

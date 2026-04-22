@@ -13,10 +13,6 @@ class MeasurementModel:
         self.sigma = sigma
 
 
-    def update_nearest_neighbors(self, map_points: Any):
-        self.neighbor.fit(map_points)
-
-
     def likelihood(
             self,
             scan_matcher: ScanMatcher,
