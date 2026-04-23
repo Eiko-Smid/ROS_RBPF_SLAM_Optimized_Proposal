@@ -48,7 +48,7 @@ class MeasurementModelParams:
 
 
 
-class RBPF_Factory():
+class RBPFFactory():
     IDX_x=0
     IDX_y=1
     IDX_THETA=2
@@ -146,6 +146,32 @@ class RBPF:
         else:
             self.neff_threshold = len(particles) / 2.0
 
+
+    def weighted_mean_pose(self) -> Pose2D:
+        '''
+        Computes the weighted mean pose of the particle set. This can be used as an estimate for the current robot pose.
+
+        Returns:
+        --------
+        Pose2D
+            The weighted mean pose of the particle set.
+        '''
+        x = 0.0
+        y = 0.0
+        cos_theta = 0.0
+        sin_theta = 0.0
+
+        for p in self.particles:
+            w = p.weight
+            x += w * p.pose.x
+            y += w * p.pose.y
+            cos_theta += w * np.cos(p.pose.theta)
+            sin_theta += w * np.sin(p.pose.theta)
+
+        theta = np.arctan2(sin_theta, cos_theta)
+
+        return Pose2D(x=x, y=y, theta=theta)
+    
 
     @staticmethod
     def update_particle(
@@ -251,7 +277,7 @@ class RBPF:
         )
 
 
-    def step(self, odom: Tuple[float, float], measurements: List[Tuple[float, float]]) -> None:
+    def step(self, odom: Tuple[float, float], measurements: List[Tuple[float, float]]) -> float:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
         1. Update each particle pose, weight and map based on the given odometry and measurements.
@@ -266,8 +292,10 @@ class RBPF:
             The range measurements (range, bearing) for the current time step.
         
         Returns:
-        --------        
-        None.
+        --------
+        float
+            Effective number of particles (neff) computed from the normalized
+            particle weights before optional resampling.
         '''
         # Process each particle
         for i, p in enumerate(self.particles):
@@ -295,12 +323,12 @@ class RBPF:
         for i in range(len(self.particles)):
             self.particles[i].weight = norm_weights[i]
 
+        # Compute live neff from current normalized weights before resampling.
+        neff_before_resampling = float(self.resampler.compute_neff(norm_weights))
+
         # Resampling
         # Check if resampling is necessary
-        if self.resampler.do_resampling(
-            weights=norm_weights,
-            min_neff=self.neff_threshold,
-        ):
+        if neff_before_resampling < self.neff_threshold:
             # Get inidices of particles that have survived
             indices = self.resampler.low_variance_sampler(norm_weights)
 
@@ -318,3 +346,5 @@ class RBPF:
 
             # Replace old particle set by new set
             self.particles = new_partilces
+
+        return neff_before_resampling

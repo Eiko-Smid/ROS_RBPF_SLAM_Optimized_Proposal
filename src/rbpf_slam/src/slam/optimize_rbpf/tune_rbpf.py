@@ -3,7 +3,7 @@
 import itertools
 
 from playback_defs import ExperimentParams, StepData
-from ..rbpf.rbpf import RBPF_Factory, ParticleParams, MotionModelParams, MeasurementModelParams
+from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
 from ..rbpf.scan_match_factory import (
     OccupancyParams,
     SensorParams,
@@ -16,7 +16,7 @@ from ..rbpf.scan_match_factory import (
 
 from ..playback_loader import load_playback_dataset
 
-from .evaluator import ScanMatcherEvaluator
+from .evaluator import RBPFEvaluator
 from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
 from .optimizer import ScanMatcherOptimizer
@@ -29,6 +29,10 @@ OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rvc_comman
 
 
 def generate_param_grid():
+    '''
+    Defined the parameter grid for the RBPF SLAM optimization. This is a generator that yields ExperimentParams for
+    each combination of parameters in the grid.
+    '''
     # Motion model params
     # sigma_x = [0.05, 0.1, 0.2]
     # sigma_y = [0.05, 0.1, 0.2]
@@ -98,47 +102,34 @@ def generate_param_grid():
             ),
             tag=f"meas{sigma_meas}_nth{every_nth}_npart{n_part}",
         )
+
+
+
+# def build_optimizer():
+#     # Init objects
+#     # Init Playback runner
+#     rbpf_fac = ScanMatcherFactory()
+#     scan_match_eval = ScanMatcherEvaluator()
+#     scan_match_playback_run = PlaybackRunner(
+#         factory=rbpf_fac,
+#         evaluator=scan_match_eval,
+#     )
+
+#     # Init optimizer
+#     run_scorer = RunScorer()
+#     scan_match_optimizer = ScanMatcherOptimizer(
+#         runner=scan_match_playback_run,
+#         scorer=run_scorer,
+#     )
     
+#     return scan_match_optimizer
 
-def generate_param_grid():
-    '''
-    Defined the parameter grid for the scan matcher optimization. This is a generator that yields ExperimentParams for
-    each combination of parameters in the grid.
-    '''
-    max_corrs = [0.6]               # Max correspondence distance for ICP
-    neighbors = [10]                # Number of neighbors for PCA in ICP
-    occ_thres = [49.0]              # Occupancy threshold for scan matcher. Considers only cells with log-odds above this threshold
-    delta_r = [0.6]                 # We search in circular area around the pred robots pose (max_sensor_range+dr) to extract the map
-    max_n_points = [400]            # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc)
-
-    for max_corr, k, occ, delta_r_, max_n in itertools.product(
-        max_corrs, neighbors, occ_thres, delta_r, max_n_points
-    ):
-        yield ExperimentParams(
-            icp=ICPParams(
-                max_n_points=max_n,
-                max_correspondence_distance=max_corr,
-                neighbors_pca=k,
-                max_iterations=6,      # TODO: test with reduced max iterations (10->6)
-                epsilon_rel=1e-3,
-                no_improvement_limit=3,
-                min_error=5e-4,
-                min_dtrans=1e-3,
-                min_drot=1e-2,
-            ),
-            scan_matcher=ScanMatcherParams(
-                occ_thres=occ,
-                delta_r=delta_r_,
-            ), 
-            tag=f"corr{max_corr}_k{k}_occ{occ}_dr{delta_r_}_maxn{max_n}",
-        )
 
 
 def build_optimizer():
-    # Init objects
     # Init Playback runner
-    scan_match_fac = ScanMatcherFactory()
-    scan_match_eval = ScanMatcherEvaluator()
+    scan_match_fac = RBPFFactory()
+    scan_match_eval = RBPFEvaluator()
     scan_match_playback_run = PlaybackRunner(
         factory=scan_match_fac,
         evaluator=scan_match_eval,

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..rbpf.scan_match_factory import OccupancyParams, SensorParams, MapParameter, ICPParams, RobotParams, ScanMatcherParams
-from ..rbpf.rbpf import RBPF_Factory, ParticleParams, MotionModelParams, MeasurementModelParams
+from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
 
 
 @dataclass
