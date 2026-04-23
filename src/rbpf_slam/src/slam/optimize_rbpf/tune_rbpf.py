@@ -2,7 +2,8 @@
 
 import itertools
 
-from playback_defs import ExperimentParams, StepData
+from .playback_defs import ExperimentParams, PlaybackData
+from .playback_loader import load_playback_dataset
 from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
 from ..rbpf.scan_match_factory import (
     OccupancyParams,
@@ -14,8 +15,6 @@ from ..rbpf.scan_match_factory import (
     ScanMatchFactory
 )
 
-from ..playback_loader import load_playback_dataset
-
 from .evaluator import RBPFEvaluator
 from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
@@ -23,9 +22,11 @@ from .optimizer import ScanMatcherOptimizer
 from .result_writer import ResultWriter
 
 
-# TODO: Adapt this
-PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rvc_commander/data/scan_match/optimization_results/1776425398_fix_err_v3.csv'
+# TODO: Check if wheel separation value is correct!!!
+
+# Playback data path defs
+PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_1.csv'
 
 
 def generate_param_grid():
@@ -50,6 +51,16 @@ def generate_param_grid():
     # OGM param
     # TODO Add ogm param later
 
+    # Compute wheel separation
+    h_chassis= 0.15
+    dist_chassis_to_ground= h_chassis/5
+    r_wheel= h_chassis/2 + dist_chassis_to_ground
+    w_wheel= 0.3 * r_wheel
+    r_chassis= 0.25
+    wheel_separation= 2 * r_chassis + w_wheel
+
+
+
     for sigma_meas, every_nth, n_part in itertools.product(
         sigma_measurement, every_nth_beam, n_particles
     ):
@@ -64,8 +75,8 @@ def generate_param_grid():
                 max_sensor_range=10.0,
             ),
             map_param=MapParameter(
-                map_width=20.0,
-                map_height=20.0,
+                map_width=10.0,
+                map_height=10.0,
                 grid_resolution_m=0.5,
             ),
             icp_params=ICPParams(
@@ -80,7 +91,7 @@ def generate_param_grid():
                 min_drot=1e-2,
             ),
             robot_params=RobotParams(
-                wheel_separation=0.5,
+                wheel_separation=wheel_separation,
             ),
             scan_matcher_params=ScanMatcherParams(
                 occ_thres=49.0,
@@ -94,7 +105,9 @@ def generate_param_grid():
                 sigma_x=0.1,
                 sigma_y=0.1,
                 sigma_theta=0.1,
-                wheel_separation=0.5,
+                wheel_separation=wheel_separation,
+                ctrl_motion_fac=0.1,
+                ctrl_turn_fac=0.1,
             ),
             measurement_model_params=MeasurementModelParams(
                 sigma_measurement=sigma_meas,
@@ -148,11 +161,10 @@ def build_optimizer():
 
 def main():
     # Load playback data
-    meta_data, steps = load_playback_dataset(base_path_prefix=PLAYBACK_DATA_PATH_PREF)
+    steps = load_playback_dataset(base_path_prefix=PLAYBACK_DATA_PATH_PREF)
 
     # Build playback data
     playback_data = PlaybackData(
-        meta_data=meta_data,
         step_data_list=steps,
     )
 

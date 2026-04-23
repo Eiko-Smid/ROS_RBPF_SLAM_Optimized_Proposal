@@ -20,6 +20,13 @@ class StepData:
 
 
 @dataclass
+class PlaybackData:
+    '''
+    Data storage for the whole playback run
+    '''
+    step_data_list: List[StepData]
+
+@dataclass
 class ExperimentParams:
     '''
     Parameters for the rbpf experiment
