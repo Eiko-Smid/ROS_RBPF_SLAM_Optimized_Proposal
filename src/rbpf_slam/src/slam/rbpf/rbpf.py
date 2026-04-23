@@ -6,6 +6,8 @@ from slam.infrastructure.defs import Pose2D
 from slam.rbpf.particle import Particle
 from slam.rbpf.motion_model import MotionModel
 from slam.rbpf.measurement_model import MeasurementModel
+from slam.rbpf.likelihood_filed_model import LikelihoodFiledModel
+
 from slam.rbpf.proposal import ProposalEstimator
 from slam.rbpf.resampler import Resampler
 from slam.scan_matcher.scan_matcher_factory import ScanMatcherFactory
@@ -61,7 +63,7 @@ class RBPF_Factory():
         motion_model = MotionModel(sigma_x, sigma_y, sigma_theta, wheel_separation)
 
         # init measurement model
-        measurement_model = MeasurementModel(sigma_measurement)
+        measurement_model = LikelihoodFiledModel(sigma_measurement)
 
         # Init proposal Estimator
         proposal_estimator = ProposalEstimator()
@@ -117,26 +119,49 @@ class RBPF:
             measurements=measurements,
         )
 
-        # TODO: Handle case when scan matching fails
-        if corr_pose is None:
-            pass
-        else:
-            # Compute proposal
+        # Get trained map points
+        trained_nn_tree = particle.scan_matcher.get_trained_nn_tree()
+
+        if corr_pose is not None:
+            # Compute optimized proposal
             new_pose, p_weight = proposal.estimate_proposal(
                 scan_match_pose=corr_pose,
                 particle=particle,
                 measurements=measurements,
-                neighbor=particle.scan_matcher.get_trained_nn_tree(),
+                neighbor=trained_nn_tree,
                 motion_model=motion_model,
                 measurement_model=measurement_model,
             )
+        # TODO: Fallback if scan matching failed
+        else:
+            # Predict particle pose with motion model
+            dl_noisy, dr_noisy = motion_model.sample_noisy_ctrl(dl, dr)
+            pred_pose = motion_model.predict_pose(
+                pose=pred_pose,
+                dl=dl_noisy,
+                dr=dr_noisy,
+            )
 
+            # Fallback to Measurement model with map points
+            if trained_nn_tree is not None:
+                # Compute particle weight
+                p_weight = measurement_model.likelihood(
+                    pose=pred_pose,
+                    measurements=measurements,
+                    scan_matcher= particle.scan_matcher,
+                    neighbor=trained_nn_tree,
+                    every_nth_measurement=5,
+                )
+            # Do MCL as fallback
+            else:
+                pass
+            
         # Update map
         # Extend map if necessary
         extension_needed = True
         while(extension_needed):
             extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(new_pose)
-        
+        # Update map
         particle.scan_matcher.ogm.update_map(
             measurements=measurements,
             pose=new_pose

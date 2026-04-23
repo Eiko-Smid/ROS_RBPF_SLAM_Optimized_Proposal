@@ -54,13 +54,13 @@ class ProposalEstimator:
         for i in range(samples.shape[0]):
             xj = samples[i, :]
             meas_prob = measurement_model.likelihood(
-                scan_matcher=particle.scan_matcher,
                 pose=xj,
                 measurements=measurements,
+                scan_matcher= particle.scan_matcher,
                 neighbor=neighbor,
                 every_nth_measurement=5,
             )
-
+            
             motion_prob = motion_model.motion_probability(
                 x_new=xj,
                 x_prev=particle.pose,

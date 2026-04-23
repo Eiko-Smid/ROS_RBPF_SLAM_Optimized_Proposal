@@ -13,10 +13,52 @@ class MotionModel:
             wheel_separation: float = 0.5
     ):
         # Init parameters
+        # Noise parameters for sampling noisy control values
+        self.ctrl_motion_fac = 0.05
+        self.ctrl_turn_fac = 0.15    
+
+        # Uncertainty parameters motion probability
         self.sigma_x = sigma_x
         self.sigma_y = sigma_y
         self.sigma_theta = sigma_theta
+
+        # Robot wheel separation
         self.wheel_separation = wheel_separation
+
+
+    def sample_noisy_ctrl(self, dl, dr):
+        '''
+        Samples noisy control values based on the given control values and the noise parameters of the motion model.
+        The bigger the turn, the higher the noise in the motion.
+
+        Parameters
+        ----------
+        dl: float
+            The distance traveled by the left wheel since the last update.
+        dr: float
+            The distance traveled by the right wheel since the last update. 
+        
+        Returns
+        -------
+        Tuple[float, float]
+            The sampled control values (dl, dr) with added noise.
+        '''
+        # Compute odometry difference
+        ctrl_diff = dl - dr
+
+        # Compute control stddv
+        ctrl_turn_var = (self.ctrl_turn_fac * ctrl_diff)**2
+        dl_ctrl_var = (self.ctrl_motion_fac * dl)**2 + ctrl_turn_var
+        dr_ctrl_var = (self.ctrl_motion_fac * dr)**2 + ctrl_turn_var
+        dl_ctrl_stddv = np.sqrt(dl_ctrl_var)
+        dr_ctrl_stddv = np.sqrt(dr_ctrl_var)
+
+        # Sample control values
+        dl_sampled = np.random.normal(dl, dl_ctrl_stddv)
+        dr_sampled = np.random.normal(dr, dr_ctrl_stddv)
+
+        return dl_sampled, dr_sampled
+        
 
 
     def predict_pose(self, pose: Pose2D, dl: float, dr: float) -> Pose2D:
@@ -60,7 +102,7 @@ class MotionModel:
 
     def motion_probability(self, x_new: Pose2D, x_prev: Pose2D) -> float:
         '''
-        Get's the new psoe and the previous pose and computes the motion probability based on the difference
+        Get's the new pose and the previous pose and computes the motion probability based on the difference
         between the two poses and the noise parameters of the motion model.
 
         Parameters
