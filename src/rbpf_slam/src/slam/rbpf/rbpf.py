@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+
+import numpy as np
 
 from slam.infrastructure.defs import Pose2D
 
@@ -90,15 +92,19 @@ class RBPF:
             proposal: ProposalEstimator,
             resampler: Resampler,
             particles: List[Particle],
-
+            neff_threshold: Optional[float]= None,
     ):
         self.motion_model = motion_model
         self.measurement_model = measurement_model
         self.proposal = proposal
         self.resampler = resampler
         self.particles = particles
+        
+        if neff_threshold is not None:
+            self.neff_threshold = neff_threshold
+        else:
+            self.neff_threshold = len(particles) / 2.0
 
-    
     @staticmethod
     def update_particle(
         particle: Particle,
@@ -132,11 +138,11 @@ class RBPF:
                 motion_model=motion_model,
                 measurement_model=measurement_model,
             )
-        # TODO: Fallback if scan matching failed
+        # Fallback strategy if scan matching fails
         else:
             # Predict particle pose with motion model
             dl_noisy, dr_noisy = motion_model.sample_noisy_ctrl(dl, dr)
-            pred_pose = motion_model.predict_pose(
+            new_pose = motion_model.predict_pose(
                 pose=pred_pose,
                 dl=dl_noisy,
                 dr=dr_noisy,
@@ -152,9 +158,9 @@ class RBPF:
                     neighbor=trained_nn_tree,
                     every_nth_measurement=5,
                 )
-            # Do MCL as fallback
+            # C
             else:
-                pass
+                p_weight = 1.0
             
         # Update map
         # Extend map if necessary
@@ -174,7 +180,54 @@ class RBPF:
         )
 
 
+    def step(self, odom: Tuple[float, float], measurements: List[Tuple[float, float]]):
+        # Process each particle
+        for i, p in enumerate(self.particles):
+            self.particles[i] = self.update_particle(
+                particle=p,
+                motion_model=self.motion_model,
+                measurement_model=self.measurement_model,
+                proposal=self.proposal,
+                odom=odom,
+                measurements=measurements
+            )
 
+        # Normalize particle weights
+        # Normalize weights
+        weights = np.array([p.weight for p in self.particles])
+        norm = np.sum(weights)
 
-    def step():
-        pass
+        if norm == 0:
+            # fallback: avoid division by zero
+            norm_weights = np.ones(len(weights)) / len(weights)
+        else:
+            norm_weights = weights/norm
+
+        # Update weights
+        for i in range(len(self.particles)):
+            self.particles[i].weight = norm_weights[i]
+
+        # Resampling
+        # Check if resampling is necessary
+        if self.resampler.do_resampling(
+            weights=norm_weights,
+            min_neff=self.neff_threshold,
+        ):
+            # Get inidices of particles that have survived
+            indices = self.resampler.low_variance_sampler(norm_weights)
+
+            # Update particles
+            new_partilces = []
+            n_particles = len(self.particles)
+            
+            # Deep copy and update weight
+            for idx in indices:
+                p = self.particles[idx].copy()
+
+                p.weight = 1.0 / n_particles
+
+                new_partilces.append(p)
+
+            # Replace old particle set by new set
+            self.particles = new_partilces
+

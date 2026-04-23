@@ -62,7 +62,7 @@ class Resampler:
         
         # return new_particles.copy()
         return indices
-
+    
 
 
 def init_weights(n= 10):
