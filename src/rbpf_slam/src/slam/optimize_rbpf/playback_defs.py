@@ -3,6 +3,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ..rbpf.scan_match_factory import OccupancyParams, SensorParams, MapParameter, ICPParams, RobotParams, ScanMatcherParams
+from ..rbpf.rbpf import RBPF_Factory, ParticleParams, MotionModelParams, MeasurementModelParams
+
 
 @dataclass
 class StepData:
@@ -16,3 +19,18 @@ class StepData:
     true_pose: Tuple[float, float, float]  # (x, y, yaw)
 
 
+@dataclass
+class ExperimentParams:
+    '''
+    Parameters for the rbpf experiment
+    '''
+    occupancy_params: OccupancyParams
+    sensor_params: SensorParams
+    map_param: MapParameter
+    icp_params: ICPParams
+    robot_params: RobotParams
+    scan_matcher_params: ScanMatcherParams
+    particle_params: ParticleParams
+    motion_model_params: MotionModelParams
+    measurement_model_params: MeasurementModelParams
+    tag: str 

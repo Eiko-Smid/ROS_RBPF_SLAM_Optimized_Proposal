@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
 import numpy as np
@@ -12,8 +13,39 @@ from slam.rbpf.likelihood_filed_model import LikelihoodFiledModel
 
 from slam.rbpf.proposal import ProposalEstimator
 from slam.rbpf.resampler import Resampler
-from slam.scan_matcher.scan_matcher_factory import ScanMatcherFactory
-from slam.scan_matcher.scan_match_playback_def import PlaybackData, ExperimentParams
+# from slam.scan_matcher.scan_matcher_factory import ScanMatcherFactory
+from .scan_match_factory import (
+    OccupancyParams,
+    SensorParams,
+    MapParameter,
+    ICPParams,
+    RobotParams,
+    ScanMatcherParams,
+    ScanMatchFactory,
+)
+
+
+@dataclass(frozen=True)
+class ParticleParams:
+    start_pose: Tuple[float, float, float]
+    n_particles: int
+
+
+@dataclass(frozen=True)
+class MotionModelParams:
+    sigma_x: float
+    sigma_y: float
+    sigma_theta: float
+    wheel_separation: float
+    ctrl_motion_fac: float
+    ctrl_turn_fac: float
+
+
+@dataclass(frozen=True)
+class MeasurementModelParams:
+    sigma_measurement: float
+    every_nth_scan: int
+
 
 
 class RBPF_Factory():
@@ -21,37 +53,37 @@ class RBPF_Factory():
     IDX_y=1
     IDX_THETA=2
 
-    def __init__(self, scan_match_fac: ScanMatcherFactory):
-        self.scan_match_fac = scan_match_fac
-
-
     def create(
             self,
-            particle_params: Tuple[Pose2D, int],
-            scan_match_params: Tuple[PlaybackData, ExperimentParams],
-            motion_model_params: Tuple[float, float, float, float, float, float],
-            measurement_model_params: Tuple[float, int],            
+            scan_match_fac: ScanMatchFactory,
+            particle_params: ParticleParams,
+            occ_param: OccupancyParams,
+            sens_params: SensorParams,
+            map_param: MapParameter,
+            icp_params: ICPParams,
+            robot_params: RobotParams,
+            scan_matcher_params: ScanMatcherParams,
+            motion_model_params: MotionModelParams,
+            measurement_model_params: MeasurementModelParams,            
     ):
-        # Extract params
-        start_pose, n_particles = particle_params
-        playback_data, exp_params = scan_match_params
-        sigma_x, sigma_y, sigma_theta, wheel_separation, ctrl_motion_fac, ctrl_turn_fac = motion_model_params
-        sigma_measurement, every_nth_scan = measurement_model_params[0]
-
         # Init particle class
         particles = []
-        w = 1/n_particles
+        w = 1/particle_params.n_particles
 
-        for _ in range(n_particles):
-            scan_matcher = self.scan_match_fac.build(
-                playback_data=playback_data,
-                params=exp_params
+        for _ in range(particle_params.n_particles):
+            scan_matcher = scan_match_fac.build(
+                occ_param=occ_param,
+                sens_params=sens_params,
+                map_param=map_param,
+                icp_params=icp_params,
+                robo_param=robot_params,
+                sm_params=scan_matcher_params,
             )
 
             pose = Pose2D(
-                x=start_pose[self.IDX_x],
-                y=start_pose[self.IDX_y],
-                theta=start_pose[self.IDX_THETA],
+                x=particle_params.start_pose[self.IDX_x],
+                y=particle_params.start_pose[self.IDX_y],
+                theta=particle_params.start_pose[self.IDX_THETA],
             )
 
             particles.append(
@@ -64,16 +96,16 @@ class RBPF_Factory():
         
         # Init motion model
         motion_model = MotionModel(
-            sigma_x=sigma_x,
-            sigma_y=sigma_y,
-            sigma_theta=sigma_theta,
-            wheel_separation=wheel_separation,
-            ctrl_motion_fac=ctrl_motion_fac,
-            ctrl_turn_fac=ctrl_turn_fac,
+            sigma_x=motion_model_params.sigma_x,
+            sigma_y=motion_model_params.sigma_y,
+            sigma_theta=motion_model_params.sigma_theta,
+            wheel_separation=motion_model_params.wheel_separation,
+            ctrl_motion_fac=motion_model_params.ctrl_motion_fac,
+            ctrl_turn_fac=motion_model_params.ctrl_turn_fac,
         )
 
         # init measurement model
-        measurement_model = LikelihoodFiledModel(sigma=sigma_measurement)
+        measurement_model = LikelihoodFiledModel(sigma=measurement_model_params.sigma_measurement)
 
         # Init proposal Estimator
         proposal_estimator = ProposalEstimator()

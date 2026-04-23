@@ -2,11 +2,21 @@
 
 import itertools
 
-from playback_defs import ExperimentParams, ICPParams, ScanMatcherParams, PlaybackData
+from playback_defs import ExperimentParams, StepData
+from ..rbpf.rbpf import RBPF_Factory, ParticleParams, MotionModelParams, MeasurementModelParams
+from ..rbpf.scan_match_factory import (
+    OccupancyParams,
+    SensorParams,
+    MapParameter,
+    ICPParams,
+    RobotParams,
+    ScanMatcherParams,
+    ScanMatchFactory
+)
+
 from ..playback_loader import load_playback_dataset
 
 from .evaluator import ScanMatcherEvaluator
-from .scan_matcher_factory import ScanMatcherFactory
 from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
 from .optimizer import ScanMatcherOptimizer
@@ -39,10 +49,55 @@ def generate_param_grid():
     for sigma_meas, every_nth, n_part in itertools.product(
         sigma_measurement, every_nth_beam, n_particles
     ):
-        yield (
-            sigma_meas,
-            every_nth,
-        ), n_part
+        # Define experiment params for each run
+        yield ExperimentParams(
+            occupancy_params=OccupancyParams(
+                prior_probability=0.5,
+                min_distance_to_border=0.5,
+            ),
+            sensor_params=SensorParams(
+                min_sensor_range=0.1,
+                max_sensor_range=10.0,
+            ),
+            map_param=MapParameter(
+                map_width=20.0,
+                map_height=20.0,
+                grid_resolution_m=0.5,
+            ),
+            icp_params=ICPParams(
+                max_n_points=400,
+                max_correspondence_distance=0.6,
+                neighbors_pca=10,
+                max_iterations=5,
+                epsilon_rel=1e-3,
+                no_improvement_limit=3,
+                min_error=5e-4,
+                min_dtrans=1e-3, 
+                min_drot=1e-2,
+            ),
+            robot_params=RobotParams(
+                wheel_separation=0.5,
+            ),
+            scan_matcher_params=ScanMatcherParams(
+                occ_thres=49.0,
+                delta_r=0.6,
+            ),
+            particle_params=ParticleParams(
+                n_particles=n_part,
+                start_pose=(0.0, 0.0, 0.0),
+            ),
+            motion_model_params=MotionModelParams(
+                sigma_x=0.1,
+                sigma_y=0.1,
+                sigma_theta=0.1,
+                wheel_separation=0.5,
+            ),
+            measurement_model_params=MeasurementModelParams(
+                sigma_measurement=sigma_meas,
+                every_nth_scan=every_nth,
+            ),
+            tag=f"meas{sigma_meas}_nth{every_nth}_npart{n_part}",
+        )
     
 
 def generate_param_grid():

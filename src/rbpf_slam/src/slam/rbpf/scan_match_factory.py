@@ -60,7 +60,7 @@ class RobotParams:
     wheel_separation: float = 0.5
 
 
-class ScanMatchfactory:
+class ScanMatchFactory:
     @staticmethod
     def build(
         occ_param: OccupancyParams,
