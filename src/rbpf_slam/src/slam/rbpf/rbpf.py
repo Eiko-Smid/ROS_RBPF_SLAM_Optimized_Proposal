@@ -20,6 +20,7 @@ class RBPF_Factory():
     IDX_x=0
     IDX_y=1
     IDX_THETA=2
+
     def __init__(self, scan_match_fac: ScanMatcherFactory):
         self.scan_match_fac = scan_match_fac
 
@@ -28,14 +29,14 @@ class RBPF_Factory():
             self,
             particle_params: Tuple[Pose2D, int],
             scan_match_params: Tuple[PlaybackData, ExperimentParams],
-            motion_model_params: Tuple[float, float, float, float],
-            measurement_model_params: Tuple[float],            
+            motion_model_params: Tuple[float, float, float, float, float, float],
+            measurement_model_params: Tuple[float, int],            
     ):
         # Extract params
         start_pose, n_particles = particle_params
         playback_data, exp_params = scan_match_params
-        sigma_x, sigma_y, sigma_theta, wheel_separation = motion_model_params
-        sigma_measurement = measurement_model_params[0]
+        sigma_x, sigma_y, sigma_theta, wheel_separation, ctrl_motion_fac, ctrl_turn_fac = motion_model_params
+        sigma_measurement, every_nth_scan = measurement_model_params[0]
 
         # Init particle class
         particles = []
@@ -62,17 +63,23 @@ class RBPF_Factory():
             )   
         
         # Init motion model
-        motion_model = MotionModel(sigma_x, sigma_y, sigma_theta, wheel_separation)
+        motion_model = MotionModel(
+            sigma_x=sigma_x,
+            sigma_y=sigma_y,
+            sigma_theta=sigma_theta,
+            wheel_separation=wheel_separation,
+            ctrl_motion_fac=ctrl_motion_fac,
+            ctrl_turn_fac=ctrl_turn_fac,
+        )
 
         # init measurement model
-        measurement_model = LikelihoodFiledModel(sigma_measurement)
+        measurement_model = LikelihoodFiledModel(sigma=sigma_measurement)
 
         # Init proposal Estimator
         proposal_estimator = ProposalEstimator()
 
         # init resampler
         resampler = Resampler()
-
 
         return RBPF(
             motion_model=motion_model,
@@ -94,16 +101,19 @@ class RBPF:
             particles: List[Particle],
             neff_threshold: Optional[float]= None,
     ):
+        # Init RBPF memebers
         self.motion_model = motion_model
         self.measurement_model = measurement_model
         self.proposal = proposal
         self.resampler = resampler
         self.particles = particles
         
+        # Define neff threshold for resampling
         if neff_threshold is not None:
             self.neff_threshold = neff_threshold
         else:
             self.neff_threshold = len(particles) / 2.0
+
 
     @staticmethod
     def update_particle(
@@ -113,7 +123,37 @@ class RBPF:
         proposal: ProposalEstimator,
         odom: Tuple[float, float],
         measurements: List[Tuple[float, float]],
-    ):
+    ) -> Particle:
+        '''
+        Update step for a single particle. Updates the particle pose, weight and map based on the given odometry
+        and measurements. Attention! Weights are not normalized!
+
+        Including the following steps:
+        1. Scan match particle pose with current measurements to get a corrected pose estimate.
+        2. Compute optimized proposal distribution based on scan match pose and map points.
+        3. If scan matching fails, fallback to motion model prediction and measurement model likelihood.
+        4. Update map with new measurements and particle pose.
+
+        Parameters:
+        --------
+        particle: Particle
+            The particle to be updated.
+        motion_model: MotionModel
+            The motion model used for prediction and sampling.
+        measurement_model: MeasurementModel
+            The measurement model used for measurement likelihood estimation.
+        proposal: ProposalEstimator
+            The proposal estimator used for computing the optimized proposal distribution.
+        odom: Tuple[float, float]
+            The odometry measurements (dl, dr) for the current time step.
+        measurements: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the current time step.
+
+        Returns:
+        --------        
+        Particle
+            The updated particle with new pose, weight (not normalized) and the updated map.
+        '''
         # Extract data
         dl, dr = odom
 
@@ -155,10 +195,9 @@ class RBPF:
                     pose=pred_pose,
                     measurements=measurements,
                     scan_matcher= particle.scan_matcher,
-                    neighbor=trained_nn_tree,
-                    every_nth_measurement=5,
+                    neighbor=trained_nn_tree,                    
                 )
-            # C
+            # Fallback strategy if scan matching fails
             else:
                 p_weight = 1.0
             
@@ -180,7 +219,24 @@ class RBPF:
         )
 
 
-    def step(self, odom: Tuple[float, float], measurements: List[Tuple[float, float]]):
+    def step(self, odom: Tuple[float, float], measurements: List[Tuple[float, float]]) -> None:
+        '''
+        Performs the update step of the particle filter for all particles. This includes the following steps:
+        1. Update each particle pose, weight and map based on the given odometry and measurements.
+        2. Normalize particle weights.
+        3. Resample particles if necessary based on the effective number of particles (neff).
+
+        Parameters:
+        --------
+        odom: Tuple[float, float]
+            The odometry measurements (dl, dr) for the current time step.
+        measurements: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the current time step.
+        
+        Returns:
+        --------        
+        None.
+        '''
         # Process each particle
         for i, p in enumerate(self.particles):
             self.particles[i] = self.update_particle(
@@ -230,4 +286,3 @@ class RBPF:
 
             # Replace old particle set by new set
             self.particles = new_partilces
-

@@ -11,9 +11,10 @@ from slam.infrastructure.defs import Pose2D
 
 
 class LikelihoodFiledModel(MeasurementModel):
-    def __init__(self, sigma: float=0.1) -> None:
+    def __init__(self, sigma: float=0.1, every_nth_measurement: int = 5) -> None:
         self.sigma = sigma
-
+        self.every_nth_measurement: int = every_nth_measurement
+         
     
     def likelihood(
         self,
@@ -21,7 +22,6 @@ class LikelihoodFiledModel(MeasurementModel):
         measurements: List[Tuple[float, float]],
         scan_matcher: ScanMatcher,
         neighbor: NearestNeighbors,
-        every_nth_measurement: int = 5,
     ) -> float:
         
         # Safety checks
@@ -32,7 +32,7 @@ class LikelihoodFiledModel(MeasurementModel):
             return 1e-9
 
         # Subsample measurements for speed
-        measurements = measurements[::every_nth_measurement]
+        measurements = measurements[::self.every_nth_measurement]
 
         # Transform to points
         scan_points = scan_matcher.transform_measurements_to_points(

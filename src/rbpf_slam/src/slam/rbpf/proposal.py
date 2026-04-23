@@ -58,7 +58,6 @@ class ProposalEstimator:
                 measurements=measurements,
                 scan_matcher= particle.scan_matcher,
                 neighbor=neighbor,
-                every_nth_measurement=5,
             )
             
             motion_prob = motion_model.motion_probability(

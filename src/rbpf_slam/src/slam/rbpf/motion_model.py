@@ -10,12 +10,14 @@ class MotionModel:
             sigma_x: float = 0.1,
             sigma_y: float = 0.1,
             sigma_theta: float = 0.05,
-            wheel_separation: float = 0.5
+            wheel_separation: float = 0.5,
+            ctrl_motion_fac: float = 0.05,
+            ctrl_turn_fac: float = 0.15, 
     ):
         # Init parameters
         # Noise parameters for sampling noisy control values
-        self.ctrl_motion_fac = 0.05
-        self.ctrl_turn_fac = 0.15    
+        self.ctrl_motion_fac = ctrl_motion_fac
+        self.ctrl_turn_fac = ctrl_turn_fac
 
         # Uncertainty parameters motion probability
         self.sigma_x = sigma_x
