@@ -72,8 +72,14 @@ class ProposalEstimator:
         # Vectorized computation of mu and cov
         norm = np.sum(weights)
 
+        if (not np.isfinite(norm)) or norm <= 1e-12:
+            # Fallback when all sample weights collapse to zero/invalid values.
+            mu = np.asarray(scan_match_pose, dtype=float)
+            cov = 1e-6 * np.eye(3)
+            return mu, cov, 1e-12
+
         # Compute mu
-        mu = np.sum(samples * weights[:, None]) / norm
+        mu = np.sum(samples * weights[:, None], axis=0) / norm
 
         # Compute covariance matrix
         # Compute deviation from the mean

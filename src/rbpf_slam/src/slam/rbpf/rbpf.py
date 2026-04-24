@@ -80,10 +80,10 @@ class RBPFFactory():
                 sm_params=scan_matcher_params,
             )
 
-            pose = Pose2D(
-                x=particle_params.start_pose[self.IDX_x],
-                y=particle_params.start_pose[self.IDX_y],
-                theta=particle_params.start_pose[self.IDX_THETA],
+            pose: Pose2D = (
+                particle_params.start_pose[self.IDX_x],
+                particle_params.start_pose[self.IDX_y],
+                particle_params.start_pose[self.IDX_THETA],
             )
 
             particles.append(
@@ -163,14 +163,14 @@ class RBPF:
 
         for p in self.particles:
             w = p.weight
-            x += w * p.pose.x
-            y += w * p.pose.y
-            cos_theta += w * np.cos(p.pose.theta)
-            sin_theta += w * np.sin(p.pose.theta)
+            x += w * p.pose[0]
+            y += w * p.pose[1]
+            cos_theta += w * np.cos(p.pose[2])
+            sin_theta += w * np.sin(p.pose[2])
 
         theta = np.arctan2(sin_theta, cos_theta)
 
-        return Pose2D(x=x, y=y, theta=theta)
+        return (x, y, theta)
     
 
     @staticmethod

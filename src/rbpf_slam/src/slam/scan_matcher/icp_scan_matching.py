@@ -1020,7 +1020,7 @@ class IterativeClosestPoint():
             self, 
             new_data_pointpairs: np.ndarray, 
             true_data_pointpairs: np.ndarray
-    ) -> tuple[np.ndarray, list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+        ) -> np.ndarray:
         '''
         Get's the new data points and the true datapoints and trys to minimize the error between the two
         pointclouds by finding the best transformation. Returns the transformation parameters and stores 
@@ -1054,7 +1054,7 @@ class IterativeClosestPoint():
             new_data_pointpairs.shape[0] < self.MIN_POINTS or
             true_data_pointpairs.shape[0] < self.MIN_POINTS
         ):
-            return transformation_parameter, [new_data_pointpairs.copy()], [], []
+            return transformation_parameter
 
         # Store number of points for logging
         self.n_points_true_data = true_data_pointpairs.shape[0]
@@ -1084,7 +1084,12 @@ class IterativeClosestPoint():
         #     k=self.neighbors
         # )
 
-        _, indicec_normal = self.neighbor.kneighbors(true_data_pointpairs, n_neighbors=self.neighbors)
+        # Guard against sparse local maps: sklearn requires n_neighbors <= n_samples.
+        n_neighbors_normals = min(self.neighbors, true_data_pointpairs.shape[0])
+        _, indicec_normal = self.neighbor.kneighbors(
+            true_data_pointpairs,
+            n_neighbors=n_neighbors_normals,
+        )
         true_data_normals = compute_normals_numba(
             true_data_pointpairs,
             indicec_normal
@@ -1193,6 +1198,6 @@ class IterativeClosestPoint():
         # for key in keys:
         #     print(f"{key}: {icp_stop_info[key]}")
 
-        return transformation_parameter, self.neighbor.copy()
+        return transformation_parameter
 
 

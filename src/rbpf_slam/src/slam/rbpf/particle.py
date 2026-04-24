@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from typing import Tuple
+import copy
 import numpy as np
 
 
@@ -29,5 +30,5 @@ class Particle:
         return Particle(
             pose=self.pose,
             weight=self.weight,
-            scan_matcher=self.scan_matcher.copy()
+            scan_matcher=copy.deepcopy(self.scan_matcher)
         )

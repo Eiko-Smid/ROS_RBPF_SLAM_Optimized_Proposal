@@ -4,8 +4,6 @@ from ..scan_matcher.scan_matcher import ScanMatcher
 from ..scan_matcher.ogm_scan_matching import OGM
 from ..scan_matcher.icp_scan_matching import IterativeClosestPoint
 
-from ..optimize_rbpf.playback_defs import StepData
-
 
 @dataclass(frozen=True)
 class OccupancyParams:
@@ -105,7 +103,7 @@ class ScanMatchFactory:
             },
             max_n_points=icp_params.max_n_points,
             max_correspondence_distance=icp_params.max_correspondence_distance,
-            neighbors=icp_params.neighbors_pca,
+            n_neighbors=icp_params.neighbors_pca,
         )
 
         # Init scan matcher

@@ -42,11 +42,14 @@ def generate_param_grid():
     # ctrl_turn_fac
 
     # Measurement parameter
-    sigma_measurement = [0.05, 0.2, 0.5]
-    every_nth_beam = [5, 10, 20]
+    # sigma_measurement = [0.05, 0.2, 0.5]
+    sigma_measurement = [0.2]
+    # every_nth_beam = [5, 10, 20]
+    every_nth_beam = [5]
     
     # RBPF param
-    n_particles = [30, 40, 50]
+    # n_particles = [30, 40, 50]
+    n_particles = [40]
 
     # OGM param
     # TODO Add ogm param later
@@ -60,7 +63,6 @@ def generate_param_grid():
     wheel_separation= 2 * r_chassis + w_wheel
 
 
-
     for sigma_meas, every_nth, n_part in itertools.product(
         sigma_measurement, every_nth_beam, n_particles
     ):
@@ -68,7 +70,11 @@ def generate_param_grid():
         yield ExperimentParams(
             occupancy_params=OccupancyParams(
                 prior_probability=0.5,
-                min_distance_to_border=0.5,
+                min_distance_to_border=10.0,
+                increasing_probability=0.65,
+                decreasing_probability=0.35,
+                min_log_odds=-5.0,
+                max_log_odds=5.0,
             ),
             sensor_params=SensorParams(
                 min_sensor_range=0.1,
@@ -94,7 +100,7 @@ def generate_param_grid():
                 wheel_separation=wheel_separation,
             ),
             scan_matcher_params=ScanMatcherParams(
-                occ_thres=49.0,
+                occ_thres=1.5,
                 delta_r=0.6,
             ),
             particle_params=ParticleParams(
@@ -102,12 +108,12 @@ def generate_param_grid():
                 start_pose=(0.0, 0.0, 0.0),
             ),
             motion_model_params=MotionModelParams(
-                sigma_x=0.1,
-                sigma_y=0.1,
-                sigma_theta=0.1,
+                sigma_x=0.2,
+                sigma_y=0.2, 
+                sigma_theta=0.15, 
                 wheel_separation=wheel_separation,
                 ctrl_motion_fac=0.1,
-                ctrl_turn_fac=0.1,
+                ctrl_turn_fac=0.20, 
             ),
             measurement_model_params=MeasurementModelParams(
                 sigma_measurement=sigma_meas,
