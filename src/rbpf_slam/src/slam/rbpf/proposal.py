@@ -15,13 +15,13 @@ class ProposalEstimator:
     IDX_THETA=2
 
 
-    def sample_poses(self, pose: Pose2D, sigma_xy: float, n_samples: int) -> np.ndarray:
+    def sample_poses(self, pose: Pose2D, sigma_xy: float, sigma_theta: float, n_samples: int) -> np.ndarray:
         x, y, theta = pose
 
         samples = np.zeros((n_samples, 3))
         samples[:, self.IDX_x] = np.random.normal(x, sigma_xy, n_samples)
         samples[:, self.IDX_y] = np.random.normal(y, sigma_xy, n_samples)
-        angles = np.random.normal(theta, sigma_xy, n_samples)
+        angles = np.random.normal(theta, sigma_theta, n_samples)
         samples[:, self.IDX_THETA] = np.arctan2(np.sin(angles), np.cos(angles))
 
         return samples
@@ -36,6 +36,7 @@ class ProposalEstimator:
             motion_model: MotionModel,
             measurement_model: MeasurementModel,
             sigma_xy: float=1.0,
+                sigma_theta: float=1.0,
             n_samples: int=10,
     ):
         # Define vars
@@ -47,6 +48,7 @@ class ProposalEstimator:
         samples = self.sample_poses(
             pose=scan_match_pose,
             sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
             n_samples=n_samples,
         )        
 
@@ -113,6 +115,7 @@ class ProposalEstimator:
         motion_model: MotionModel,
         measurement_model: MeasurementModel,
         sigma_xy: float=1.0,
+        sigma_theta: float=1.0,
         n_samples: int=10,
     ):
         '''
@@ -127,6 +130,7 @@ class ProposalEstimator:
             motion_model=motion_model,
             measurement_model=measurement_model,
             sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
             n_samples=n_samples,
         )
 

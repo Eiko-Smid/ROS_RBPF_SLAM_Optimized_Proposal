@@ -22,11 +22,13 @@ from .optimizer import ScanMatcherOptimizer
 from .result_writer import ResultWriter
 
 
-# TODO: Check if wheel separation value is correct!!!
 
 # Playback data path defs
+# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
+# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
 PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_1.csv'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_5.csv'
+CSV_FLOAT_DECIMALS = 4
 
 
 def generate_param_grid():
@@ -42,14 +44,19 @@ def generate_param_grid():
     # ctrl_turn_fac
 
     # Measurement parameter
-    # sigma_measurement = [0.05, 0.2, 0.5]
     sigma_measurement = [0.2]
+    # sigma_measurement = [0.1, 0.2, 0.4]
     # every_nth_beam = [5, 10, 20]
     every_nth_beam = [5]
     
     # RBPF param
     # n_particles = [30, 40, 50]
     n_particles = [40]
+
+    # Proposal parameter
+    proposal_sigma_xy = [0.1, 0.2]
+    proposal_sigma_theta = [0.05]
+    proposal_n_samples = [10]
 
     # OGM param
     # TODO Add ogm param later
@@ -63,8 +70,13 @@ def generate_param_grid():
     wheel_separation= 2 * r_chassis + w_wheel
 
 
-    for sigma_meas, every_nth, n_part in itertools.product(
-        sigma_measurement, every_nth_beam, n_particles
+    for sigma_meas, every_nth, n_part, sigma_xy, sigma_theta, n_samples in itertools.product(
+        sigma_measurement,
+        every_nth_beam,
+        n_particles,
+        proposal_sigma_xy,
+        proposal_sigma_theta,
+        proposal_n_samples,
     ):
         # Define experiment params for each run
         yield ExperimentParams(
@@ -119,7 +131,10 @@ def generate_param_grid():
                 sigma_measurement=sigma_meas,
                 every_nth_scan=every_nth,
             ),
-            tag=f"meas{sigma_meas}_nth{every_nth}_npart{n_part}",
+            proposal_sigma_xy=sigma_xy,
+            proposal_sigma_theta=sigma_theta,
+            proposal_n_samples=n_samples,
+            tag=f"meas{sigma_meas}_nth{every_nth}_npart{n_part}_psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}",
         )
 
 
@@ -190,7 +205,8 @@ def main():
     result_writer.write_ranked_runs_csv(
         path=OPTIMIZATION_RESULT_PATH,
         ranked_runs=ranked_runs,
-        override=False
+        override=False,
+        float_decimals=CSV_FLOAT_DECIMALS,
     )
 
     print("Test success")

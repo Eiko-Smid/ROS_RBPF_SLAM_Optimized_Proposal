@@ -48,10 +48,17 @@ class LikelihoodFiledModel(MeasurementModel):
         distances, _ = neighbor.kneighbors(scan_points, n_neighbors=1)
         distances = distances[:, 0]
 
+        # Clip distances to weight bad correspondences lower
+        distances = np.clip(distances, 0.0, 1.0)
+
+        # Use mean error to increase measrument likelihood robustness to outliers
+        mean_error = np.mean((distances / self.sigma) ** 2)
+        prob = np.exp(-0.5 * mean_error)  
+
         # Likelihood (Gaussian)
-        prob = np.exp(
-            -0.5 * np.sum((distances / self.sigma) ** 2)
-        )
+        # prob = np.exp(
+        #     -0.5 * np.sum((distances / self.sigma) ** 2)
+        # )
 
         return float(prob)
 

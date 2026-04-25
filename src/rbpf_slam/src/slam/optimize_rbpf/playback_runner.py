@@ -44,9 +44,12 @@ class PlaybackRunner:
 
             measurements = step.scan[::every_nth] if every_nth > 1 else step.scan
 
-            neff = rbpf.step(
+            neff, scan_match_failed, scan_match_fallback_failed, best_particle_pose = rbpf.step(
                 odom=(step.dl, step.dr),
                 measurements=measurements,
+                proposal_sigma_xy=params.proposal_sigma_xy,
+                proposal_sigma_theta=params.proposal_sigma_theta,
+                proposal_n_samples=params.proposal_n_samples,
             )
 
             est_pose = rbpf.weighted_mean_pose()
@@ -58,6 +61,9 @@ class PlaybackRunner:
                 t=step.t,
                 true_pose=step.true_pose,
                 est_pose=est_pose,
+                best_particle_pose=best_particle_pose,
+                scan_match_failed=scan_match_failed,
+                scan_match_fallback_failed=scan_match_fallback_failed,
                 neff=neff,
                 step_duration=step_duration,
             )

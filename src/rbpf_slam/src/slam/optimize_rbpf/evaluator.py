@@ -19,9 +19,14 @@ class StepResult:
     t: float
     true_pose: Pose2D
     est_pose: Optional[Pose2D]
+    best_particle_pose: Optional[Pose2D]
     neff: Optional[float]
-    translation_error: Optional[float]
-    rotation_error: Optional[float]
+    scan_match_failed: Optional[bool] = None
+    scan_match_fallback_failed: Optional[bool] = None
+    translation_error: Optional[float] = None
+    rotation_error: Optional[float] = None
+    translation_error_best_p: Optional[float] = None
+    rotation_error_best_p: Optional[float] = None
     step_duration: Optional[float] = None
 
 
@@ -39,7 +44,6 @@ class RBPFEvaluator:
     """
     Computes per-step errors and run-level metrics for one RBPF playback run.
     """
-
     @staticmethod
     def _to_pose_tuple(pose) -> Optional[Pose2D]:
         """
@@ -78,6 +82,9 @@ class RBPFEvaluator:
         t: float,
         true_pose,
         est_pose,
+        best_particle_pose,
+        scan_match_failed: Optional[bool],
+        scan_match_fallback_failed: Optional[bool],
         neff: Optional[float],
         step_duration: Optional[float],
     ) -> StepResult:
@@ -86,22 +93,34 @@ class RBPFEvaluator:
         """
         true_pose_t = self._to_pose_tuple(true_pose)
         est_pose_t = self._to_pose_tuple(est_pose)
+        best_particle_pose_t = self._to_pose_tuple(best_particle_pose)
 
         trans_err = None
         rot_err = None
+        trans_err_best_p = None
+        rot_err_best_p = None
 
         if est_pose_t is not None:
             trans_err = self.translation_error(est_pose_t, true_pose_t)
             rot_err = abs(self.angle_diff(est_pose_t[2], true_pose_t[2]))
+
+        if best_particle_pose_t is not None:
+            trans_err_best_p = self.translation_error(best_particle_pose_t, true_pose_t)
+            rot_err_best_p = abs(self.angle_diff(best_particle_pose_t[2], true_pose_t[2]))
 
         return StepResult(
             step_idx=step_idx,
             t=float(t),
             true_pose=true_pose_t,
             est_pose=est_pose_t,
+            best_particle_pose=best_particle_pose_t,
             neff=float(neff) if neff is not None else None,
+            scan_match_failed=scan_match_failed,
+            scan_match_fallback_failed=scan_match_fallback_failed,
             translation_error=trans_err,
             rotation_error=rot_err,
+            translation_error_best_p=trans_err_best_p,
+            rotation_error_best_p=rot_err_best_p,
             step_duration=float(step_duration) if step_duration is not None else None,
         )
 
@@ -111,6 +130,10 @@ class RBPFEvaluator:
         """
         trans_err = [s.translation_error for s in step_results if s.translation_error is not None]
         rot_err = [s.rotation_error for s in step_results if s.rotation_error is not None]
+        trans_err_best_p = [s.translation_error_best_p for s in step_results if s.translation_error_best_p is not None]
+        rot_err_best_p = [s.rotation_error_best_p for s in step_results if s.rotation_error_best_p is not None]
+        scan_match_failed_count = sum(1 for s in step_results if s.scan_match_failed)
+        scan_match_fallback_failed_count = sum(1 for s in step_results if s.scan_match_fallback_failed)
         neff_values = [s.neff for s in step_results if s.neff is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
 
@@ -125,8 +148,16 @@ class RBPFEvaluator:
 
         summary = {
             "n_steps": len(step_results),
+            "scan_match_failed_count": int(scan_match_failed_count),
+            "scan_match_fallback_failed_count": int(scan_match_fallback_failed_count),
+            "mean_translation_error": float(np.mean(trans_err)) if trans_err else float("inf"),
+            "mean_rotation_error": float(np.mean(rot_err)) if rot_err else float("inf"),
             "rmse_translation_error": float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),
             "rmse_rotation_error": float(np.sqrt(np.mean(np.square(rot_err)))) if rot_err else float("inf"),
+            "mean_trans_err_best_p": float(np.mean(trans_err_best_p)) if trans_err_best_p else float("inf"),
+            "mean_rot_err_best_p": float(np.mean(rot_err_best_p)) if rot_err_best_p else float("inf"),
+            "rmse_trans_error_best_p": float(np.sqrt(np.mean(np.square(trans_err_best_p)))) if trans_err_best_p else float("inf"),
+            "rmse_rot_error_best_p": float(np.sqrt(np.mean(np.square(rot_err_best_p)))) if rot_err_best_p else float("inf"),
             "drift": drift,
             "drift_rotation_error": drift_rotation_error,
             "mean_neff": float(np.mean(neff_values)) if neff_values else 0.0,

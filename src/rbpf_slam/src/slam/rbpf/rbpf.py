@@ -181,7 +181,10 @@ class RBPF:
         proposal: ProposalEstimator,
         odom: Tuple[float, float],
         measurements: List[Tuple[float, float]],
-    ) -> Particle:
+        proposal_sigma_xy: float,
+        proposal_sigma_theta: float,
+        proposal_n_samples: int,
+    ) -> Tuple[Particle, bool, bool]:
         '''
         Update step for a single particle. Updates the particle pose, weight and map based on the given odometry
         and measurements. Attention! Weights are not normalized!
@@ -212,6 +215,10 @@ class RBPF:
         Particle
             The updated particle with new pose, weight (not normalized) and the updated map.
         '''
+        # Information for debugging
+        scan_match_failed = False
+        scan_match_fallback_failed = False
+
         # Extract data
         dl, dr = odom
 
@@ -235,10 +242,14 @@ class RBPF:
                 neighbor=trained_nn_tree,
                 motion_model=motion_model,
                 measurement_model=measurement_model,
+                sigma_xy=proposal_sigma_xy,
+                sigma_theta=proposal_sigma_theta,
+                n_samples=proposal_n_samples,
             )
         # Fallback strategy if scan matching fails
         else:
             # Predict particle pose with motion model
+            scan_match_failed = True
             dl_noisy, dr_noisy = motion_model.sample_noisy_ctrl(dl, dr)
             new_pose = motion_model.predict_pose(
                 pose=pred_pose,
@@ -257,6 +268,7 @@ class RBPF:
                 )
             # Fallback strategy if scan matching fails
             else:
+                scan_match_fallback_failed = True
                 p_weight = 1.0
             
         # Update map
@@ -270,14 +282,23 @@ class RBPF:
             pose=new_pose
         )
 
-        return Particle(
+        new_particle = Particle(
             pose=new_pose,
             weight=particle.weight * p_weight,
             scan_matcher=particle.scan_matcher,
         )
 
+        return new_particle, scan_match_failed, scan_match_fallback_failed
 
-    def step(self, odom: Tuple[float, float], measurements: List[Tuple[float, float]]) -> float:
+
+    def step(
+        self,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+        proposal_sigma_xy: float = 1.0,
+        proposal_sigma_theta: float = 1.0,
+        proposal_n_samples: int = 10,
+    ) -> Tuple[float, bool, bool, Pose2D]:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
         1. Update each particle pose, weight and map based on the given odometry and measurements.
@@ -298,15 +319,23 @@ class RBPF:
             particle weights before optional resampling.
         '''
         # Process each particle
+        scan_match_failed_any = False
+        scan_match_fallback_failed_any = False
+
         for i, p in enumerate(self.particles):
-            self.particles[i] = self.update_particle(
+            self.particles[i], scan_match_failed, scan_match_fallback_failed = self.update_particle(
                 particle=p,
                 motion_model=self.motion_model,
                 measurement_model=self.measurement_model,
                 proposal=self.proposal,
                 odom=odom,
-                measurements=measurements
+                measurements=measurements,
+                proposal_sigma_xy=proposal_sigma_xy,
+                proposal_sigma_theta=proposal_sigma_theta,
+                proposal_n_samples=proposal_n_samples,
             )
+            scan_match_failed_any = scan_match_failed_any or scan_match_failed
+            scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
 
         # Normalize particle weights
         # Normalize weights
@@ -324,11 +353,15 @@ class RBPF:
             self.particles[i].weight = norm_weights[i]
 
         # Compute live neff from current normalized weights before resampling.
-        neff_before_resampling = float(self.resampler.compute_neff(norm_weights))
+        neff = float(self.resampler.compute_neff(norm_weights))
+
+        # Best particle pose before optional resampling.
+        best_idx = int(np.argmax(norm_weights))
+        best_particle_pose = self.particles[best_idx].pose
 
         # Resampling
         # Check if resampling is necessary
-        if neff_before_resampling < self.neff_threshold:
+        if neff < self.neff_threshold:
             # Get inidices of particles that have survived
             indices = self.resampler.low_variance_sampler(norm_weights)
 
@@ -347,4 +380,4 @@ class RBPF:
             # Replace old particle set by new set
             self.particles = new_partilces
 
-        return neff_before_resampling
+        return neff, scan_match_failed_any, scan_match_fallback_failed_any, best_particle_pose
