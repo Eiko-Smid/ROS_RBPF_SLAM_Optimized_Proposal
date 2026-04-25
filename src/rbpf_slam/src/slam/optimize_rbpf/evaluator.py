@@ -27,6 +27,9 @@ class StepResult:
     rotation_error: Optional[float] = None
     translation_error_best_p: Optional[float] = None
     rotation_error_best_p: Optional[float] = None
+    particle_weight_min: Optional[float] = None
+    particle_weight_max: Optional[float] = None
+    particle_weight_mean: Optional[float] = None
     step_duration: Optional[float] = None
 
 
@@ -86,6 +89,9 @@ class RBPFEvaluator:
         scan_match_failed: Optional[bool],
         scan_match_fallback_failed: Optional[bool],
         neff: Optional[float],
+        particle_weight_min: Optional[float],
+        particle_weight_max: Optional[float],
+        particle_weight_mean: Optional[float],
         step_duration: Optional[float],
     ) -> StepResult:
         """
@@ -121,6 +127,9 @@ class RBPFEvaluator:
             rotation_error=rot_err,
             translation_error_best_p=trans_err_best_p,
             rotation_error_best_p=rot_err_best_p,
+            particle_weight_min=float(particle_weight_min) if particle_weight_min is not None else None,
+            particle_weight_max=float(particle_weight_max) if particle_weight_max is not None else None,
+            particle_weight_mean=float(particle_weight_mean) if particle_weight_mean is not None else None,
             step_duration=float(step_duration) if step_duration is not None else None,
         )
 
@@ -135,6 +144,9 @@ class RBPFEvaluator:
         scan_match_failed_count = sum(1 for s in step_results if s.scan_match_failed)
         scan_match_fallback_failed_count = sum(1 for s in step_results if s.scan_match_fallback_failed)
         neff_values = [s.neff for s in step_results if s.neff is not None]
+        particle_weight_min_values = [s.particle_weight_min for s in step_results if s.particle_weight_min is not None]
+        particle_weight_max_values = [s.particle_weight_max for s in step_results if s.particle_weight_max is not None]
+        particle_weight_mean_values = [s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
 
         drift = float("inf")
@@ -161,6 +173,9 @@ class RBPFEvaluator:
             "drift": drift,
             "drift_rotation_error": drift_rotation_error,
             "mean_neff": float(np.mean(neff_values)) if neff_values else 0.0,
+            "mean_particle_weight_min": float(np.mean(particle_weight_min_values)) if particle_weight_min_values else 0.0,
+            "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
+            "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
             "mean_step_duration": float(np.mean(step_durations)) if step_durations else 0.0,
         }
 

@@ -31,12 +31,13 @@ class ProposalEstimator:
             self,
             scan_match_pose: Pose2D,
             particle: Particle,
+            odom: Tuple[float, float],
             measurements: List[Tuple[float, float]],
             neighbor: NearestNeighbors,
             motion_model: MotionModel,
             measurement_model: MeasurementModel,
             sigma_xy: float=1.0,
-                sigma_theta: float=1.0,
+            sigma_theta: float=1.0,
             n_samples: int=10,
     ):
         # Define vars
@@ -50,7 +51,15 @@ class ProposalEstimator:
             sigma_xy=sigma_xy,
             sigma_theta=sigma_theta,
             n_samples=n_samples,
-        )        
+        )
+
+        # Predict particle pose based on odometry and old particle pose 
+        dl, dr = odom
+        pred_pose = motion_model.predict_pose(
+            pose=particle.pose,
+            dl=dl,
+            dr=dr,
+        )
 
         # Compute Gaussian parameters µ and Cov
         for i in range(samples.shape[0]):
@@ -64,10 +73,10 @@ class ProposalEstimator:
             
             motion_prob = motion_model.motion_probability(
                 x_new=xj,
-                x_prev=particle.pose,
+                x_prev=pred_pose,
             )
 
-            # COmpute probability and add to normalizer 
+            # Compute probability and add to normalizer 
             w = meas_prob * motion_prob
             weights[i] = w            
 
@@ -110,6 +119,7 @@ class ProposalEstimator:
         self,
         scan_match_pose: Pose2D,
         particle: Particle,
+        odom: Tuple[float, float],
         measurements: List[Tuple[float, float]],
         neighbor: NearestNeighbors,
         motion_model: MotionModel,
@@ -125,6 +135,7 @@ class ProposalEstimator:
         mu, cov, p_weight = self.compute_proposal_param(
             scan_match_pose=scan_match_pose,
             particle=particle,
+            odom=odom,
             measurements=measurements,
             neighbor=neighbor,
             motion_model=motion_model,

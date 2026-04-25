@@ -146,6 +146,36 @@ class RBPF:
         else:
             self.neff_threshold = len(particles) / 2.0
 
+        # Per-step metrics from the latest step call.
+        self._last_step_info = {
+            "neff": None,
+            "scan_match_failed_any": None,
+            "scan_match_fallback_failed_any": None,
+            "best_particle_pose": None,
+            "weighted_mean_pose": None,
+            "particle_weight_min": None,
+            "particle_weight_max": None,
+            "particle_weight_mean": None,
+        }
+
+
+    @staticmethod
+    def _compute_weighted_mean_pose_from_particles(particles: List[Particle]) -> Pose2D:
+        x = 0.0
+        y = 0.0
+        cos_theta = 0.0
+        sin_theta = 0.0
+
+        for p in particles:
+            w = p.weight
+            x += w * p.pose[0]
+            y += w * p.pose[1]
+            cos_theta += w * np.cos(p.pose[2])
+            sin_theta += w * np.sin(p.pose[2])
+
+        theta = np.arctan2(sin_theta, cos_theta)
+        return (x, y, theta)
+
 
     def weighted_mean_pose(self) -> Pose2D:
         '''
@@ -156,21 +186,18 @@ class RBPF:
         Pose2D
             The weighted mean pose of the particle set.
         '''
-        x = 0.0
-        y = 0.0
-        cos_theta = 0.0
-        sin_theta = 0.0
+        # Use pre-resampling weighted mean from latest step if available.
+        if self._last_step_info["weighted_mean_pose"] is not None:
+            return self._last_step_info["weighted_mean_pose"]
 
-        for p in self.particles:
-            w = p.weight
-            x += w * p.pose[0]
-            y += w * p.pose[1]
-            cos_theta += w * np.cos(p.pose[2])
-            sin_theta += w * np.sin(p.pose[2])
+        return self._compute_weighted_mean_pose_from_particles(self.particles)
 
-        theta = np.arctan2(sin_theta, cos_theta)
 
-        return (x, y, theta)
+    def step_info(self) -> dict:
+        """
+        Returns metrics from the latest step() call.
+        """
+        return self._last_step_info.copy()
     
 
     @staticmethod
@@ -238,6 +265,7 @@ class RBPF:
             new_pose, p_weight = proposal.estimate_proposal(
                 scan_match_pose=corr_pose,
                 particle=particle,
+                odom=odom,
                 measurements=measurements,
                 neighbor=trained_nn_tree,
                 motion_model=motion_model,
@@ -252,7 +280,7 @@ class RBPF:
             scan_match_failed = True
             dl_noisy, dr_noisy = motion_model.sample_noisy_ctrl(dl, dr)
             new_pose = motion_model.predict_pose(
-                pose=pred_pose,
+                pose=particle.pose,
                 dl=dl_noisy,
                 dr=dr_noisy,
             )
@@ -261,7 +289,7 @@ class RBPF:
             if trained_nn_tree is not None:
                 # Compute particle weight
                 p_weight = measurement_model.likelihood(
-                    pose=pred_pose,
+                    pose=new_pose,
                     measurements=measurements,
                     scan_matcher= particle.scan_matcher,
                     neighbor=trained_nn_tree,                    
@@ -269,6 +297,7 @@ class RBPF:
             # Fallback strategy if scan matching fails
             else:
                 scan_match_fallback_failed = True
+                # TODO: Maybe set the lower to punish particle if no prob could be computed 
                 p_weight = 1.0
             
         # Update map
@@ -298,7 +327,7 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
-    ) -> Tuple[float, bool, bool, Pose2D]:
+    ) -> None:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
         1. Update each particle pose, weight and map based on the given odometry and measurements.
@@ -314,14 +343,13 @@ class RBPF:
         
         Returns:
         --------
-        float
-            Effective number of particles (neff) computed from the normalized
-            particle weights before optional resampling.
+        None
         '''
-        # Process each particle
+        
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
 
+        # Process each particle
         for i, p in enumerate(self.particles):
             self.particles[i], scan_match_failed, scan_match_fallback_failed = self.update_particle(
                 particle=p,
@@ -355,9 +383,28 @@ class RBPF:
         # Compute live neff from current normalized weights before resampling.
         neff = float(self.resampler.compute_neff(norm_weights))
 
-        # Best particle pose before optional resampling.
+        # Compute metrics
+        # Weighted mean pose before optional resampling.
+        weighted_mean_pose_pre_resampling = self._compute_weighted_mean_pose_from_particles(self.particles)
+        # Get best particle pose before resampling
         best_idx = int(np.argmax(norm_weights))
         best_particle_pose = self.particles[best_idx].pose
+        # Weight statistics before optional resampling.
+        particle_weight_min = float(np.min(norm_weights))
+        particle_weight_max = float(np.max(norm_weights))
+        particle_weight_mean = float(np.mean(norm_weights))
+
+        # Store step metrics before any potential resampling mutates particle set.
+        self._last_step_info = {
+            "neff": neff,
+            "scan_match_failed_any": scan_match_failed_any,
+            "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
+            "best_particle_pose": best_particle_pose,
+            "weighted_mean_pose": weighted_mean_pose_pre_resampling,
+            "particle_weight_min": particle_weight_min,
+            "particle_weight_max": particle_weight_max,
+            "particle_weight_mean": particle_weight_mean,
+        }
 
         # Resampling
         # Check if resampling is necessary
@@ -380,4 +427,4 @@ class RBPF:
             # Replace old particle set by new set
             self.particles = new_partilces
 
-        return neff, scan_match_failed_any, scan_match_fallback_failed_any, best_particle_pose
+        return neff, weighted_mean_pose_pre_resampling

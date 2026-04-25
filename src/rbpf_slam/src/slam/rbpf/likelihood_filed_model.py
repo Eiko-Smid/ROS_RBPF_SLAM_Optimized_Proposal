@@ -1,5 +1,5 @@
 
-from typing import List, Tuple, Any
+from typing import List, Tuple
 
 import numpy as np
 
@@ -11,9 +11,8 @@ from slam.infrastructure.defs import Pose2D
 
 
 class LikelihoodFiledModel(MeasurementModel):
-    def __init__(self, sigma: float=0.1, every_nth_measurement: int = 5) -> None:
+    def __init__(self, sigma: float=0.1) -> None:
         self.sigma = sigma
-        self.every_nth_measurement: int = every_nth_measurement
          
     
     def likelihood(
@@ -30,9 +29,6 @@ class LikelihoodFiledModel(MeasurementModel):
 
         if len(measurements) < 3:
             return 1e-9
-
-        # Subsample measurements for speed
-        measurements = measurements[::self.every_nth_measurement]
 
         # Transform to points
         scan_points = scan_matcher.transform_measurements_to_points(

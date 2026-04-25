@@ -42,9 +42,10 @@ class PlaybackRunner:
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
 
+            # Subsample measruements
             measurements = step.scan[::every_nth] if every_nth > 1 else step.scan
 
-            neff, scan_match_failed, scan_match_fallback_failed, best_particle_pose = rbpf.step(
+            _, _ = rbpf.step(
                 odom=(step.dl, step.dr),
                 measurements=measurements,
                 proposal_sigma_xy=params.proposal_sigma_xy,
@@ -52,7 +53,15 @@ class PlaybackRunner:
                 proposal_n_samples=params.proposal_n_samples,
             )
 
-            est_pose = rbpf.weighted_mean_pose()
+            info = rbpf.step_info()
+            est_pose = info.get("weighted_mean_pose")
+            best_particle_pose = info.get("best_particle_pose")
+            neff = info.get("neff")
+            scan_match_failed = info.get("scan_match_failed_any")
+            scan_match_fallback_failed = info.get("scan_match_fallback_failed_any")
+            particle_weight_min = info.get("particle_weight_min")
+            particle_weight_max = info.get("particle_weight_max")
+            particle_weight_mean = info.get("particle_weight_mean")
 
             step_duration = time.time() - step_start_time
 
@@ -65,6 +74,9 @@ class PlaybackRunner:
                 scan_match_failed=scan_match_failed,
                 scan_match_fallback_failed=scan_match_fallback_failed,
                 neff=neff,
+                particle_weight_min=particle_weight_min,
+                particle_weight_max=particle_weight_max,
+                particle_weight_mean=particle_weight_mean,
                 step_duration=step_duration,
             )
 

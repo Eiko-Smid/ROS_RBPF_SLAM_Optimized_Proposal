@@ -81,6 +81,9 @@ class ResultWriter:
 					"rmse_rot_error_deg_best_p",
 					"drift",
 					"mean_neff",
+					"mean_particle_weight_min",
+					"mean_particle_weight_max",
+					"mean_particle_weight_mean",
 					"mean_step_duration_ms",
 					"n_steps",
 				]
@@ -112,6 +115,9 @@ class ResultWriter:
 					math.degrees(summary.get("rmse_rot_error_best_p")) if summary.get("rmse_rot_error_best_p") is not None else None,
 					summary.get("drift"),
 					summary.get("mean_neff"),
+					summary.get("mean_particle_weight_min"),
+					summary.get("mean_particle_weight_max"),
+					summary.get("mean_particle_weight_mean"),
 					(summary.get("mean_step_duration", 0.0) or 0.0) * 1000.0,
 					summary.get("n_steps"),
 				]

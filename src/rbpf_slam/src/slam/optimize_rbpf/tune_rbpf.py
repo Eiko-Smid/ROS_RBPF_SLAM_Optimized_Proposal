@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import debugpy
+debugpy.listen(("localhost", 5678))
+print("Waiting for debugger attach...")
+debugpy.wait_for_client()
+
 import itertools
 
 from .playback_defs import ExperimentParams, PlaybackData
@@ -27,7 +32,7 @@ from .result_writer import ResultWriter
 # PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
 PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_5.csv'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_7.csv'
 CSV_FLOAT_DECIMALS = 4
 
 
@@ -54,7 +59,8 @@ def generate_param_grid():
     n_particles = [40]
 
     # Proposal parameter
-    proposal_sigma_xy = [0.1, 0.2]
+    # proposal_sigma_xy = [0.1, 0.2]
+    proposal_sigma_xy = [0.1]
     proposal_sigma_theta = [0.05]
     proposal_n_samples = [10]
 
@@ -95,7 +101,7 @@ def generate_param_grid():
             map_param=MapParameter(
                 map_width=10.0,
                 map_height=10.0,
-                grid_resolution_m=0.5,
+                grid_resolution_m=0.05,
             ),
             icp_params=ICPParams(
                 max_n_points=400,
