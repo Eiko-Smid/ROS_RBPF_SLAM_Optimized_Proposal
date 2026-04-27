@@ -44,7 +44,6 @@ class MotionModelParams:
 @dataclass(frozen=True)
 class MeasurementModelParams:
     sigma_measurement: float
-    every_nth_scan: int
 
 
 
@@ -147,8 +146,11 @@ class RBPF:
             self.neff_threshold = len(particles) / 2.0
 
         # Per-step metrics from the latest step call.
+        self._step_counter = -1
         self._last_step_info = {
+            "step": None,
             "neff": None,
+            "true_pose": None,
             "scan_match_failed_any": None,
             "scan_match_fallback_failed_any": None,
             "best_particle_pose": None,
@@ -207,7 +209,8 @@ class RBPF:
         measurement_model: MeasurementModel,
         proposal: ProposalEstimator,
         odom: Tuple[float, float],
-        measurements: List[Tuple[float, float]],
+        measurements_proposal: List[Tuple[float, float]],
+        measurements_map_update: List[Tuple[float, float]],
         proposal_sigma_xy: float,
         proposal_sigma_theta: float,
         proposal_n_samples: int,
@@ -234,8 +237,10 @@ class RBPF:
             The proposal estimator used for computing the optimized proposal distribution.
         odom: Tuple[float, float]
             The odometry measurements (dl, dr) for the current time step.
-        measurements: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the current time step.
+        measurements_proposal: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the proposal step.
+        measurements_map_update: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the map update step.
 
         Returns:
         --------        
@@ -254,7 +259,7 @@ class RBPF:
             old_pose=particle.pose,
             dl=dl,
             dr=dr, 
-            measurements=measurements,
+            measurements=measurements_proposal,
         )
 
         # Get trained map points
@@ -266,7 +271,7 @@ class RBPF:
                 scan_match_pose=corr_pose,
                 particle=particle,
                 odom=odom,
-                measurements=measurements,
+                measurements=measurements_proposal,
                 neighbor=trained_nn_tree,
                 motion_model=motion_model,
                 measurement_model=measurement_model,
@@ -290,7 +295,7 @@ class RBPF:
                 # Compute particle weight
                 p_weight = measurement_model.likelihood(
                     pose=new_pose,
-                    measurements=measurements,
+                    measurements=measurements_proposal,
                     scan_matcher= particle.scan_matcher,
                     neighbor=trained_nn_tree,                    
                 )
@@ -307,7 +312,7 @@ class RBPF:
             extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(new_pose)
         # Update map
         particle.scan_matcher.ogm.update_map(
-            measurements=measurements,
+            measurements=measurements_map_update,
             pose=new_pose
         )
 
@@ -323,23 +328,32 @@ class RBPF:
     def step(
         self,
         odom: Tuple[float, float],
-        measurements: List[Tuple[float, float]],
+        measurements_proposal: List[Tuple[float, float]],
+        measurements_map_update: List[Tuple[float, float]],
+        true_pose: Optional[Pose2D] = None,
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
-    ) -> None:
+    ) -> Tuple[float, Pose2D]:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
         1. Update each particle pose, weight and map based on the given odometry and measurements.
         2. Normalize particle weights.
         3. Resample particles if necessary based on the effective number of particles (neff).
 
+        We got to different values for the measurements. measurements_proposal is used for the scan matching and 
+        proposal distribution estimation, while measurements_map_update is used for updating the map. 
+        This allows to use different measurement subsets for the different steps, e.g. using a subsampled scan for 
+        the scan matching and proposal estimation, while using the full scan for the map update.
+
         Parameters:
         --------
         odom: Tuple[float, float]
             The odometry measurements (dl, dr) for the current time step.
-        measurements: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the current time step.
+        measurements_proposal: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the proposal step.
+        measurements_map_update: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the map update step.
         
         Returns:
         --------
@@ -348,6 +362,8 @@ class RBPF:
         
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
+        self._step_counter += 1
+        step_idx = self._step_counter
 
         # Process each particle
         for i, p in enumerate(self.particles):
@@ -357,7 +373,8 @@ class RBPF:
                 measurement_model=self.measurement_model,
                 proposal=self.proposal,
                 odom=odom,
-                measurements=measurements,
+                measurements_proposal=measurements_proposal,
+                measurements_map_update=measurements_map_update,
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
@@ -396,7 +413,9 @@ class RBPF:
 
         # Store step metrics before any potential resampling mutates particle set.
         self._last_step_info = {
+            "step": step_idx,
             "neff": neff,
+            "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
             "best_particle_pose": best_particle_pose,

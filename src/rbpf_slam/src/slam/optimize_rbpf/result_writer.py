@@ -10,6 +10,22 @@ from .optimizer import RankedRun
 
 class ResultWriter:
 	@staticmethod
+	def _pose_to_csv_value(pose):
+		if pose is None:
+			return ""
+		return f"{float(pose[0]):.8f};{float(pose[1]):.8f};{float(pose[2]):.8f}"
+
+	@staticmethod
+	def _safe_filename(value: str) -> str:
+		allowed = []
+		for c in value:
+			if c.isalnum() or c in ("-", "_"):
+				allowed.append(c)
+			else:
+				allowed.append("_")
+		return "".join(allowed).strip("_") or "run"
+
+	@staticmethod
 	def _format_csv_value(value, float_decimals: int):
 		"""
 		Format float-like values with fixed decimal places while leaving other values unchanged.
@@ -98,7 +114,7 @@ class ResultWriter:
 					run.params.tag,
 					summary.get("n_particles"),
 					summary.get("sigma_measurement"),
-					run.params.measurement_model_params.every_nth_scan,
+					run.params.every_nth_scan,
 					run.params.proposal_sigma_xy,
 					run.params.proposal_sigma_theta,
 					run.params.proposal_n_samples,
@@ -130,3 +146,68 @@ class ResultWriter:
 				)
 
 		print(f"\nOptimization run has been saved to:\n{path}")
+
+
+	@staticmethod
+	def write_ranked_step_traces_csv(
+		output_dir: str,
+		ranked_runs: List[RankedRun],
+		override: bool = False,
+		float_decimals: int = 6,
+	) -> None:
+		"""
+		Writes one per-step trace CSV per ranked run.
+
+		This export is independent from RBPF internals and uses stored step results.
+		"""
+		output_dir_path = Path(output_dir)
+		output_dir_path.mkdir(parents=True, exist_ok=True)
+
+		for rank, run in enumerate(ranked_runs, start=1):
+			safe_tag = ResultWriter._safe_filename(str(run.params.tag))
+			file_name = f"rank_{rank:03d}_{safe_tag}_step_trace.csv"
+			file_path = output_dir_path / file_name
+
+			if file_path.exists() and not override:
+				print(f"Skipping step trace (exists, override=False): {file_path}")
+				continue
+
+			with open(file_path, "w", newline="") as f:
+				writer = csv.writer(f)
+				writer.writerow(
+					[
+						"step",
+						"neff",
+						"trans_error_best_p",
+						"rot_error_best_p",
+						"trans_error",
+						"rot_error",
+						"particle_weight_min",
+						"particle_weight_max",
+						"particle_weight_mean",
+						"scan_match_fallback_failed_any",
+					]
+				)
+
+				for step in run.step_results:
+					row = [
+						step.step_idx,
+						step.neff,
+						step.translation_error_best_p,
+						step.rotation_error_best_p,
+						step.translation_error,
+						step.rotation_error,
+						step.particle_weight_min,
+						step.particle_weight_max,
+						step.particle_weight_mean,
+						step.scan_match_fallback_failed,
+					]
+
+					writer.writerow(
+						[
+							ResultWriter._format_csv_value(value, float_decimals=float_decimals)
+							for value in row
+						]
+					)
+
+		print(f"\nStep trace CSV files written to:\n{output_dir}")

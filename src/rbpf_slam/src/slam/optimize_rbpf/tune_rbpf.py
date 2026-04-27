@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-import debugpy
-debugpy.listen(("localhost", 5678))
-print("Waiting for debugger attach...")
-debugpy.wait_for_client()
+# import debugpy
+# debugpy.listen(("localhost", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
 
 import itertools
 
@@ -29,11 +29,13 @@ from .result_writer import ResultWriter
 
 
 # Playback data path defs
-# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
-# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
-PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_7.csv'
+PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
+# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
+# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_8_full_playback.csv'
+STEP_TRACE_OUTPUT_DIR = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/step_traces'
 CSV_FLOAT_DECIMALS = 4
+N_PLAYBACK_STEPS = None     # Set an integer (e.g. 200) to use only the first N steps.
 
 
 def generate_param_grid():
@@ -52,7 +54,7 @@ def generate_param_grid():
     sigma_measurement = [0.2]
     # sigma_measurement = [0.1, 0.2, 0.4]
     # every_nth_beam = [5, 10, 20]
-    every_nth_beam = [5]
+    every_nth_beam = [1]
     
     # RBPF param
     # n_particles = [30, 40, 50]
@@ -89,7 +91,7 @@ def generate_param_grid():
             occupancy_params=OccupancyParams(
                 prior_probability=0.5,
                 min_distance_to_border=10.0,
-                increasing_probability=0.65,
+                increasing_probability=0.7,
                 decreasing_probability=0.35,
                 min_log_odds=-5.0,
                 max_log_odds=5.0,
@@ -118,7 +120,7 @@ def generate_param_grid():
                 wheel_separation=wheel_separation,
             ),
             scan_matcher_params=ScanMatcherParams(
-                occ_thres=1.5,
+                occ_thres=1.2,
                 delta_r=0.6,
             ),
             particle_params=ParticleParams(
@@ -135,8 +137,8 @@ def generate_param_grid():
             ),
             measurement_model_params=MeasurementModelParams(
                 sigma_measurement=sigma_meas,
-                every_nth_scan=every_nth,
             ),
+            every_nth_scan=every_nth,
             proposal_sigma_xy=sigma_xy,
             proposal_sigma_theta=sigma_theta,
             proposal_n_samples=n_samples,
@@ -188,7 +190,10 @@ def build_optimizer():
 
 def main():
     # Load playback data
-    steps = load_playback_dataset(base_path_prefix=PLAYBACK_DATA_PATH_PREF)
+    steps = load_playback_dataset(
+        base_path_prefix=PLAYBACK_DATA_PATH_PREF,
+        n_steps=N_PLAYBACK_STEPS,
+    )
 
     # Build playback data
     playback_data = PlaybackData(
@@ -212,6 +217,14 @@ def main():
         path=OPTIMIZATION_RESULT_PATH,
         ranked_runs=ranked_runs,
         override=False,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    # Save independent per-step diagnostic traces for each ranked run.
+    result_writer.write_ranked_step_traces_csv(
+        output_dir=STEP_TRACE_OUTPUT_DIR,
+        ranked_runs=ranked_runs,
+        override=True,
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 

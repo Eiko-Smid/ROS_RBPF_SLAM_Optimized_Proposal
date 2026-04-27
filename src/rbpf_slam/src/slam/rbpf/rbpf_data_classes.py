@@ -9,7 +9,6 @@ class MeasurementModelParams:
     Parameters for the measurement model, including the measurement noise and the frequency of scan matching.
     '''
     sigma_measurement: float
-    every_nth_scan: int
 
 
 @dataclass

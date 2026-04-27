@@ -1,7 +1,7 @@
 import csv
 import json
 import numpy as np
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from .playback_defs import StepData, ExperimentParams
 
@@ -43,7 +43,7 @@ def load_steps(steps_csv_path: str, scans_jsonl_path: str) -> List[StepData]:
     return steps
 
 
-def load_playback_dataset(base_path_prefix: str) -> List[StepData]:
+def load_playback_dataset(base_path_prefix: str, n_steps: Optional[int] = None) -> List[StepData]:
     """
     Example:
     base_path_prefix = "/path/to/123456_python_playback_data"
@@ -52,6 +52,23 @@ def load_playback_dataset(base_path_prefix: str) -> List[StepData]:
         steps_csv_path=base_path_prefix + "_steps.csv",
         scans_jsonl_path=base_path_prefix + "_scans.jsonl",
     )
+
+    if n_steps is None:
+        return steps
+
+    n_steps = int(n_steps)
+    if n_steps <= 0:
+        return []
+
+    actual_steps = len(steps)
+    if actual_steps < n_steps:
+        print(
+            f"WARNING: requested n_steps={n_steps}, but dataset only has {actual_steps} steps. "
+            "Returning all available steps."
+        )
+        return steps
+
+    steps = steps[:n_steps]
 
     return steps
 

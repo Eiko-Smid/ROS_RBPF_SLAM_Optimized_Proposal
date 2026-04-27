@@ -14,6 +14,7 @@ class RankedRun:
     params: ExperimentParams
     summary: dict
     score: float
+    step_results: list
 
 
 class RBPFOptimizer:
@@ -50,6 +51,7 @@ class RBPFOptimizer:
                     params=params,
                     summary=run_result.summary,
                     score=score,
+                    step_results=run_result.step_results,
                 )
             )
 
