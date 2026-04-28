@@ -49,7 +49,7 @@ class PlaybackRunner:
             # Subsample measurements
             measurements_map = step.scan
             measurements_proposal = step.scan[::every_nth] if every_nth > 1 else step.scan
-            print(f"Scans used for current step {step_idx}: {len(measurements_proposal)} out of {len(measurements_map)}")
+            # print(f"Scans used for current step {step_idx}: {len(measurements_proposal)} out of {len(measurements_map)}")
 
             # Run rbpf filter step
             rbpf.step(

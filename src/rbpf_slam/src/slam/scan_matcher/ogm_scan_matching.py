@@ -501,10 +501,11 @@ class OGM:
             reflecting_cell= None
         else: 
             # Ensure angles between -pi and pi
-            bearing= atan2(sin(bearing), cos(bearing))
-            heading= atan2(sin(heading), cos(heading))
-            # Calculate x,y-position of reflected beam.
-            phi= atan2(sin(heading + bearing), cos(heading + bearing))
+            # bearing= atan2(sin(bearing), cos(bearing))
+            # heading= atan2(sin(heading), cos(heading))
+            # # Calculate x,y-position of reflected beam.
+            phi = heading + bearing
+            # phi = atan2(sin(phi), cos(phi))
             reflection_point_x= x + range * cos(phi)
             reflection_point_y= y + range* sin(phi)
             # Transfrom cell coordinates to cell indices.
@@ -584,6 +585,45 @@ class OGM:
             self.log_odds_map[cell_i][cell_j]= new_log_odds_value
 
 
+    def update_cells(self, start_grid_idx, end_grid_idx):
+        y, x = start_grid_idx
+        y_end, x_end = end_grid_idx
+
+        dx = abs(x_end - x)
+        dy = abs(y_end - y)
+
+        sx = 1 if x < x_end else -1
+        sy = 1 if y < y_end else -1
+
+        err = dx - dy
+
+        while True:
+            # ---- THIS IS YOUR update_affected_cells LOGIC ----
+            old_log_odds_value = self.log_odds_map[y][x]
+
+            if not (old_log_odds_value <= self.min_log_odds or old_log_odds_value >= self.max_log_odds):
+
+                # last cell = reflecting cell
+                if (y == y_end and x == x_end):
+                    new_log_odds_value = old_log_odds_value + self.log_odds_increasing_probability
+                else:
+                    new_log_odds_value = old_log_odds_value + self.log_odds_decreasing_probability
+
+                self.log_odds_map[y][x] = new_log_odds_value
+
+            # stop condition
+            if y == y_end and x == x_end:
+                break
+
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            if e2 < dx:
+                err += dx
+                y += sy
+            
+
     def update_map(self, measurements: List[Tuple[float, float]], pose: Tuple[float, float, float]) -> None:
         '''Update the logOdds map by the given (x, y, heading) pose and (range, bearing) measurements. 
         Bounds the values of the logOdds map.'''
@@ -596,8 +636,12 @@ class OGM:
             # Check if there was a reflecting cell 
             if(relfecting_cell):
                 # Find all grid cells between pose and reflecting grid cell
-                affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
-                self.update_affected_cells(affected_cells)
+                # affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
+                # self.update_affected_cells(affected_cells)
+                self.update_cells(
+                    start_grid_idx=(pose_i, pose_j),
+                    end_grid_idx=(relfecting_cell),
+                )
     
 
     #_______________________________________________________________________________________________________________
