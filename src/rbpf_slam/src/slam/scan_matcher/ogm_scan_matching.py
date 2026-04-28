@@ -87,6 +87,97 @@ def extract_map_numba(
     return map_points[:count]
 
 
+@njit
+def update_map_numba(
+    log_odds_map,
+    measurements,
+    x,
+    y,
+    heading,
+    shift_x,
+    shift_y,
+    grid_resolution,
+    min_sensor_range,
+    max_sensor_range,
+    log_odds_decreasing_probability,
+    log_odds_increasing_probability,
+    min_log_odds,
+    max_log_odds,
+):
+    n_rows, n_cols = log_odds_map.shape
+
+    # Robot pose cell
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return
+
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        # Same logic as find_reflecting_grid_cell()
+        if r <= min_sensor_range or r >= max_sensor_range or not np.isfinite(r):
+            continue
+
+        phi = heading + bearing
+
+        reflection_point_x = x + r * np.cos(phi)
+        reflection_point_y = y + r * np.sin(phi)
+
+        y_end = int(np.floor((reflection_point_y + shift_y) / grid_resolution))
+        x_end = int(np.floor((reflection_point_x + shift_x) / grid_resolution))
+
+        # Safety check
+        if y_end < 0 or y_end >= n_rows or x_end < 0 or x_end >= n_cols:
+            continue
+
+        # ------------------------------------------------------------------
+        # Bresenham + map update directly combined
+        # Same idea as your current update_cells()
+        # ------------------------------------------------------------------
+        cell_y = pose_i
+        cell_x = pose_j
+
+        dx = abs(x_end - cell_x)
+        dy = abs(y_end - cell_y)
+
+        sx = 1 if cell_x < x_end else -1
+        sy = 1 if cell_y < y_end else -1
+
+        err = dx - dy
+
+        while True:
+            old_log_odds_value = log_odds_map[cell_y, cell_x]
+
+            if old_log_odds_value > min_log_odds and old_log_odds_value < max_log_odds:
+                if cell_y == y_end and cell_x == x_end:
+                    log_odds_map[cell_y, cell_x] = (
+                        old_log_odds_value + log_odds_increasing_probability
+                    )
+                else:
+                    log_odds_map[cell_y, cell_x] = (
+                        old_log_odds_value + log_odds_decreasing_probability
+                    )
+
+            if cell_y == y_end and cell_x == x_end:
+                break
+
+            e2 = 2 * err
+
+            if e2 > -dy:
+                err -= dy
+                cell_x += sx
+
+            if e2 < dx:
+                err += dx
+                cell_y += sy
+
+            # Safety check during ray tracing
+            if cell_y < 0 or cell_y >= n_rows or cell_x < 0 or cell_x >= n_cols:
+                break
+
 
 class OGM:
     '''
@@ -625,6 +716,36 @@ class OGM:
             
 
     def update_map(self, measurements: List[Tuple[float, float]], pose: Tuple[float, float, float]) -> None:
+        """
+        Update the logOdds map by the given pose and laser measurements.
+        Numba-optimized version.
+        """
+        measurements_np = np.asarray(measurements, dtype=np.float64)
+
+        if measurements_np.size == 0:
+            return
+
+        x, y, heading = pose
+
+        update_map_numba(
+            self.log_odds_map,
+            measurements_np,
+            x,
+            y,
+            heading,
+            self.shift_x,
+            self.shift_y,
+            self.grid_resolution_m,
+            self.min_sensor_range,
+            self.max_sensor_range,
+            self.log_odds_decreasing_probability,
+            self.log_odds_increasing_probability,
+            self.min_log_odds,
+            self.max_log_odds,
+        )
+
+    
+    def update_map_copy(self, measurements: List[Tuple[float, float]], pose: Tuple[float, float, float]) -> None:
         '''Update the logOdds map by the given (x, y, heading) pose and (range, bearing) measurements. 
         Bounds the values of the logOdds map.'''
         x, y, heading= pose
@@ -642,7 +763,6 @@ class OGM:
                     start_grid_idx=(pose_i, pose_j),
                     end_grid_idx=(relfecting_cell),
                 )
-    
 
     #_______________________________________________________________________________________________________________
     # Map extraction
