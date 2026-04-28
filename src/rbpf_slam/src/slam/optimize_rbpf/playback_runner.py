@@ -49,7 +49,7 @@ class PlaybackRunner:
             # Subsample measurements
             measurements_map = step.scan
             measurements_proposal = step.scan[::every_nth] if every_nth > 1 else step.scan
-            print("Scans used for current step:", len(measurements_proposal), "out of", len(measurements_map))
+            print(f"Scans used for current step {step_idx}: {len(measurements_proposal)} out of {len(measurements_map)}")
 
             # Run rbpf filter step
             rbpf.step(
@@ -101,4 +101,37 @@ class PlaybackRunner:
             step_results=run_result.step_results,
             params=params,
         )
+        timing_summary = rbpf.timing_summary()
+        run_result.summary.update(timing_summary)
+
+        def _to_ms(value):
+            return value * 1000.0 if value is not None else None
+
+        print("RBPF timing summary (mean per run):")
+        print(f"  update_particles: {_to_ms(timing_summary.get('mean_timing_update_particles_s'))} ms")
+        print(f"  normalize+neff: {_to_ms(timing_summary.get('mean_timing_normalize_neff_s'))} ms")
+        print(f"  metrics: {_to_ms(timing_summary.get('mean_timing_metrics_s'))} ms")
+        print(f"  resampling (when triggered): {_to_ms(timing_summary.get('mean_timing_resampling_s'))} ms")
+        print("  update_particle internals:")
+        print(
+            f"    scan_match.update_pose: {_to_ms(timing_summary.get('mean_timing_scan_match_update_pose_s'))} ms "
+            f"(count={timing_summary.get('timing_scan_match_update_pose_count')})"
+        )
+        print(
+            f"    proposal.estimate_proposal: {_to_ms(timing_summary.get('mean_timing_proposal_estimation_s'))} ms "
+            f"(count={timing_summary.get('timing_proposal_estimation_count')})"
+        )
+        print(
+            f"    scan_match fallback block: {_to_ms(timing_summary.get('mean_timing_scan_match_fallback_s'))} ms "
+            f"(count={timing_summary.get('timing_scan_match_fallback_count')})"
+        )
+        print(
+            f"    map_extension_if_necessary loop: {_to_ms(timing_summary.get('mean_timing_map_extension_s'))} ms "
+            f"(count={timing_summary.get('timing_map_extension_count')})"
+        )
+        print(
+            f"    ogm.update_map: {_to_ms(timing_summary.get('mean_timing_map_update_s'))} ms "
+            f"(count={timing_summary.get('timing_map_update_count')})"
+        )
+
         return run_result

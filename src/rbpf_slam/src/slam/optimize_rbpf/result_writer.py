@@ -150,7 +150,7 @@ class ResultWriter:
 
 	@staticmethod
 	def write_ranked_step_traces_csv(
-		output_dir: str,
+		output_path: str,
 		ranked_runs: List[RankedRun],
 		override: bool = False,
 		float_decimals: int = 6,
@@ -160,37 +160,37 @@ class ResultWriter:
 
 		This export is independent from RBPF internals and uses stored step results.
 		"""
-		output_dir_path = Path(output_dir)
-		output_dir_path.mkdir(parents=True, exist_ok=True)
+		output_file_path = Path(output_path)
+		output_file_path.parent.mkdir(parents=True, exist_ok=True)
 
-		for rank, run in enumerate(ranked_runs, start=1):
-			safe_tag = ResultWriter._safe_filename(str(run.params.tag))
-			file_name = f"rank_{rank:03d}_{safe_tag}_step_trace.csv"
-			file_path = output_dir_path / file_name
+		if output_file_path.exists() and not override:
+			print(f"Skipping step trace (exists, override=False): {output_file_path}")
+			return
 
-			if file_path.exists() and not override:
-				print(f"Skipping step trace (exists, override=False): {file_path}")
-				continue
+		with open(output_file_path, "w", newline="") as f:
+			writer = csv.writer(f)
+			writer.writerow(
+				[
+					"rank",
+					"tag",
+					"step_id",
+					"neff",
+					"trans_error_best_p",
+					"rot_error_best_p",
+					"trans_error",
+					"rot_error",
+					"particle_weight_min",
+					"particle_weight_max",
+					"particle_weight_mean",
+					"scan_match_fallback_failed_any",
+				]
+			)
 
-			with open(file_path, "w", newline="") as f:
-				writer = csv.writer(f)
-				writer.writerow(
-					[
-						"step",
-						"neff",
-						"trans_error_best_p",
-						"rot_error_best_p",
-						"trans_error",
-						"rot_error",
-						"particle_weight_min",
-						"particle_weight_max",
-						"particle_weight_mean",
-						"scan_match_fallback_failed_any",
-					]
-				)
-
+			for rank, run in enumerate(ranked_runs, start=1):
 				for step in run.step_results:
 					row = [
+						rank,
+						run.params.tag,
 						step.step_idx,
 						step.neff,
 						step.translation_error_best_p,
@@ -210,4 +210,4 @@ class ResultWriter:
 						]
 					)
 
-		print(f"\nStep trace CSV files written to:\n{output_dir}")
+		print(f"\nStep trace CSV files written to:\n{output_path}")

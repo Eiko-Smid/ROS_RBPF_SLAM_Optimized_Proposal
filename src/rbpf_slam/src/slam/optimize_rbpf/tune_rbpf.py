@@ -29,13 +29,14 @@ from .result_writer import ResultWriter
 
 
 # Playback data path defs
-PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
-# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
-# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_8_full_playback.csv'
-STEP_TRACE_OUTPUT_DIR = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/step_traces'
+# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
+# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
+PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_8_playback.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_8_steps.csv'
 CSV_FLOAT_DECIMALS = 4
-N_PLAYBACK_STEPS = None     # Set an integer (e.g. 200) to use only the first N steps.
+OVERRIDE_EXISTING_RESULTS = False
+N_PLAYBACK_STEPS = 20     # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 
 
 def generate_param_grid():
@@ -216,15 +217,15 @@ def main():
     result_writer.write_ranked_runs_csv(
         path=OPTIMIZATION_RESULT_PATH,
         ranked_runs=ranked_runs,
-        override=False,
+        override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 
     # Save independent per-step diagnostic traces for each ranked run.
     result_writer.write_ranked_step_traces_csv(
-        output_dir=STEP_TRACE_OUTPUT_DIR,
+        output_path=STEP_TRACE_PATH,
         ranked_runs=ranked_runs,
-        override=True,
+        override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 

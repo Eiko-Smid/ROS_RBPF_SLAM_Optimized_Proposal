@@ -42,3 +42,5 @@ maps/*~
 *.jpg
 *.jpeg
 
+# Delete venv from git history, as it is not needed and can be large. --- IGNORE ---
+.venv
