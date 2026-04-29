@@ -27,23 +27,57 @@ from .optimizer import ScanMatcherOptimizer
 from .result_writer import ResultWriter
 
 
+'''
+9.0 Run after numba for map update
+- The mean_tran_err was at 7.42 m
+
+9.1 Another run with numba for map update
+- Here we were at 4.83
+
+9.2 Run without numba but used new method which already had (35 % speedup)
+- Already way closer to the original results
+- Here we had mean_tran_err = 1.2 
+- But i am still unsure why the results differ that much
+
+9.3 with completly old ogm (despite angle normalization)
+- mean trasn err = 0.418
+
+9.4 with completly old ogm (despite angle normalization)
+- mean trasn err = 0.535
+
+9.5 With corrected numba version
+- mean trans err = 
+
+9.6 Added possibility to run the dsame grid several time in a row. This is to check the stability of the results.
+- We ran the same grid parameters 5 times. 
+- We used the same playback data and the same code in each run.
+- Unfortunately we ended up with totally different results
+- We must check if numba variant produces the same results than old ogm. IF so it's not the fault of the new optimized code
+- If not the numba version is wrong
+
+'''
+
 
 # Playback data path defs
 # PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
 PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_9_map_speedup.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_9_map_speedup_steps.csv'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_9_6_map_speedup.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_9_6_map_speedup_steps.csv'
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None     # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_OPTIMIZATION_REPEATS = 5  # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 
 
-def generate_param_grid():
+def generate_param_grid(n_repeats: int = 1):
     '''
     Defined the parameter grid for the RBPF SLAM optimization. This is a generator that yields ExperimentParams for
     each combination of parameters in the grid.
     '''
+    if n_repeats < 1:
+        raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
+
     # Motion model params
     # sigma_x = [0.05, 0.1, 0.2]
     # sigma_y = [0.05, 0.1, 0.2]
@@ -79,73 +113,76 @@ def generate_param_grid():
     wheel_separation= 2 * r_chassis + w_wheel
 
 
-    for sigma_meas, every_nth, n_part, sigma_xy, sigma_theta, n_samples in itertools.product(
-        sigma_measurement,
-        every_nth_beam,
-        n_particles,
-        proposal_sigma_xy,
-        proposal_sigma_theta,
-        proposal_n_samples,
-    ):
-        # Define experiment params for each run
-        yield ExperimentParams(
-            occupancy_params=OccupancyParams(
-                prior_probability=0.5,
-                min_distance_to_border=10.0,
-                increasing_probability=0.7,
-                decreasing_probability=0.35,
-                min_log_odds=-5.0,
-                max_log_odds=5.0,
-            ),
-            sensor_params=SensorParams(
-                min_sensor_range=0.1,
-                max_sensor_range=10.0,
-            ),
-            map_param=MapParameter(
-                map_width=10.0,
-                map_height=10.0,
-                grid_resolution_m=0.05,
-            ),
-            icp_params=ICPParams(
-                max_n_points=400,
-                max_correspondence_distance=0.6,
-                neighbors_pca=10,
-                max_iterations=5,
-                epsilon_rel=1e-3,
-                no_improvement_limit=3,
-                min_error=5e-4,
-                min_dtrans=1e-3, 
-                min_drot=1e-2,
-            ),
-            robot_params=RobotParams(
-                wheel_separation=wheel_separation,
-            ),
-            scan_matcher_params=ScanMatcherParams(
-                occ_thres=1.2,
-                delta_r=0.6,
-            ),
-            particle_params=ParticleParams(
-                n_particles=n_part,
-                start_pose=(0.0, 0.0, 0.0),
-            ),
-            motion_model_params=MotionModelParams(
-                sigma_x=0.2,
-                sigma_y=0.2, 
-                sigma_theta=0.15, 
-                wheel_separation=wheel_separation,
-                ctrl_motion_fac=0.1,
-                ctrl_turn_fac=0.20, 
-            ),
-            measurement_model_params=MeasurementModelParams(
-                sigma_measurement=sigma_meas,
-            ),
-            every_nth_scan=every_nth,
-            proposal_sigma_xy=sigma_xy,
-            proposal_sigma_theta=sigma_theta,
-            proposal_n_samples=n_samples,
-            tag=f"meas{sigma_meas}_nth{every_nth}_npart{n_part}_psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}",
-        )
-
+    for repeat_idx in range(1, n_repeats + 1):
+        for sigma_meas, every_nth, n_part, sigma_xy, sigma_theta, n_samples in itertools.product(
+            sigma_measurement,
+            every_nth_beam,
+            n_particles,
+            proposal_sigma_xy,
+            proposal_sigma_theta,
+            proposal_n_samples,
+        ):
+            # Define experiment params for each run
+            yield ExperimentParams(
+                occupancy_params=OccupancyParams(
+                    prior_probability=0.5,
+                    min_distance_to_border=10.0,
+                    increasing_probability=0.7,
+                    decreasing_probability=0.35,
+                    min_log_odds=-5.0,
+                    max_log_odds=5.0,
+                ),
+                sensor_params=SensorParams(
+                    min_sensor_range=0.1,
+                    max_sensor_range=10.0,
+                ),
+                map_param=MapParameter(
+                    map_width=10.0,
+                    map_height=10.0,
+                    grid_resolution_m=0.05,
+                ),
+                icp_params=ICPParams(
+                    max_n_points=400,
+                    max_correspondence_distance=0.6,
+                    neighbors_pca=10,
+                    max_iterations=5,
+                    epsilon_rel=1e-3,
+                    no_improvement_limit=3,
+                    min_error=5e-4,
+                    min_dtrans=1e-3, 
+                    min_drot=1e-2,
+                ),
+                robot_params=RobotParams(
+                    wheel_separation=wheel_separation,
+                ),
+                scan_matcher_params=ScanMatcherParams(
+                    occ_thres=1.2,
+                    delta_r=0.6,
+                ),
+                particle_params=ParticleParams(
+                    n_particles=n_part,
+                    start_pose=(0.0, 0.0, 0.0),
+                ),
+                motion_model_params=MotionModelParams(
+                    sigma_x=0.2,
+                    sigma_y=0.2, 
+                    sigma_theta=0.15, 
+                    wheel_separation=wheel_separation,
+                    ctrl_motion_fac=0.1,
+                    ctrl_turn_fac=0.20, 
+                ),
+                measurement_model_params=MeasurementModelParams(
+                    sigma_measurement=sigma_meas,
+                ),
+                every_nth_scan=every_nth,
+                proposal_sigma_xy=sigma_xy,
+                proposal_sigma_theta=sigma_theta,
+                proposal_n_samples=n_samples,
+                tag=(
+                    f"meas{sigma_meas}_nth{every_nth}_npart{n_part}_"
+                    f"psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_rep{repeat_idx}"
+                ),
+            )
 
 
 # def build_optimizer():
@@ -210,7 +247,7 @@ def main():
     # Run optimizer
     ranked_runs = scan_match_optimizer.optimize(
         playback_data=playback_data,
-        param_grid=generate_param_grid(),
+        param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
     )
 
     # Save results
