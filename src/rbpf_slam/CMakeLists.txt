@@ -172,6 +172,8 @@ include_directories(
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   scripts/rbpf_slam_node.py
+  scripts/ogm_node.py
+  scripts/log_odds_map_to_occupancy_grid.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

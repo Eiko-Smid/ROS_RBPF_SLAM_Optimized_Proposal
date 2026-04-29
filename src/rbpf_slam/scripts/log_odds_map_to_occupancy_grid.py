@@ -46,6 +46,7 @@ class LogOddsToOccupancyGrid():
             self.occupancy_grid_msg.info.height= log_odds_map.info.height
             self.occupancy_grid_msg.info.origin.position.x= log_odds_map.info.origin.position.x
             self.occupancy_grid_msg.info.origin.position.y= log_odds_map.info.origin.position.y
+            self.occupancy_grid_msg.info.origin.orientation = log_odds_map.info.origin.orientation
             self.occupancy_grid_msg.info.resolution= log_odds_map.info.resolution
             # Calculate number of grid cells
             self.number_of_grid_cells= int(log_odds_map.info.width * log_odds_map.info.height)
@@ -65,7 +66,9 @@ class LogOddsToOccupancyGrid():
             self.occupancy_grid_msg.info.height= log_odds_map.info.height
             self.occupancy_grid_msg.info.origin.position.x= log_odds_map.info.origin.position.x
             self.occupancy_grid_msg.info.origin.position.y= log_odds_map.info.origin.position.y
+            self.occupancy_grid_msg.info.origin.orientation = log_odds_map.info.origin.orientation
             self.occupancy_grid_msg.info.resolution= log_odds_map.info.resolution
+            self.occupancy_grid_msg.header.frame_id = log_odds_map.header.frame_id
             # Calculate number of grid cells
             self.number_of_grid_cells= int(log_odds_map.info.width * log_odds_map.info.height)            
             # rospy.loginfo("\n\nInit Done\n\n")

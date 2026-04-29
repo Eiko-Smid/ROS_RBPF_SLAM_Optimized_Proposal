@@ -2,6 +2,7 @@
 
 import rospy
 import threading
+import tf2_ros
 
 from geometry_msgs.msg import Pose, Point
 from gazebo_msgs.msg import LinkStates
@@ -15,28 +16,29 @@ from dataclasses import dataclass
 import time
 import numpy as np
 
-# Import classes roslaunch
-# from rbpf_slam.slam.scan_matcher.ogm_scan_matching import OGM
-# from rbpf_slam.slam.rbpf.scan_match_factory import (
-#     OccupancyParams,
-#     SensorParams,
-#     MapParameter,
-# )
-
-
-# # Import classes programming
-from rbpf_slam.src.slam.scan_matcher.ogm_scan_matching import OGM
-from rbpf_slam.src.slam.rbpf.scan_match_factory import (
-    OccupancyParams,
-    SensorParams,
-    MapParameter,
-)
+# Import classes (support both roslaunch and direct execution contexts)
+try:
+    from slam.scan_matcher.ogm_scan_matching import OGM
+    from slam.rbpf.scan_match_factory import (
+        OccupancyParams,
+        SensorParams,
+        MapParameter,
+    )
+except ModuleNotFoundError:
+    from rbpf_slam.src.slam.scan_matcher.ogm_scan_matching import OGM
+    from rbpf_slam.src.slam.rbpf.scan_match_factory import (
+        OccupancyParams,
+        SensorParams,
+        MapParameter,
+    )
 
 @dataclass
 class ROSParams:
     update_rate = 12
     link_state_topic = "/gazebo/link_states"
     link_state_name = "robot_vacuum_cleaner::base_link"
+    base_tf_frame = "base_link"
+    laser_tf_frame = "laser_scanner_link"
     scan_topic= "scan"
     map_topic= "log_odds_map"
 
@@ -52,8 +54,8 @@ def define_experiment_params():
     exp_param = OGMParams(
         occupancy_params=OccupancyParams(
             prior_probability=0.5,
-            min_distance_to_border=10.0,
-            increasing_probability=0.7,
+            min_distance_to_border=15.0,
+            increasing_probability=0.8,
             decreasing_probability=0.35,
             min_log_odds=-5.0,
             max_log_odds=5.0,
@@ -65,7 +67,7 @@ def define_experiment_params():
         map_param=MapParameter(
             map_width=10.0,
             map_height=10.0,
-            grid_resolution_m=0.05,
+            grid_resolution_m=0.1,
         ),  
     )
 
@@ -109,6 +111,13 @@ class OGMROSCommunication:
         self.link_state_message = None
         self.link_state_name = ros_params.link_state_name
         self.link_state_index = None
+        self.laser_scan = None
+        self.laser_pose_world = None
+
+        # Cache the static base->laser transform once (2D: x, y, yaw).
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        self.base_to_laser_pose_2d = self.lookup_base_to_laser_transform_2d()
         
         # Define subscriber for link states and laser scan
         self.link_states_subscriber = rospy.Subscriber(
@@ -120,6 +129,41 @@ class OGMROSCommunication:
         self.map_publisher= rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
 
         self.lock = threading.Lock()
+
+
+    def lookup_base_to_laser_transform_2d(self):
+        '''Look up static transform from base frame to laser frame once.'''
+        while not rospy.is_shutdown():
+            try:
+                transform = self.tf_buffer.lookup_transform(
+                    self.ros_params.base_tf_frame,
+                    self.ros_params.laser_tf_frame,
+                    rospy.Time(0),
+                    rospy.Duration(1.0),
+                )
+                translation = transform.transform.translation
+                rotation = transform.transform.rotation
+                (_, _, yaw) = euler_from_quaternion(
+                    [rotation.x, rotation.y, rotation.z, rotation.w]
+                )
+                rospy.loginfo(
+                    "Cached base->laser offset (2D): x=%.3f, y=%.3f, yaw=%.3f rad",
+                    translation.x,
+                    translation.y,
+                    yaw,
+                )
+                return (translation.x, translation.y, yaw)
+            except (
+                tf2_ros.LookupException,
+                tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException,
+            ):
+                rospy.logwarn_throttle(
+                    5.0,
+                    f"Waiting for TF {self.ros_params.base_tf_frame} -> {self.ros_params.laser_tf_frame}",
+                )
+
+        return (0.0, 0.0, 0.0)
 
 
     def link_states_callback(self, link_states: LinkStates):
@@ -184,6 +228,17 @@ class OGMROSCommunication:
         return measurements    
 
 
+    @staticmethod
+    def transform_planar_pose(pose, pose_offset):
+        '''Compose two 2D poses: world->base and base->laser => world->laser.'''
+        x, y, yaw = pose
+        dx, dy, dyaw = pose_offset
+        transformed_x = x + np.cos(yaw) * dx - np.sin(yaw) * dy
+        transformed_y = y + np.sin(yaw) * dx + np.cos(yaw) * dy
+        transformed_yaw = yaw + dyaw
+        return (transformed_x, transformed_y, transformed_yaw)
+
+
     def publish_occupancy_grid_message(self):
         '''Get's the logOdds map and do all necessary transformation's for publishing the Occupancy Message.'''
         # Publish current map from ogm algorithm
@@ -198,7 +253,11 @@ class OGMROSCommunication:
             # Check if data was received
             
             # Check if data is available
-            if(self.link_state_message and self.link_state_index and self.laser_scan):
+            if (
+                self.link_state_message is not None
+                and self.link_state_index is not None
+                and self.laser_scan is not None
+            ):
                 rospy.loginfo_once("OGM Initalized.")
 
                 # get data from callbacks
@@ -213,15 +272,25 @@ class OGMROSCommunication:
                     link_state_index=link_state_index,
                 )
 
+                # Optional world-frame laser pose for later world-point projection.
+                self.laser_pose_world = self.transform_planar_pose(
+                    pose,
+                    self.base_to_laser_pose_2d,
+                )
+
                 measurements = self.transform_laser_scan_to_measurement(laser_scan)
 
                 # Increase map size if necessary
                 extension_needed= True
                 while(extension_needed):
-                    extension_needed= self.ogm.map_extension_if_necessary(pose)
+                    extension_needed= self.ogm.map_extension_if_necessary(self.laser_pose_world)
 
                 # Update the map
-                self.ogm.update_map(measurements, pose)
+                self.ogm.update_map(measurements, self.laser_pose_world)
+
+                # log beam otuside map count
+                if self.ogm.beam_out_map_count > 0:
+                    rospy.loginfo(f"Beam outside map count: {self.ogm.beam_out_map_count}")
                 
                 # Transform and publish map
                 self.publish_occupancy_grid_message()
@@ -238,14 +307,6 @@ def main():
     # Init Node
     rospy.init_node("optimized_occupancy_grid_algo_with_map_extension", anonymous=True)
 
-    # Define subscriber topics
-    link_state_topic = "/gazebo/link_states"
-    link_state_name = "robot_vacuum_cleaner::base_link"
-    scan_topic= "scan"
-    map_topic= "log_odds_map"
-    
-    # Define update rate of mapping algorithm
-    update_rate= 12                 # Highest possible rate is 15    
 
     # Initialize algorithm
     ros_params = ROSParams()
@@ -255,7 +316,6 @@ def main():
     ros_ogm.execute()
 
     
-
 
 if __name__=="__main__":
     main()  
