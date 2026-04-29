@@ -2,7 +2,6 @@
 
 from typing import List, Tuple
 import numpy as np
-import random
 
 
 class Resampler:
@@ -49,7 +48,7 @@ class Resampler:
         particle_index= 0
         
         # Pick particles according to weight.
-        random_number= random.uniform(0.0, 1/number_of_weights)
+        random_number= np.random.uniform(0.0, 1/number_of_weights)
         
         for j in range(number_of_weights):
             u= random_number + j * (1/number_of_weights)

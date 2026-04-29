@@ -1,6 +1,8 @@
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 import time
+
+import numpy as np
 
 from tqdm import tqdm
 
@@ -26,7 +28,13 @@ class RBPFOptimizer:
         self.runner = runner
         self.scorer = scorer
 
-    def optimize(self, playback_data, param_grid: Iterable[ExperimentParams]) -> List[RankedRun]:
+    def optimize(
+        self,
+        playback_data,
+        param_grid: Iterable[ExperimentParams],
+        base_seed: Optional[int] = None,
+        reseed_each_run: bool = False,
+    ) -> List[RankedRun]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
         """
@@ -42,7 +50,13 @@ class RBPFOptimizer:
 
         start_time = time.time()
 
-        for params in tqdm(params_list, total=total_runs, desc="RBPF optimization", unit="run"):
+        for run_idx, params in enumerate(
+            tqdm(params_list, total=total_runs, desc="RBPF optimization", unit="run")
+        ):
+            if base_seed is not None:
+                run_seed = base_seed if reseed_each_run else (base_seed + run_idx)
+                np.random.seed(run_seed)
+
             run_result = self.runner.run(playback_data, params)
             score = self.scorer.score(run_result.summary)
 

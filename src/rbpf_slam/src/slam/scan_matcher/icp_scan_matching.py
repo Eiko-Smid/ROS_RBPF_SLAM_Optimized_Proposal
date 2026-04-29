@@ -392,9 +392,6 @@ class IterativeClosestPoint():
         # The true pointclous data will be subsampled to this amount, in every run (before outlier rejection, etc) 
         self.max_n_points = max_n_points
 
-        # Init numpys random generator
-        self.rng = np.random.default_rng()
-
         # Init points count
         self.n_points_true_data = None
         self.n_points_new_data = None
@@ -986,7 +983,7 @@ class IterativeClosestPoint():
         n_points = pointcloud.shape[0]
 
         if n_points >= max_n_points:
-            indices = self.rng.choice(n_points, size=max_n_points, replace=False)
+            indices = np.random.choice(n_points, size=max_n_points, replace=False)
             subsampled_pointcloud = pointcloud[indices]
         else:
             subsampled_pointcloud = pointcloud

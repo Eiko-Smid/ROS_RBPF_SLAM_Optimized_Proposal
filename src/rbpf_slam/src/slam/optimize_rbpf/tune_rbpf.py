@@ -6,6 +6,7 @@
 # debugpy.wait_for_client()
 
 import itertools
+import numpy as np
 
 from .playback_defs import ExperimentParams, PlaybackData
 from .playback_loader import load_playback_dataset
@@ -62,12 +63,14 @@ from .result_writer import ResultWriter
 # PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
 PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_9_6_map_speedup.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_9_6_map_speedup_steps.csv'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_10_1_seed.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_10_1_seed_steps.csv'
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None     # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
-N_OPTIMIZATION_REPEATS = 5  # Number of full grid passes. 3 means each parameter combination is evaluated three times.
+N_OPTIMIZATION_REPEATS = 1  # Number of full grid passes. 3 means each parameter combination is evaluated three times.
+BASE_SEED = None              # Set to an integer for deterministic behavior.
+RESEED_EACH_RUN = False      # True: identical random stream for each run. False: deterministic but distinct per run.
 
 
 def generate_param_grid(n_repeats: int = 1):
@@ -227,6 +230,9 @@ def build_optimizer():
 
 
 def main():
+    if BASE_SEED is not None:
+        np.random.seed(BASE_SEED)
+
     # Load playback data
     steps = load_playback_dataset(
         base_path_prefix=PLAYBACK_DATA_PATH_PREF,
@@ -248,6 +254,8 @@ def main():
     ranked_runs = scan_match_optimizer.optimize(
         playback_data=playback_data,
         param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
+        base_seed=BASE_SEED,
+        reseed_each_run=RESEED_EACH_RUN,
     )
 
     # Save results
