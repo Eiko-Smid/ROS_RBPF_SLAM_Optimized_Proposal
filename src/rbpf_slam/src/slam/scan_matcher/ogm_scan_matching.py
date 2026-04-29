@@ -179,6 +179,129 @@ def update_map_numba(
                 break
 
 
+@njit
+def update_map_numba_old_bresenham(
+    log_odds_map,
+    measurements,
+    x,
+    y,
+    heading,
+    shift_x,
+    shift_y,
+    grid_resolution,
+    min_sensor_range,
+    max_sensor_range,
+    log_odds_decreasing_probability,
+    log_odds_increasing_probability,
+    min_log_odds,
+    max_log_odds,
+):
+    n_rows, n_cols = log_odds_map.shape
+
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return
+
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        if r <= min_sensor_range or r >= max_sensor_range or not np.isfinite(r):
+            continue
+
+        phi = heading + bearing
+
+        reflection_point_x = x + r * np.cos(phi)
+        reflection_point_y = y + r * np.sin(phi)
+
+        y_end = int(np.floor((reflection_point_y + shift_y) / grid_resolution))
+        x_end = int(np.floor((reflection_point_x + shift_x) / grid_resolution))
+
+        if y_end < 0 or y_end >= n_rows or x_end < 0 or x_end >= n_cols:
+            continue
+
+        # ------------------------------------------------------------------
+        # Equivalent to your old bresenham_line_drawing()
+        # ------------------------------------------------------------------
+        y_start = pose_i
+        x_start = pose_j
+
+        dx_raw = x_end - x_start
+        dy_raw = y_end - y_start
+
+        increment_x = 0
+        if dx_raw > 0:
+            increment_x = 1
+        elif dx_raw < 0:
+            increment_x = -1
+
+        increment_y = 0
+        if dy_raw > 0:
+            increment_y = 1
+        elif dy_raw < 0:
+            increment_y = -1
+
+        dx = dx_raw
+        dy = dy_raw
+
+        if dx < 0:
+            dx = -dx
+        if dy < 0:
+            dy = -dy
+
+        ddx = increment_x
+        ddy = increment_y
+
+        if dx > dy:
+            pdx = increment_x
+            pdy = 0
+            slow_direction = dy
+            fast_direction = dx
+        else:
+            pdx = 0
+            pdy = increment_y
+            slow_direction = dx
+            fast_direction = dy
+
+        cell_x = x_start
+        cell_y = y_start
+        err = fast_direction / 2.0
+
+        # start cell update
+        old_log_odds_value = log_odds_map[cell_y, cell_x]
+
+        if old_log_odds_value > min_log_odds and old_log_odds_value < max_log_odds:
+            if fast_direction == 0:
+                log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_increasing_probability
+            else:
+                log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_decreasing_probability
+
+        for step in range(fast_direction):
+            err -= slow_direction
+
+            if err < 0:
+                err += fast_direction
+                cell_x += ddx
+                cell_y += ddy
+            else:
+                cell_x += pdx
+                cell_y += pdy
+
+            if cell_y < 0 or cell_y >= n_rows or cell_x < 0 or cell_x >= n_cols:
+                break
+
+            old_log_odds_value = log_odds_map[cell_y, cell_x]
+
+            if old_log_odds_value > min_log_odds and old_log_odds_value < max_log_odds:
+                if step == fast_direction - 1:
+                    log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_increasing_probability
+                else:
+                    log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_decreasing_probability
+
+
+
 class OGM:
     '''
     Implementation of the occupancy grid mapping algorithm. The map is represented in log Odds space. The map is
@@ -725,6 +848,7 @@ class OGM:
         if measurements_np.size == 0:
             return
 
+        # Extract pose
         x, y, heading = pose
 
         update_map_numba(
@@ -744,6 +868,23 @@ class OGM:
             self.max_log_odds,
         )
 
+        # update_map_numba_old_bresenham(
+        #     self.log_odds_map,
+        #     measurements_np,
+        #     x,
+        #     y,
+        #     heading,
+        #     self.shift_x,
+        #     self.shift_y,
+        #     self.grid_resolution_m,
+        #     self.min_sensor_range,
+        #     self.max_sensor_range,
+        #     self.log_odds_decreasing_probability,
+        #     self.log_odds_increasing_probability,
+        #     self.min_log_odds,
+        #     self.max_log_odds,
+        # )
+
     
     def update_map_copy(self, measurements: List[Tuple[float, float]], pose: Tuple[float, float, float]) -> None:
         '''Update the logOdds map by the given (x, y, heading) pose and (range, bearing) measurements. 
@@ -757,12 +898,12 @@ class OGM:
             # Check if there was a reflecting cell 
             if(relfecting_cell):
                 # Find all grid cells between pose and reflecting grid cell
-                # affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
-                # self.update_affected_cells(affected_cells)
-                self.update_cells(
-                    start_grid_idx=(pose_i, pose_j),
-                    end_grid_idx=(relfecting_cell),
-                )
+                affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
+                self.update_affected_cells(affected_cells)
+                # self.update_cells(
+                #     start_grid_idx=(pose_i, pose_j),
+                #     end_grid_idx=(relfecting_cell),
+                # )
 
     #_______________________________________________________________________________________________________________
     # Map extraction
