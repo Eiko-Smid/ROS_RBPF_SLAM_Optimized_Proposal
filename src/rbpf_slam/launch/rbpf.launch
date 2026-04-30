@@ -22,9 +22,10 @@
     <!--Generate static transform between map and odom -->
     <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" />
 
-    <!--Launch the map server-->
-    <arg name="map_file" default="$(find rvc_commander)/maps/Maps_by_occupancy_Grid_Mapping/Cafe_Maps/final_occupancy_map_occ_95_free_5.yaml"/>
-    <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)" output="screen" />
+    <!--Launch the LogOddsToOccupancyGrid algorithm that transforms the map from logOdds space to scaled probability
+    space and publishes the map as nav_msgs.msg OccupancyGrid message.-->
+    <node pkg="rbpf_slam" name="log_odds_map_to_occupancy_grid" type="log_odds_map_to_occupancy_grid.py" output="screen">
+    </node>
 
     <!--Simulate Wheel Encoder data-->
     <node   pkg="rvc_commander" 
@@ -34,13 +35,13 @@
             <param name="wheel_encoder_motion_error_factor" value="0.1"/>
             <param name="wheel_encoder_turn_error_factor" value="0.25"/>
     </node>
-
-    <!--Run scan matcher node-->
-    <node pkg="rbpf_slam" name="scan_matching_node" type="scan_matching_node.py" output="screen">
-    </node >
+    
+    <!--Launch the occupancy grid mapping algorithm (with known pose).-->
+    <node pkg="rbpf_slam" name="rbpf_slam_node" type="rbpf_slam_node.py" output="screen">        
+    </node>
 
     <!--Launch rviz-->
-    <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rvc_commander)/rviz/monte_carlo_localization.rviz">
+    <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rbpf_slam)/rviz/ogm_rviz_cfg.rviz">
     </node>
 
 </launch>

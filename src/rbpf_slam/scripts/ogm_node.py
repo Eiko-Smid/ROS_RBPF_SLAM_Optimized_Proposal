@@ -43,7 +43,7 @@ except ModuleNotFoundError:
 
 @dataclass
 class ROSParams:
-    update_rate = 12
+    update_rate = 2
     link_state_topic = "/gazebo/link_states"
     link_state_name = "robot_vacuum_cleaner::base_link"
     base_tf_frame = "base_link"
@@ -64,8 +64,8 @@ def define_experiment_params():
         occupancy_params=OccupancyParams(
             prior_probability=0.5,
             min_distance_to_border=13.0,
-            increasing_probability=0.8,
-            decreasing_probability=0.35,
+            increasing_probability=0.7,
+            decreasing_probability=0.3,
             min_log_odds=-5.0,
             max_log_odds=5.0,
         ),
@@ -135,7 +135,7 @@ class OGMROSCommunication:
         self.laser_scan_subscriber= rospy.Subscriber(self.ros_params.scan_topic, LaserScan, self.laser_scan_callback)
 
         # Define publisher for map
-        self.map_publisher= rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
+        self.map_publisher = rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
         # Colorization
         self.col_map_poitns = rospy.Publisher("debug_cells", Marker, queue_size=1)
 
@@ -384,7 +384,7 @@ class OGMROSCommunication:
                 measurements = self.transform_laser_scan_to_measurement(laser_scan)
 
                 # Subsample measurements for faster processing (optional)
-                subsample_factor = 1
+                subsample_factor = 5
                 measurements = measurements[::subsample_factor]
 
                 # Increase map size if necessary
