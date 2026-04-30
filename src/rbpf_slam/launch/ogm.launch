@@ -6,8 +6,8 @@
 
     <!--Define useful parameters-->
     <arg name="paused" default="false"/>
-    <arg name="spawn_x" default="3.0"/>
-    <arg name="spawn_y" default="3.0"/>
+    <arg name="spawn_x" default="0.0"/>
+    <arg name="spawn_y" default="0.0"/>
     <arg name="spawn_z" default="0.18"/>
     <arg name="spawn_roll" default="0.0"/>
     <arg name="spawn_pitch" default="0.0"/>
@@ -38,6 +38,6 @@ space and publishes the map as nav_msgs.msg OccupancyGrid message.-->
     </node>
 
 <!--Launch rviz-->
-    <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rvc_commander)/rviz/tf_map_scan.rviz">
+    <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rbpf_slam)/rviz/ogm_rviz_cfg.rviz">
     </node>
 </launch>

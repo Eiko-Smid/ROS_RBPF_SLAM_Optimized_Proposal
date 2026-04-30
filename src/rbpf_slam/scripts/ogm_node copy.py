@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-import debugpy
-
-# debugpy.listen(("0.0.0.0", 5678))
-# print("⏳ Waiting for debugger attach...")
-# debugpy.wait_for_client()
-# print("✅ Debugger attached")
-
 
 import rospy
 import threading
 import tf2_ros
 
-from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
 from geometry_msgs.msg import Pose, Point
 from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
@@ -63,7 +54,7 @@ def define_experiment_params():
     exp_param = OGMParams(
         occupancy_params=OccupancyParams(
             prior_probability=0.5,
-            min_distance_to_border=13.0,
+            min_distance_to_border=15.0,
             increasing_probability=0.8,
             decreasing_probability=0.35,
             min_log_odds=-5.0,
@@ -136,8 +127,6 @@ class OGMROSCommunication:
 
         # Define publisher for map
         self.map_publisher= rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
-        # Colorization
-        self.col_map_poitns = rospy.Publisher("debug_cells", Marker, queue_size=1)
 
         self.lock = threading.Lock()
 
@@ -256,98 +245,6 @@ class OGMROSCommunication:
         self.map_publisher.publish(self.ogm.return_log_odds_map_object())
 
 
-    # def publish_green_cells(self, horizontal, vertical, ogm: OGM):
-    #     marker = Marker()
-    #     marker.header.frame_id = "map"
-    #     marker.header.stamp = rospy.Time.now()
-    #     marker.pose.orientation.w = 1.0
-
-    #     marker.ns = "test_cells"
-    #     marker.id = 0
-    #     marker.type = Marker.CUBE_LIST
-    #     marker.action = Marker.ADD
-
-    #     # size of each cell
-    #     marker.scale.x = ogm.grid_resolution_m
-    #     marker.scale.y = ogm.grid_resolution_m
-    #     marker.scale.z = 0.0
-
-    #     # GREEN color
-    #     marker.color.r = 0.0
-    #     marker.color.g = 1.0
-    #     marker.color.b = 0.0
-    #     marker.color.a = 1.0
-
-    #     # Extract cell indices
-    #     i_min, i_max = vertical
-    #     j_min, j_max = horizontal
-    #     i, j = np.indices((i_max - i_min, j_max - j_min))
-    #     i_global = i + i_min
-    #     j_global = j + j_min
-
-    #     i_flat = i_global.ravel()
-    #     j_flat = j_global.ravel()
-
-    #     points = []
-    #     for i, j in zip(i_flat, j_flat):
-    #         x, y = ogm.transform_grid_cell_to_point((i, j))
-    #         p = Point()
-    #         p.x = x
-    #         p.y = y
-    #         p.z = 0
-    #         marker.points.append(p)
-
-    #     self.col_map_poitns.publish(marker)
-
-
-    def publish_green_cells(self, i_range, j_range, ogm):
-        from visualization_msgs.msg import Marker
-        from geometry_msgs.msg import Point
-
-        marker = Marker()
-        marker.header.frame_id = "map"
-        marker.header.stamp = rospy.Time.now()
-
-        marker.ns = "debug"
-        marker.id = 0
-        marker.type = Marker.CUBE_LIST
-        marker.action = Marker.ADD
-
-        # IMPORTANT
-        marker.pose.position.x = 0.0
-        marker.pose.position.y = 0.0
-        marker.pose.position.z = 0.0
-        marker.pose.orientation.w = 1.0
-
-        res = ogm.grid_resolution_m
-        marker.scale.x = res
-        marker.scale.y = res
-        marker.scale.z = 0.01
-
-        marker.color.r = 0.0
-        marker.color.g = 1.0
-        marker.color.b = 0.0
-        marker.color.a = 1.0
-
-        # ----------- CORE LOGIC -----------
-        i_min, i_max = i_range   # rows → y
-        j_min, j_max = j_range   # cols → x
-
-        for i in range(i_min, i_max):
-            for j in range(j_min, j_max):
-                x, y = ogm.transform_grid_cell_to_point((i, j))
-
-                p = Point()
-                p.x = x
-                p.y = y
-                p.z = 0.0
-
-                marker.points.append(p)
-        # ----------------------------------
-
-        self.col_map_poitns.publish(marker)
-
-
     def execute(self):
         '''Main loop for executing the algorithm.'''
         update_rate= rospy.Rate(self.ros_params.update_rate)
@@ -388,34 +285,10 @@ class OGMROSCommunication:
                 while(extension_needed):
                     extension_needed= self.ogm.map_extension_if_necessary(self.laser_pose_world)
 
-                # Subsample measurements for faster processing (optional)
-                subsample_factor = 1
-                measurements = measurements[::subsample_factor]
-
-                # Update the map
-                self.ogm.update_map(measurements, self.laser_pose_world)
-
+                # Colorize bottom map black 
+                
                 # Transform and publish map
                 self.publish_occupancy_grid_message()
-
-                # i_low = 120
-                # i_high = 140
-                # j_low = 40
-                # j_high = 60
-                # self.publish_green_cells(
-                #     i_range=(i_low, i_high),
-                #     j_range=(j_low, j_high),
-                #     ogm=self.ogm
-                # )
- 
-                # cell = (0, 0)
-                # x, y = self.ogm.transform_grid_cell_to_point(cell)
-                # rospy.loginfo(f"\n\n:cell{0, 0} corespondes to: {x:.2f}, y={y:.2f}")
-
-                # right = self.ogm.log_odds_map.shape[1]
-                # cell = (0, right)
-                # x, y = x, y = self.ogm.transform_grid_cell_to_point(cell)
-                # rospy.loginfo(f"\n\n:cell{cell} corespondes to: {x:.2f}, y={y:.2f}")
 
             update_rate.sleep()
 
