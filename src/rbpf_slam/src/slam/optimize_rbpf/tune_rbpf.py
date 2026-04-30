@@ -49,12 +49,19 @@ from .result_writer import ResultWriter
 9.5 With corrected numba version
 - mean trans err = 
 
-9.6 Added possibility to run the dsame grid several time in a row. This is to check the stability of the results.
+9.6 Added possibility to run the same grid param several time in a row. This is to check the stability of the results.
 - We ran the same grid parameters 5 times. 
 - We used the same playback data and the same code in each run.
 - Unfortunately we ended up with totally different results
 - We must check if numba variant produces the same results than old ogm. IF so it's not the fault of the new optimized code
 - If not the numba version is wrong
+
+
+
+10: Implemented seed
+
+- Made it possible to create determinitic runs by setting a global seed.
+
 
 '''
 

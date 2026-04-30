@@ -267,9 +267,6 @@ from rvc_commander.msg import LogOddsMap
 #     return 0, 0
 
 
-from numba import njit
-import numpy as np
-
 
 @njit
 def update_map_numba_unique_cells(
@@ -440,6 +437,163 @@ def update_map_numba_unique_cells(
                 new_val = max_log_odds
 
             log_odds_map[i, j] = new_val
+
+    return 0, beam_out_map_count
+
+
+@njit
+def update_map_numba(
+    log_odds_map: np.ndarray,
+    measurements: np.ndarray,   # shape (N, 2) -> [range, bearing]
+    x: float,
+    y: float,
+    heading: float,
+    shift_x: float,
+    shift_y: float,
+    grid_resolution: float,
+    min_sensor_range: float,
+    max_sensor_range: float,
+    log_odds_decreasing: float,
+    log_odds_increasing: float,
+    min_log_odds: float,
+    max_log_odds: float,
+) -> int:
+    """
+    Update the occupancy grid map (log-odds) using laser scan measurements.
+
+    This version correctly handles:
+    - finite measurements → free space + occupied endpoint
+    - max-range / inf measurements → free space ONLY (no occupied endpoint)
+
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        2D log-odds occupancy grid map (modified in-place)
+
+    measurements : np.ndarray
+        Array of shape (N, 2) containing (range, bearing)
+
+    x, y, heading : float
+        Robot pose in world coordinates
+
+    shift_x, shift_y : float
+        Map origin shift (centered map)
+
+    grid_resolution : float
+        Cell size in meters
+
+    min_sensor_range, max_sensor_range : float
+        Sensor limits
+
+    log_odds_decreasing : float
+        Log-odds update for free cells (negative)
+
+    log_odds_increasing : float
+        Log-odds update for occupied cells (positive)
+
+    min_log_odds, max_log_odds : float
+        Clamping limits
+
+    Returns
+    -------
+    int
+        Status flag (0 = success, 1 = robot outside map)
+    """
+    beam_out_map_count = 0
+    n_rows, n_cols = log_odds_map.shape
+
+    # Convert robot pose to grid index
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    # If robot is outside map → abort
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return 1, beam_out_map_count
+
+    # Iterate over all beams
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        # --------------------------------------------------
+        # 1. Determine measurement type
+        # --------------------------------------------------
+
+        # Ignore too small values
+        if r <= min_sensor_range:
+            continue
+
+        # Handle max-range / inf → free space only
+        if not np.isfinite(r) or r >= max_sensor_range:
+            r_eff = max_sensor_range
+            is_hit = False   # NO occupied endpoint
+        else:
+            r_eff = r
+            is_hit = True    # valid obstacle hit
+
+        # --------------------------------------------------
+        # 2. Compute endpoint in world coordinates
+        # --------------------------------------------------
+        phi = heading + bearing
+
+        end_x = x + r_eff * np.cos(phi)
+        end_y = y + r_eff * np.sin(phi)
+
+        end_i = int(np.floor((end_y + shift_y) / grid_resolution))
+        end_j = int(np.floor((end_x + shift_x) / grid_resolution))
+
+        # If endpoint outside map → skip beam
+        if end_i < 0 or end_i >= n_rows or end_j < 0 or end_j >= n_cols:
+            beam_out_map_count += 1
+            continue
+
+        # --------------------------------------------------
+        # 3. Bresenham ray tracing (free + occupied update)
+        # --------------------------------------------------
+        cell_i = pose_i
+        cell_j = pose_j
+
+        dx = abs(end_j - cell_j)
+        dy = abs(end_i - cell_i)
+
+        sx = 1 if cell_j < end_j else -1
+        sy = 1 if cell_i < end_i else -1
+
+        err = dx - dy
+
+        while True:
+            old_val = log_odds_map[cell_i, cell_j]
+
+            # Only update if within bounds
+            if min_log_odds < old_val < max_log_odds:
+
+                # Last cell (endpoint)
+                if cell_i == end_i and cell_j == end_j:
+                    if is_hit:
+                        # Only mark occupied if real hit
+                        log_odds_map[cell_i, cell_j] = old_val + log_odds_increasing
+                    # else: max-range → DO NOTHING (no occupied cell)
+
+                else:
+                    # Free space update
+                    log_odds_map[cell_i, cell_j] = old_val + log_odds_decreasing
+
+            # Stop at endpoint
+            if cell_i == end_i and cell_j == end_j:
+                break
+
+            # Bresenham step
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                cell_j += sx
+            if e2 < dx:
+                err += dx
+                cell_i += sy
+
+            # Safety check
+            if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
+                break
 
     return 0, beam_out_map_count
 

@@ -347,7 +347,7 @@ class OGMROSCommunication:
 
         self.col_map_poitns.publish(marker)
 
-
+        
     def execute(self):
         '''Main loop for executing the algorithm.'''
         update_rate= rospy.Rate(self.ros_params.update_rate)
@@ -383,78 +383,9 @@ class OGMROSCommunication:
 
                 measurements = self.transform_laser_scan_to_measurement(laser_scan)
 
-                # Increase map size if necessary
-                extension_needed= True
-                while(extension_needed):
-                    extension_needed= self.ogm.map_extension_if_necessary(self.laser_pose_world)
-
                 # Subsample measurements for faster processing (optional)
                 subsample_factor = 1
                 measurements = measurements[::subsample_factor]
-
-                # Update the map
-                self.ogm.update_map(measurements, self.laser_pose_world)
-
-                # Transform and publish map
-                self.publish_occupancy_grid_message()
-
-                # i_low = 120
-                # i_high = 140
-                # j_low = 40
-                # j_high = 60
-                # self.publish_green_cells(
-                #     i_range=(i_low, i_high),
-                #     j_range=(j_low, j_high),
-                #     ogm=self.ogm
-                # )
- 
-                # cell = (0, 0)
-                # x, y = self.ogm.transform_grid_cell_to_point(cell)
-                # rospy.loginfo(f"\n\n:cell{0, 0} corespondes to: {x:.2f}, y={y:.2f}")
-
-                # right = self.ogm.log_odds_map.shape[1]
-                # cell = (0, right)
-                # x, y = x, y = self.ogm.transform_grid_cell_to_point(cell)
-                # rospy.loginfo(f"\n\n:cell{cell} corespondes to: {x:.2f}, y={y:.2f}")
-
-            update_rate.sleep()
-
-
-        
-    def execute_copy(self):
-        '''Main loop for executing the algorithm.'''
-        update_rate= rospy.Rate(self.ros_params.update_rate)
-        while not rospy.is_shutdown():
-            # rospy.loginfo("Mapping node running")
-            # Check if data was received
-            
-            # Check if data is available
-            if (
-                self.link_state_message is not None
-                and self.link_state_index is not None
-                and self.laser_scan is not None
-            ):
-                rospy.loginfo_once("OGM Initalized.")
-
-                # get data from callbacks
-                with self.lock:
-                    link_state = self.link_state_message
-                    link_state_index = self.link_state_index 
-                    laser_scan = self.laser_scan
-
-                # Transform data
-                pose = self.transform_link_state_pose_to_planar_pose(
-                    link_state=link_state,
-                    link_state_index=link_state_index,
-                )
-
-                # Optional world-frame laser pose for later world-point projection.
-                self.laser_pose_world = self.transform_planar_pose(
-                    pose,
-                    self.base_to_laser_pose_2d,
-                )
-
-                measurements = self.transform_laser_scan_to_measurement(laser_scan)
 
                 # Increase map size if necessary
                 extension_needed= True
