@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 # debugpy.listen(("0.0.0.0", 5678))
-# print("⏳ Waiting for debugger attach...")
+# print("Waiting for debugger attach...")
 # debugpy.wait_for_client()
-# print("✅ Debugger attached")
+# print("Debugger attached")
 
 from typing import List, Tuple
 
@@ -42,6 +42,7 @@ try:
         ScanMatchFactory,
     )
     from rbpf_slam.src.slam.optimize_rbpf.playback_defs import ExperimentParams, PlaybackData
+    from rbpf_slam.src.slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
     
 except ModuleNotFoundError:
     from slam.rbpf.rbpf import (
@@ -63,6 +64,7 @@ except ModuleNotFoundError:
     )
 
     from slam.optimize_rbpf.playback_defs import ExperimentParams, PlaybackData
+    from slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
 
     
 from rbpf_slam.msg import WheelEncoder
@@ -73,13 +75,13 @@ from rbpf_slam.msg import PoseErr2D
 '''
 TODO
 
-1. Create first running version of ros communication (Status: )
+1. Create first running version of ros communication (Status: Done)
 
-2. Implement filter steps in execute (Status: )
+2. Implement filter steps in execute (Status: Done)
 
-3. Implement TFs (map -> odom) (Status: )
+3. Implement TFs (map -> odom) (Status: Done)
 
-4. Implement ros topic for pose errors and display as rqt plot (Status: )
+4. Implement ros topic for pose errors and display as rqt plot (Status: Done)
 
 5. Implement playback (Status: )
 
@@ -120,6 +122,11 @@ class ROSParams:
     base_tf_frame = "base_link"
     laser_tf_frame = "laser_scanner_link"
 
+
+@dataclass
+class RECORDParams:
+    enable_recording: bool = True
+    output_dir: str = "/tmp/rbpf_playback"
 
 
 def define_exp_parameter() -> ExperimentParams:
@@ -193,12 +200,14 @@ def define_exp_parameter() -> ExperimentParams:
     return exp_param
 
 
+
 class RBPFROS:
-    def __init__(self, rbpf: RBPF, ros_params: ROSParams, exp_param: ExperimentParams):
+    def __init__(self, rbpf: RBPF, ros_params: ROSParams, exp_param: ExperimentParams, record_params: RECORDParams):
         # Init members
         self.rbpf: RBPF = rbpf
         self.ros_params = ros_params
         self.exp_params = exp_param
+        self.enable_recording = record_params.enable_recording
 
         # Distance of left and right wheel
         self.dl = 0.0
@@ -268,15 +277,25 @@ class RBPFROS:
             )
         }
 
-        # Defien thread lcoker obj
+        # Define thread locker obj
         self.lock = threading.Lock()
-
 
         # Cache the static base->laser transform (x, , theta)
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         self.base_to_laser_pose_2d = self.lookup_base_to_laser_transform_2d()
+
+        # Define shutdown behavior
+        rospy.on_shutdown(self.on_shutdown)
+
+        # Define recording
+        if self.enable_recording:
+            metadata = build_metadata(exp_param)
+            self.recorder = PlaybackRecorder(
+                output_dir=record_params.output_dir,
+                metadata=metadata,
+            )
         
 
     def lookup_base_to_laser_transform_2d(self):
@@ -318,7 +337,7 @@ class RBPFROS:
         '''
         Shutdown callback function to log time jumps and store python playback data if enabled.
         '''
-        pass
+        rospy.loginfo("Shutting down RBPF ROS node.")
 
 
     def link_states_cb(self, link_states: LinkStates):
@@ -570,8 +589,8 @@ class RBPFROS:
                     self.link_state_message is not None and
                     self.link_state_idx is not None and
                     self.laser_scan is not None and
-                    self.dl > 0.0 and
-                    self.dr > 0.0 
+                    (self.dl > min_dist or
+                    self.dr > min_dist)
                 ):
 
                     # Extract data and reset data
@@ -587,9 +606,22 @@ class RBPFROS:
                         self.laser_scan = None
                         self.dl = 0.0
                         self.dr = 0.0
-
+                    
                     # Get true pose
                     true_pose = self.transform_link_state_pose_to_planar_pose(link_state, link_idx)
+
+                    # Store playback data
+                    # Measure real time for playback
+                    t = time.perf_counter()
+
+                    self.recorder.record_step(
+                        t=t,
+                        t_ros=rospy.Time.now().to_sec(),
+                        dl=dl,
+                        dr=dr,
+                        true_pose=true_pose,
+                        laser_scan=laser_scan,
+                    )
                     
                     # Get measurement
                     measurement = self.transform_laser_scan_to_measurement(laser_scan)
@@ -683,11 +715,14 @@ def main():
 
     # Initialize algorithm
     ros_params = ROSParams()
+
+    rec_params = RECORDParams()
     
     rbpf_ros = RBPFROS(
         rbpf=rbpf,
         ros_params=ros_params,
-        exp_param=exp_param
+        exp_param=exp_param,
+        record_params=rec_params,
     )
 
     # Run algorithm
