@@ -134,9 +134,9 @@ def define_exp_parameter() -> ExperimentParams:
     exp_param = ExperimentParams(
         occupancy_params=OccupancyParams(
                     prior_probability=0.5,
-                    min_distance_to_border=10.0,
+                    min_distance_to_border=13.0,
                     increasing_probability=0.7,
-                    decreasing_probability=0.35,
+                    decreasing_probability=0.3,
                     min_log_odds=-5.0,
                     max_log_odds=5.0,
                 ),
@@ -145,8 +145,8 @@ def define_exp_parameter() -> ExperimentParams:
                     max_sensor_range=10.0,
                 ),
                 map_param=MapParameter(
-                    map_width=10.0,
-                    map_height=10.0,
+                    map_width=25.0,
+                    map_height=25.0,
                     grid_resolution_m=0.05,
                 ),
                 icp_params=ICPParams(
@@ -467,7 +467,7 @@ class RBPFROS:
 
         # Compute orientation error
         orientation_error = yaw_true - yaw_uncertain
-        orientation_error = np.atan2(np.sin(orientation_error), np.cos(orientation_error))
+        orientation_error = np.arctan2(np.sin(orientation_error), np.cos(orientation_error))
 
         orientation_error_grad = orientation_error * 180 / np.pi
 
@@ -565,6 +565,7 @@ class RBPFROS:
             t_iter_start = time.perf_counter()
             try:
                 # Check if all necessary data is received
+                min_dist = self.exp_params.map_param.grid_resolution_m
                 if(
                     self.link_state_message is not None and
                     self.link_state_idx is not None and
@@ -596,6 +597,11 @@ class RBPFROS:
                     # Define measurements for different algorithm parts
                     measurement_filter = measurement[::self.exp_params.every_nth_scan_filter]
                     measurement_map = measurement[::self.exp_params.every_nth_scan_map]
+
+                    # Clean inf and Nan vals from measurement_filter
+                    measurement_filter = [
+                        (r, b) for r, b in measurement_filter if np.isfinite(r) and not np.isnan(r)
+                    ]
 
                     # Run RBPF step
                     self.rbpf.step(
