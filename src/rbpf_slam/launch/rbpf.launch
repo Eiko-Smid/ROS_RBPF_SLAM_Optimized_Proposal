@@ -20,7 +20,7 @@
     </include>
 
     <!--Generate static transform between map and odom -->
-    <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" />
+    <!-- <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" /> -->
 
     <!--Launch the LogOddsToOccupancyGrid algorithm that transforms the map from logOdds space to scaled probability
     space and publishes the map as nav_msgs.msg OccupancyGrid message.-->

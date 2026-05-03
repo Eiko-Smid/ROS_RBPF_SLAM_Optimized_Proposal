@@ -66,7 +66,7 @@ class PlaybackRunner:
             step_duration = time.time() - step_start_time
             
             # Extract evaluation info from the RBPF instance
-            info = rbpf.step_info()
+            info = rbpf.get_step_info()
             step_idx_logged = info.get("step")
             true_pose_logged = info.get("true_pose")
             est_pose = info.get("weighted_mean_pose")

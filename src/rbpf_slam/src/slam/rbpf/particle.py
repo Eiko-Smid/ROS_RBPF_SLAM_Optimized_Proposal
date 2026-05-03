@@ -17,9 +17,9 @@ class Particle:
         if pose is None or weight is None or scan_matcher is None:
             raise ValueError("Invalid Particle initialization")
 
-        self.pose = pose
-        self.weight = weight
-        self.scan_matcher = scan_matcher
+        self.pose: Pose2D = pose
+        self.weight: float = weight
+        self.scan_matcher: ScanMatcher = scan_matcher
 
 
     def copy(self):

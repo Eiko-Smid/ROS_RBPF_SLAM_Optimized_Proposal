@@ -47,7 +47,6 @@ class MeasurementModelParams:
     sigma_measurement: float
 
 
-
 class RBPFFactory():
     IDX_x=0
     IDX_y=1
@@ -220,7 +219,7 @@ class RBPF:
         return self._compute_weighted_mean_pose_from_particles(self.particles)
 
 
-    def step_info(self) -> dict:
+    def get_step_info(self) -> dict:
         """
         Returns metrics from the latest step() call.
         """
@@ -598,7 +597,7 @@ class RBPF:
         step_idx = self._step_counter
 
         # Process each particle
-        t_update_start = time.perf_counter()
+        # t_update_start = time.perf_counter()
         for i, p in enumerate(self.particles):
             self.particles[i], scan_match_failed, scan_match_fallback_failed = self.update_particle(
                 particle=p,
@@ -614,13 +613,14 @@ class RBPF:
             )
             scan_match_failed_any = scan_match_failed_any or scan_match_failed
             scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
-        t_update_s = time.perf_counter() - t_update_start
-        self._timing_stats["update_particles_sum_s"] += t_update_s
-        self._timing_stats["update_particles_count"] += 1
+        # t_update_s = time.perf_counter() - t_update_start
+        # self._timing_stats["update_particles_sum_s"] += t_update_s
+        # self._timing_stats["update_particles_count"] += 1
+        t_update_s = None
 
         # Normalize particle weights
         # Normalize weights
-        t_norm_start = time.perf_counter()
+        # t_norm_start = time.perf_counter()
         weights = np.array([p.weight for p in self.particles])
         norm = np.sum(weights)
 
@@ -636,14 +636,15 @@ class RBPF:
 
         # Compute live neff from current normalized weights before resampling.
         neff = float(self.resampler.compute_neff(norm_weights))
-        t_norm_s = time.perf_counter() - t_norm_start
-        self._timing_stats["normalize_neff_sum_s"] += t_norm_s
-        self._timing_stats["normalize_neff_count"] += 1
+        # t_norm_s = time.perf_counter() - t_norm_start
+        # self._timing_stats["normalize_neff_sum_s"] += t_norm_s
+        # self._timing_stats["normalize_neff_count"] += 1
+        t_norm_s = None
 
         # Compute metrics
-        t_metrics_start = time.perf_counter()
+        # t_metrics_start = time.perf_counter()
         # Weighted mean pose before optional resampling.
-        weighted_mean_pose_pre_resampling = self._compute_weighted_mean_pose_from_particles(self.particles)
+        weighted_mean_pose = self._compute_weighted_mean_pose_from_particles(self.particles)
         # Get best particle pose before resampling
         best_idx = int(np.argmax(norm_weights))
         best_particle_pose = self.particles[best_idx].pose
@@ -651,9 +652,10 @@ class RBPF:
         particle_weight_min = float(np.min(norm_weights))
         particle_weight_max = float(np.max(norm_weights))
         particle_weight_mean = float(np.mean(norm_weights))
-        t_metrics_s = time.perf_counter() - t_metrics_start
-        self._timing_stats["metrics_sum_s"] += t_metrics_s
-        self._timing_stats["metrics_count"] += 1
+        # t_metrics_s = time.perf_counter() - t_metrics_start
+        # self._timing_stats["metrics_sum_s"] += t_metrics_s
+        # self._timing_stats["metrics_count"] += 1
+        t_metrics_s = None
 
         t_resampling_s = None
 
@@ -664,8 +666,10 @@ class RBPF:
             "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
+            "best_particle_idx": best_idx,
             "best_particle_pose": best_particle_pose,
-            "weighted_mean_pose": weighted_mean_pose_pre_resampling,
+            "best_particle_map": self.particles[best_idx].scan_matcher.ogm.return_log_odds_map(),
+            "weighted_mean_pose": weighted_mean_pose,
             "particle_weight_min": particle_weight_min,
             "particle_weight_max": particle_weight_max,
             "particle_weight_mean": particle_weight_mean,
@@ -678,7 +682,7 @@ class RBPF:
         # Resampling
         # Check if resampling is necessary
         if neff < self.neff_threshold:
-            t_resampling_start = time.perf_counter()
+            # t_resampling_start = time.perf_counter()
             # Get inidices of particles that have survived
             indices = self.resampler.low_variance_sampler(norm_weights)
 
@@ -697,14 +701,14 @@ class RBPF:
             # Replace old particle set by new set
             self.particles = new_partilces
 
-            t_resampling_s = time.perf_counter() - t_resampling_start
-            self._timing_stats["resampling_sum_s"] += t_resampling_s
-            self._timing_stats["resampling_count"] += 1
+            # t_resampling_s = time.perf_counter() - t_resampling_start
+            # self._timing_stats["resampling_sum_s"] += t_resampling_s
+            # self._timing_stats["resampling_count"] += 1
 
         # Fill resampling timings after optional resampling.
         self._last_step_info["timing_resampling_s"] = t_resampling_s
 
-        return neff, weighted_mean_pose_pre_resampling
+        return neff, weighted_mean_pose
 
 
     def step_copy(

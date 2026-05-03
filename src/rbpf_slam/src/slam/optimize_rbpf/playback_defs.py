@@ -40,7 +40,8 @@ class ExperimentParams:
     particle_params: ParticleParams
     motion_model_params: MotionModelParams
     measurement_model_params: MeasurementModelParams
-    every_nth_scan: int
+    every_nth_scan_filter: int = 4
+    every_nth_scan_map: int = 2
     tag: str
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
