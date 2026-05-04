@@ -72,15 +72,21 @@ from .result_writer import ResultWriter
 # Playback data path defs
 # PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
+# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1776425398_python_playback'
+# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv'
+
 PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1776425398_python_playback'
 OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_test.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_steps_test.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_test_steps.csv'
+
+
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 20         # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = 5          # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1      # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-BASE_SEED = None                # Set to an integer for deterministic behavior.
-RESEED_EACH_RUN = False         # True: identical random stream for each run. False: deterministic but distinct per run.
+BASE_SEED = 22                  # Set to an integer for deterministic behavior.
+RESEED_EACH_RUN = True          # True: identical random stream for each run. False: deterministic but distinct per run.
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"
@@ -146,7 +152,7 @@ def generate_param_grid(n_repeats: int = 1):
                     prior_probability=0.5,
                     min_distance_to_border=10.0,
                     increasing_probability=0.7,
-                    decreasing_probability=0.35,
+                    decreasing_probability=0.30,
                     min_log_odds=-5.0,
                     max_log_odds=5.0,
                 ),
@@ -157,7 +163,7 @@ def generate_param_grid(n_repeats: int = 1):
                 map_param=MapParameter(
                     map_width=10.0,
                     map_height=10.0,
-                    grid_resolution_m=0.05,
+                    grid_resolution_m=0.1,
                 ),
                 icp_params=ICPParams(
                     max_n_points=400,
@@ -187,7 +193,7 @@ def generate_param_grid(n_repeats: int = 1):
                     sigma_theta=0.15, 
                     wheel_separation=wheel_separation,
                     ctrl_motion_fac=0.1,
-                    ctrl_turn_fac=0.20, 
+                    ctrl_turn_fac=0.15, 
                 ),
                 measurement_model_params=MeasurementModelParams(
                     sigma_measurement=sigma_meas,
@@ -202,26 +208,6 @@ def generate_param_grid(n_repeats: int = 1):
                     f"psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_rep{repeat_idx}"
                 ),
             )
-
-
-# def build_optimizer():
-#     # Init objects
-#     # Init Playback runner
-#     rbpf_fac = ScanMatcherFactory()
-#     scan_match_eval = ScanMatcherEvaluator()
-#     scan_match_playback_run = PlaybackRunner(
-#         factory=rbpf_fac,
-#         evaluator=scan_match_eval,
-#     )
-
-#     # Init optimizer
-#     run_scorer = RunScorer()
-#     scan_match_optimizer = ScanMatcherOptimizer(
-#         runner=scan_match_playback_run,
-#         scorer=run_scorer,
-#     )
-    
-#     return scan_match_optimizer
 
 
 
@@ -260,17 +246,6 @@ def main():
     # Convert playback data
     playback_conv = PlaybackConverter()
     playback_data = playback_conv.convert(raw_playback_data)
-    
-
-    # steps = load_playback_dataset(
-    #     base_path_prefix=PLAYBACK_DATA_PATH_PREF,
-    #     n_steps=N_PLAYBACK_STEPS,
-    # )
-
-    # Build playback data
-    # playback_data = PlaybackData(
-    #     step_data_list=steps,
-    # )
 
     # Init optimizer
     scan_match_optimizer = build_optimizer()

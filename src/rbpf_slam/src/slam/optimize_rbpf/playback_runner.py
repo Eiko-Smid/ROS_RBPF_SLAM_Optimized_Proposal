@@ -51,7 +51,7 @@ class PlaybackRunner:
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
 
-            # Subsample measurements
+            # Subsample and clean measurements
             measurements_proposal = (
                 step.scan[::every_nth_filter] if every_nth_filter > 1 else step.scan
             )

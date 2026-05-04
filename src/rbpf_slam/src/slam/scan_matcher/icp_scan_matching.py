@@ -1083,13 +1083,13 @@ class IterativeClosestPoint():
 
         # Guard against sparse local maps: sklearn requires n_neighbors <= n_samples.
         n_neighbors_normals = min(self.neighbors, true_data_pointpairs.shape[0])
-        _, indicec_normal = self.neighbor.kneighbors(
+        _, indices_normal = self.neighbor.kneighbors(
             true_data_pointpairs,
             n_neighbors=n_neighbors_normals,
         )
         true_data_normals = compute_normals_numba(
             true_data_pointpairs,
-            indicec_normal
+            indices_normal
         )
                 
         # Variable to save squared error. 

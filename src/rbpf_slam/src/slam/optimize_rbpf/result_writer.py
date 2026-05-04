@@ -178,7 +178,6 @@ class ResultWriter:
 					"every_nth_beam_filter",
 					"every_nth_beam_map",
 					"step_id",
-					"step_duration_ms",
 					"neff",
 					"trans_error_best_p",
 					"rot_error_best_p",
@@ -187,7 +186,9 @@ class ResultWriter:
 					"particle_weight_min",
 					"particle_weight_max",
 					"particle_weight_mean",
-					"scan_match_fallback_failed_any",
+					"scan_match_failed",
+					"scan_match_fallback_failed",					
+					"step_duration_ms",
 				]
 			)
 
@@ -199,7 +200,6 @@ class ResultWriter:
 						run.params.every_nth_scan_filter,
 						run.params.every_nth_scan_map,
 						step.step_idx,
-						(step.step_duration or 0.0) * 1000.0,
 						step.neff,
 						step.translation_error_best_p,
 						step.rotation_error_best_p,
@@ -209,6 +209,8 @@ class ResultWriter:
 						step.particle_weight_max,
 						step.particle_weight_mean,
 						step.scan_match_fallback_failed,
+						step.scan_match_failed,
+						(step.step_duration or 0.0) * 1000.0,
 					]
 
 					writer.writerow(

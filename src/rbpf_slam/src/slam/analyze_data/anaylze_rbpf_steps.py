@@ -6,15 +6,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ==== FILE PATHS ====
-PAYBACK_STEPS_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback_steps.csv"
-RBPF_STEPS_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_8_steps.csv"
-OUTPUT_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_8_step_analysis.csv"
+PAYBACK_STEPS_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1777891056_steps.csv"
+RBPF_STEPS_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv"
+OUTPUT_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_step_analysis.csv"
 
 # ==== COLUMN NAMES ====
-COL_TIME = "t"
-COL_X = "true_pose_x"
-COL_Y = "true_pose_y"
-COL_THETA = "true_pose_yaw"
+# COL_TIME = "t"
+# COL_X = "true_pose_x"
+# COL_Y = "true_pose_y"
+# COL_THETA = "true_pose_yaw"
+# COL_TRANS_SPEED = "v"
+# COL_ROT_SPEED = "omega"
+
+COL_TIME = "t"              # Time in seconds. TODO: Transfer into ms here!
+COL_X = "x"
+COL_Y = "y"
+COL_THETA = "theta"
 COL_TRANS_SPEED = "v"
 COL_ROT_SPEED = "omega"
 
@@ -25,6 +32,7 @@ COL_RESUTLS = ["step_id", "scan_match_fallback_failed_any", "neff", "trans_error
 N_PARTICLES = 40.0
 NEFF_THRESHOLD = N_PARTICLES / 2.0
 
+
 def normalize_angle(angle):
     """
     Normalize angle to [-pi, pi]
@@ -33,6 +41,42 @@ def normalize_angle(angle):
 
 
 def compute_speeds(df):
+    # Previous values
+    x_prev = df[COL_X].shift(1)
+    y_prev = df[COL_Y].shift(1)
+    theta_prev = df[COL_THETA].shift(1)
+    t_prev = df[COL_TIME].shift(1)
+
+    # Differences
+    dx = df[COL_X] - x_prev
+    dy = df[COL_Y] - y_prev
+    dtheta = df[COL_THETA] - theta_prev
+
+    # Normalize angle difference and transform to degrees
+    dtheta = np.arctan2(np.sin(dtheta), np.cos(dtheta))
+    d_theta_deg = np.degrees(dtheta)
+
+    # Compute dt
+    dt = df[COL_TIME] - t_prev
+
+    # Avoid division by zero
+    dt_safe = np.where(dt == 0, 1e-6, dt)
+
+    # Translational speed
+    dist = np.sqrt(dx**2 + dy**2)
+    v = dist / dt_safe
+
+    # Rotational speed
+    omega = d_theta_deg / dt_safe
+
+    # Add zeros for speed to first row
+    v.iloc[0] = 0.0
+    omega.iloc[0] = 0.0
+
+    return v, omega
+
+
+def compute_speeds_copy(df):
     # Previous values
     x_prev = df[COL_X].shift(1)
     y_prev = df[COL_Y].shift(1)
@@ -190,6 +234,9 @@ def analyze_rbpf_run():
     df_playback = pd.read_csv(PAYBACK_STEPS_FILE)
     df_steps = pd.read_csv(RBPF_STEPS_FILE)
 
+    # CConvert time s -> ms
+    df_playback[COL_TIME] = df_playback[COL_TIME] / 1000.0
+
     # Compute speed columns
     v, omega = compute_speeds(df_playback)
 
@@ -217,6 +264,39 @@ def analyze_rbpf_run():
     df_results.to_csv(OUTPUT_FILE, index=False)
     print(f"\nSaved file: {OUTPUT_FILE}")
 
+
+
+def analyze_rbpf_run_copy():
+    # Load data
+    df_playback = pd.read_csv(PAYBACK_STEPS_FILE)
+    df_steps = pd.read_csv(RBPF_STEPS_FILE)
+
+    # Compute speed columns
+    v, omega = compute_speeds_copy(df_playback)
+
+    # Define speed df
+    df_speed = df_playback.copy()
+    df_speed["v"] = v
+    df_speed["omega"] = omega
+
+    # Merge playback with steps
+    df_results = combine_data_to_result(
+        df_speed=df_speed,
+        df_steps=df_steps,
+        col_steps=COL_STEPS,
+        col_speed=COL_SPEED,
+        col_results=COL_RESUTLS
+    )
+
+    # Compute useful metrics (e.g. resampling indicator)
+    df_results = compute_useful_metrics(df_results, resample_threshold=NEFF_THRESHOLD)
+
+    # Plot result data
+    plot_results_v2(df_results)
+
+    # Store data to csv
+    df_results.to_csv(OUTPUT_FILE, index=False)
+    print(f"\nSaved file: {OUTPUT_FILE}")
 
 
 def analyze_speed_data():
