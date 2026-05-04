@@ -617,17 +617,29 @@ def main():
     rospy.init_node("optimized_occupancy_grid_algo_with_map_extension", anonymous=True)
     
     # Define map (size in mm)
+    # map_width_m= 10.0               # [m] -> 20 m
+    # map_height_m= 10.0              # [m] -> 20 m
+    # grid_resolution_m= 0.05         # [m] -> 50 mm grid resolution
+    # min_distance_to_border= 13.0    # The minimum distance from the actual robot pose to the border before extending the map
+    
+    # # Define occupancy parameter
+    # prior_probability= 0.5          # Init map with probability of 0.5
+    # increasing_probability= 0.65
+    # decreasing_probability= 0.35
+    # max_log_odds= 100
+    # min_log_odds= -100
+
     map_width_m= 10.0               # [m] -> 20 m
     map_height_m= 10.0              # [m] -> 20 m
-    grid_resolution_m= 0.05         # [m] -> 50 mm grid resolution
-    min_distance_to_border= 10.0    # The minimum distance from the actual robot pose to the border before extending the map
+    grid_resolution_m= 0.1        # [m] -> 50 mm grid resolution
+    min_distance_to_border= 13.0    # The minimum distance from the actual robot pose to the border before extending the map
     
     # Define occupancy parameter
     prior_probability= 0.5          # Init map with probability of 0.5
-    increasing_probability= 0.65
-    decreasing_probability= 0.35
-    max_log_odds= 100
-    min_log_odds= -100
+    increasing_probability= 0.7
+    decreasing_probability= 0.3
+    max_log_odds= 5.0
+    min_log_odds= -5.0
     
     # Define subscriber topics
     link_state_topic = "/gazebo/link_states"
@@ -636,11 +648,11 @@ def main():
     map_topic= "log_odds_map"
     
     # Define update rate of mapping algorithm
-    update_rate= 12                 # Highest possible rate is 15
+    update_rate= 5                 # Highest possible rate is 15
     
     # Define Sensor parameter
     min_sensor_range= 0.1
-    max_sensor_range= 8.0
+    max_sensor_range= 10.0
     
     # Summarize parameters
     map_parameter=[map_width_m, map_height_m, grid_resolution_m, min_distance_to_border]

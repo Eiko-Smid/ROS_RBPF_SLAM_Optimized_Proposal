@@ -4,14 +4,15 @@
     <!-- <arg name="map_file" default="$(find rvc_commander)/maps/cafe_map_by_gmapping.yaml"/>
     <node pkg="map_server" name="map_server" type="map_server" args="$(arg map_file)" output="screen" /> -->
 
-    <!--Define useful parameters-->
+    <!--Define useful parameters: use 0,0,0.18 for cafe and 0, 0.3, 0.0 for turtlebot3_world -->
     <arg name="paused" default="false"/>
     <arg name="spawn_x" default="0.0"/>
-    <arg name="spawn_y" default="0.0"/>
-    <arg name="spawn_z" default="0.18"/>
+    <arg name="spawn_y" default="0.3"/>
+    <arg name="spawn_z" default="0.0"/>  
     <arg name="spawn_roll" default="0.0"/>
     <arg name="spawn_pitch" default="0.0"/>
     <arg name="spawn_yaw" default="0.0"/>
+
 
     <!--Launch the robot model and the world.-->
     <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch">

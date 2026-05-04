@@ -1,9 +1,0 @@
-{
-    "sensor_range_max": 10.0,
-    "sensor_range_min": 0.1,
-    "wheel_separation": 0.5315,
-    "wheel_encoder_sim_motion_error_factor": 0.1,
-    "wheel_encoder_sim_turn_error_factor": 0.15,
-    "n_particles": 40,
-    "comment": "First rbpf node run"
-}

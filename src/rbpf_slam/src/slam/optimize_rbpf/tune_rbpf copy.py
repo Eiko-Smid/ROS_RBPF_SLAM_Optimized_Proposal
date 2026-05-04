@@ -9,11 +9,7 @@ import itertools
 import numpy as np
 
 from .playback_defs import ExperimentParams, PlaybackData
-# from .playback_loader import load_playback_dataset
-
-from ..infrastructure.playback_loader import PlaybackLoader
-from ..infrastructure.playback_converter import PlaybackConverter
-
+from .playback_loader import load_playback_dataset
 from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
 from ..rbpf.scan_match_factory import (
     OccupancyParams,
@@ -72,18 +68,15 @@ from .result_writer import ResultWriter
 # Playback data path defs
 # PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
-PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_test.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_steps_test.csv'
+PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/1776425398_python_playback'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_10_1_seed.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/1776425398_optm_10_1_seed_steps.csv'
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 20         # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
-N_OPTIMIZATION_REPEATS = 1      # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-BASE_SEED = None                # Set to an integer for deterministic behavior.
-RESEED_EACH_RUN = False         # True: identical random stream for each run. False: deterministic but distinct per run.
-
-PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
-PLAYBACK_SUFFIX = "1777891056"
+N_PLAYBACK_STEPS = None     # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_OPTIMIZATION_REPEATS = 1  # Number of full grid passes. 3 means each parameter combination is evaluated three times.
+BASE_SEED = None              # Set to an integer for deterministic behavior.
+RESEED_EACH_RUN = False      # True: identical random stream for each run. False: deterministic but distinct per run.
 
 
 def generate_param_grid(n_repeats: int = 1):
@@ -105,8 +98,7 @@ def generate_param_grid(n_repeats: int = 1):
     sigma_measurement = [0.2]
     # sigma_measurement = [0.1, 0.2, 0.4]
     # every_nth_beam = [5, 10, 20]
-    every_nth_beam_filter = [4]
-    every_nth_beam_map = [2]
+    every_nth_beam = [1]
     
     # RBPF param
     # n_particles = [30, 40, 50]
@@ -131,10 +123,9 @@ def generate_param_grid(n_repeats: int = 1):
 
 
     for repeat_idx in range(1, n_repeats + 1):
-        for sigma_meas, every_nth_filter, every_nth_map, n_part, sigma_xy, sigma_theta, n_samples in itertools.product(
+        for sigma_meas, every_nth, n_part, sigma_xy, sigma_theta, n_samples in itertools.product(
             sigma_measurement,
-            every_nth_beam_filter,
-            every_nth_beam_map,
+            every_nth_beam,
             n_particles,
             proposal_sigma_xy,
             proposal_sigma_theta,
@@ -192,13 +183,12 @@ def generate_param_grid(n_repeats: int = 1):
                 measurement_model_params=MeasurementModelParams(
                     sigma_measurement=sigma_meas,
                 ),
-                every_nth_scan_filter=every_nth_filter,
-                every_nth_scan_map=every_nth_map,
+                every_nth_scan=every_nth,
                 proposal_sigma_xy=sigma_xy,
                 proposal_sigma_theta=sigma_theta,
                 proposal_n_samples=n_samples,
                 tag=(
-                    f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
+                    f"meas{sigma_meas}_nth{every_nth}_npart{n_part}_"
                     f"psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_rep{repeat_idx}"
                 ),
             )
@@ -250,27 +240,15 @@ def main():
         np.random.seed(BASE_SEED)
 
     # Load playback data
-    playback_loader = PlaybackLoader()
-    raw_playback_data = playback_loader.load(
-        file_suffix=PLAYBACK_SUFFIX,
-        filedir=PLAYBACK_DIR,
+    steps = load_playback_dataset(
+        base_path_prefix=PLAYBACK_DATA_PATH_PREF,
         n_steps=N_PLAYBACK_STEPS,
     )
 
-    # Convert playback data
-    playback_conv = PlaybackConverter()
-    playback_data = playback_conv.convert(raw_playback_data)
-    
-
-    # steps = load_playback_dataset(
-    #     base_path_prefix=PLAYBACK_DATA_PATH_PREF,
-    #     n_steps=N_PLAYBACK_STEPS,
-    # )
-
     # Build playback data
-    # playback_data = PlaybackData(
-    #     step_data_list=steps,
-    # )
+    playback_data = PlaybackData(
+        step_data_list=steps,
+    )
 
     # Init optimizer
     scan_match_optimizer = build_optimizer()

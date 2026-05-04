@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import time
+import numpy as np
 
 from .evaluator import RunResult, RBPFEvaluator
 from .playback_defs import ExperimentParams
@@ -39,17 +40,29 @@ class PlaybackRunner:
         steps = playback_data.step_data_list
         run_result = RunResult(params=params)
 
-        # Ensure valid nth scan value
-        every_nth = max(1, int(params.every_nth_scan))
-        print(f"Running RBPF with params: {params.tag} (every_nth_scan={every_nth})")
+        # Ensure valid scan downsampling values for filter/proposal and map update.
+        every_nth_filter = max(1, int(params.every_nth_scan_filter))
+        every_nth_map = max(1, int(params.every_nth_scan_map))
+        print(
+            f"Running RBPF with params: {params.tag} "
+            f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
+        )
 
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
 
             # Subsample measurements
-            measurements_map = step.scan
-            measurements_proposal = step.scan[::every_nth] if every_nth > 1 else step.scan
-            # print(f"Scans used for current step {step_idx}: {len(measurements_proposal)} out of {len(measurements_map)}")
+            measurements_proposal = (
+                step.scan[::every_nth_filter] if every_nth_filter > 1 else step.scan
+            )
+            measurements_map = step.scan[::every_nth_map] if every_nth_map > 1 else step.scan
+
+            measurements_proposal = [
+                (r, b) for r, b in measurements_proposal if np.isfinite(r) and not np.isnan(r)
+            ]
+            measurements_map = [
+                (r, b) for r, b in measurements_map if np.isfinite(r) and not np.isnan(r)
+            ]
 
             # Run rbpf filter step
             rbpf.step(

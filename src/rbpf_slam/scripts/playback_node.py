@@ -1,5 +1,9 @@
+#!/usr/bin/env python3
 
-
+# debugpy.listen(("0.0.0.0", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
+# print("Debugger attached")
 
 from typing import List, Tuple
 
@@ -75,6 +79,7 @@ def build_metadata(exp_params):
         # "map_resolution": exp_params.map_param.grid_resolution_m,
         # "map_width": exp_params.map_param.map_width,
         # "map_height": exp_params.map_param.map_height,
+        "map": "turtlebot3_world",
         "sensor_range_max": exp_params.sensor_params.max_sensor_range,
         "sensor_range_min": exp_params.sensor_params.min_sensor_range,
         "wheel_separation": exp_params.robot_params.wheel_separation,
@@ -342,6 +347,8 @@ class ROSPlaybackNode:
                         true_pose=true_pose,
                         laser_scan=laser_scan
                     )
+
+                    rospy.loginfo(f"Robot pose: {true_pose[0]:.2f}, {true_pose[1]:.2f}, {true_pose[2]:.2f}")
                 
 
             except rospy.exceptions.ROSTimeMovedBackwardsException:
