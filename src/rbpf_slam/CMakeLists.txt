@@ -174,6 +174,8 @@ catkin_install_python(PROGRAMS
   scripts/rbpf_slam_node.py
   scripts/ogm_node.py
   scripts/log_odds_map_to_occupancy_grid.py
+  scripts/playback_node.py
+  scripts/wheel_encoder_simulation.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

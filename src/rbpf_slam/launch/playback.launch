@@ -1,6 +1,6 @@
 <launch>
     <!--Define useful parameters-->
-    <arg name="paused" default="false"/>
+    <arg name="paused" default="true"/>
     <arg name="spawn_x" default="0.0"/>
     <arg name="spawn_y" default="0.0"/>
     <arg name="spawn_z" default="0.18"/>
@@ -20,7 +20,7 @@
     </include>
 
     <!--Generate static transform between map and odom -->
-    <!-- <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" /> -->
+    <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" />
 
     <!--Launch the LogOddsToOccupancyGrid algorithm that transforms the map from logOdds space to scaled probability
     space and publishes the map as nav_msgs.msg OccupancyGrid message.-->
@@ -37,7 +37,7 @@
     </node>
     
     <!--Launch the occupancy grid mapping algorithm (with known pose).-->
-    <node pkg="rbpf_slam" name="rbpf_slam_node" type="rbpf_slam_node.py" output="screen">        
+    <node pkg="rbpf_slam" name="playback_node" type="playback_node.py" output="screen">        
     </node>
 
     <!--Launch rviz-->

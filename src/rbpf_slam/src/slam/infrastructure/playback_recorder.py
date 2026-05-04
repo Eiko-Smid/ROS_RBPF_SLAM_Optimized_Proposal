@@ -2,19 +2,7 @@ import os
 import csv
 import json
 from dataclasses import asdict
-
-
-def build_metadata(exp_params):
-    return {
-        "map_resolution": exp_params.map_param.grid_resolution_m,
-        "map_width": exp_params.map_param.map_width,
-        "map_height": exp_params.map_param.map_height,
-        "sensor_range_max": exp_params.sensor_params.max_sensor_range,
-        "sensor_range_min": exp_params.sensor_params.min_sensor_range,
-        "wheel_separation": exp_params.robot_params.wheel_separation,
-        "n_particles": exp_params.particle_params.n_particles,
-        "comment": exp_params.tag,
-    }
+import time
 
 
 class PlaybackRecorder:
@@ -22,9 +10,14 @@ class PlaybackRecorder:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-        self.steps_csv_path = os.path.join(output_dir, "steps.csv")
-        self.scans_json_path = os.path.join(output_dir, "scans.jsonl")
-        self.metadata_path = os.path.join(output_dir, "metadata.json")
+        timestamp = str(int(time.time()))
+        filename_steps = f"{timestamp}_steps.csv"
+        filename_scans = f"{timestamp}_scans.jsonl"
+        filename_metadata = f"{timestamp}_meta.json"
+        
+        self.steps_csv_path = os.path.join(output_dir, filename_steps)
+        self.scans_json_path = os.path.join(output_dir, filename_scans)
+        self.metadata_path = os.path.join(output_dir, filename_metadata)
 
         self.step_id = 0
 

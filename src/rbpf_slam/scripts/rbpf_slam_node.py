@@ -123,11 +123,6 @@ class ROSParams:
     laser_tf_frame = "laser_scanner_link"
 
 
-@dataclass
-class RECORDParams:
-    enable_recording: bool = True
-    output_dir: str = "/tmp/rbpf_playback"
-
 
 def define_exp_parameter() -> ExperimentParams:
     # Compute wheel separation
@@ -202,12 +197,18 @@ def define_exp_parameter() -> ExperimentParams:
 
 
 class RBPFROS:
-    def __init__(self, rbpf: RBPF, ros_params: ROSParams, exp_param: ExperimentParams, record_params: RECORDParams):
+    def __init__(self, rbpf: RBPF, ros_params: ROSParams, exp_param: ExperimentParams):
         # Init members
         self.rbpf: RBPF = rbpf
         self.ros_params = ros_params
         self.exp_params = exp_param
-        self.enable_recording = record_params.enable_recording
+
+        # Members to store algo infos
+        self._timing_stats = {
+        "t_iter_sum": 0.0,
+        "n_iters": 0,
+        "t_mean_iter": 0.0,
+    }
 
         # Distance of left and right wheel
         self.dl = 0.0
@@ -289,14 +290,6 @@ class RBPFROS:
         # Define shutdown behavior
         rospy.on_shutdown(self.on_shutdown)
 
-        # Define recording
-        if self.enable_recording:
-            metadata = build_metadata(exp_param)
-            self.recorder = PlaybackRecorder(
-                output_dir=record_params.output_dir,
-                metadata=metadata,
-            )
-        
 
     def lookup_base_to_laser_transform_2d(self):
         '''Look up static transform from base frame to laser frame once.'''
@@ -337,6 +330,9 @@ class RBPFROS:
         '''
         Shutdown callback function to log time jumps and store python playback data if enabled.
         '''
+        # Compute mean iteration time
+        self._timing_stats["t_mean_iter"] = self._timing_stats["t_iter_sum"] / self._timing_stats["n_iters"]
+        rospy.loginfo("RBPF mean iteration time over %d iterations: %.3f ms", self._timing_stats["n_iters"], self._timing_stats["t_mean_iter"])
         rospy.loginfo("Shutting down RBPF ROS node.")
 
 
@@ -558,6 +554,7 @@ class RBPFROS:
 
 
     def exe(self):
+        # Define algorithm update rate
         update_rate = rospy.Rate(self.ros_params.update_rate)
 
         rospy.loginfo(
@@ -581,7 +578,6 @@ class RBPFROS:
             rospy.logwarn("Initial TF lookup timeout. Continuing and retrying during runtime.")
 
         while not rospy.is_shutdown():
-            t_iter_start = time.perf_counter()
             try:
                 # Check if all necessary data is received
                 min_dist = self.exp_params.map_param.grid_resolution_m
@@ -592,6 +588,8 @@ class RBPFROS:
                     (self.dl > min_dist or
                     self.dr > min_dist)
                 ):
+                    # Measure start time
+                    t_start_iter = time.perf_counter()
 
                     # Extract data and reset data
                     with self.lock:
@@ -680,14 +678,19 @@ class RBPFROS:
                         topic_key=POSE_ERR_TRUE_MEAN_P,
                         pose_err=(pose_err_true_mean_p, Orient_err_true_mean_p)
                     )
+                
+                    # Measure iteration time
+                    t_end_iter = time.perf_counter()
+                    t_iter = (t_end_iter - t_start_iter) * 1000.0
+                    self._timing_stats["t_iter_sum"] += t_iter
+                    self._timing_stats["n_iters"] += 1
+                    rospy.loginfo("Iteration time: %.3f ms", t_iter)
 
             except rospy.exceptions.ROSTimeMovedBackwardsException:
                 rospy.logwarn("Time jump detected → skipping this iteration")
                 self.time_jumps += 1
                 continue
-            finally:
-                iteration_time_ms = (time.perf_counter() - t_iter_start) * 1000.0
-                rospy.loginfo("RBPF full iteration time: %.3f ms", iteration_time_ms)
+            finally:                                
                 update_rate.sleep()
 
 
@@ -713,16 +716,13 @@ def main():
     # Init Node
     rospy.init_node(NODE_NAME)
 
-    # Initialize algorithm
+    # Initialize params
     ros_params = ROSParams()
-
-    rec_params = RECORDParams()
     
     rbpf_ros = RBPFROS(
         rbpf=rbpf,
         ros_params=ros_params,
         exp_param=exp_param,
-        record_params=rec_params,
     )
 
     # Run algorithm
