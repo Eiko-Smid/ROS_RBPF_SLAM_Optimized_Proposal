@@ -18,6 +18,32 @@ class PlaybackRunner:
         self.factory = factory
         self.evaluator = evaluator
 
+    @staticmethod
+    def _aggregate_icp_counters(rbpf) -> dict:
+        '''
+        Aggregates ICP-related counters from all particles in the RBPF instance and returns a dictionary with 
+        accumalated count values for each counter.
+        '''
+        counter_keys = [
+            "count_too_few_points",
+            "count_too_few_corresp",
+            "infinite_h_or_g",
+            "ill_cond_H",
+            "infinite_dtransform",
+            "infinite_mean_err",
+            "best_transf_too_large",
+            "best_mean_err_too_large",
+        ]
+
+        totals = {key: 0 for key in counter_keys}
+
+        for particle in getattr(rbpf, "particles", []):
+            icp_info = particle.scan_matcher.icp.get_info()
+            for key in counter_keys:
+                totals[key] += int(icp_info.get(key, 0) or 0)
+
+        return totals
+
 
     def run(self, playback_data, params: ExperimentParams) -> RunResult:
         """
@@ -114,6 +140,7 @@ class PlaybackRunner:
             step_results=run_result.step_results,
             params=params,
         )
+        run_result.summary.update(self._aggregate_icp_counters(rbpf))
         timing_summary = rbpf.timing_summary()
         run_result.summary.update(timing_summary)
 

@@ -6,7 +6,9 @@
 # debugpy.wait_for_client()
 
 import itertools
+import json
 import numpy as np
+from dataclasses import asdict, is_dataclass
 
 from .playback_defs import ExperimentParams, PlaybackData
 # from .playback_loader import load_playback_dataset
@@ -66,6 +68,11 @@ from .result_writer import ResultWriter
 - Made it possible to create determinitic runs by setting a global seed.
 
 
+11. used new dataset 
+
+- We are still using the cafe map here but another dataset is used. 
+
+
 12: Updated ICP algorithm
 
 - Before we used the tf of the icp no matter if it succeeded or not. 
@@ -73,6 +80,22 @@ from .result_writer import ResultWriter
     Bad tf -> bad pose for propüosal estimation
 - We added some safety checks and added an inidcator wheather to use or not use the returned transformation.
 
+    12.1 Full run
+
+        - We ended up with a large error in transltion. About 0.1 m more than before icp update
+        - But thats definitely because the icp tfs are often declared as not valid.
+        - 
+
+    12.2 ICP param change
+
+        - We are changing the params as follows:
+            max_translation_jump=0.8,  # was 0.3
+            max_rotation_jump=np.deg2rad(120.0),  # was 60
+            max_acceptable_mean_error=0.15 # was 2.5e-3 = 0.0025
+
+
+    12.3 
+            
 '''
 
 
@@ -83,18 +106,85 @@ from .result_writer import ResultWriter
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv'
 
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_12_new_icp_.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_12_new_icp_steps.csv'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_3_new_icp_.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_3_new_icp_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_3_new_icp_params.json'
+
+# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_test_new_icp_.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_test_new_icp_steps.csv'
+
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None            # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
-N_OPTIMIZATION_REPEATS = 1      # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-BASE_SEED = 22                  # Set to an integer for deterministic behavior.
-RESEED_EACH_RUN = True          # True: identical random stream for each run. False: deterministic but individual seed per run.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
+BASE_SEED = 22                      # Set to an integer for deterministic behavior.
+RESEED_EACH_RUN = True              # True: identical random stream for each run. False: deterministic but individual seed per run.
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"
+
+
+def _to_jsonable(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if is_dataclass(value):
+        return _to_jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {k: _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    return value
+
+
+def _compute_wheel_separation() -> float:
+    h_chassis = 0.15
+    dist_chassis_to_ground = h_chassis / 5
+    r_wheel = h_chassis / 2 + dist_chassis_to_ground
+    w_wheel = 0.3 * r_wheel
+    r_chassis = 0.25
+    return 2 * r_chassis + w_wheel
+
+
+def _grid_axes() -> dict:
+    return {
+        "sigma_measurement": [0.25, 0.35],
+        "every_nth_beam_filter": [4],
+        "every_nth_beam_map": [2],
+        "n_particles": [40],
+        "proposal_sigma_xy": [0.15, 0.25],
+        "proposal_sigma_theta": [0.08, 0.12],
+        "proposal_n_samples": [10],
+    }
+
+
+def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
+    file_exists = ResultWriter.create_path_and_check_if_file_exists(path=path)
+
+    if file_exists and not override:
+        print("\nParameter overview has not been saved because file already exists and override is set to False!")
+        return
+
+    axes = _grid_axes()
+    example_params = next(generate_param_grid(n_repeats=1), None)
+
+    payload = {
+        "playback_dir": PLAYBACK_DIR,
+        "playback_suffix": PLAYBACK_SUFFIX,
+        "n_playback_steps": N_PLAYBACK_STEPS,
+        "n_optimization_repeats": n_repeats,
+        "base_seed": BASE_SEED,
+        "reseed_each_run": RESEED_EACH_RUN,
+        "grid_axes": axes,
+        "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
+    }
+
+    with open(path, "w") as f:
+        json.dump(_to_jsonable(payload), f, indent=2)
+
+    print(f"\nParameter overview has been saved to:\n{path}")
 
 
 def generate_param_grid(n_repeats: int = 1):
@@ -112,33 +202,21 @@ def generate_param_grid(n_repeats: int = 1):
     # ctrl_motion_fac
     # ctrl_turn_fac
 
-    # Measurement parameter
-    sigma_measurement = [0.2]
-    # sigma_measurement = [0.1, 0.2, 0.4]
-    # every_nth_beam = [5, 10, 20]
-    every_nth_beam_filter = [4]
-    every_nth_beam_map = [2]
-    
-    # RBPF param
-    # n_particles = [30, 40, 50]
-    n_particles = [40]
+    axes = _grid_axes()
 
-    # Proposal parameter
-    # proposal_sigma_xy = [0.1, 0.2]
-    proposal_sigma_xy = [0.1]
-    proposal_sigma_theta = [0.05]
-    proposal_n_samples = [10]
+    sigma_measurement = axes["sigma_measurement"]
+    every_nth_beam_filter = axes["every_nth_beam_filter"]
+    every_nth_beam_map = axes["every_nth_beam_map"]
+    n_particles = axes["n_particles"]
+    proposal_sigma_xy = axes["proposal_sigma_xy"]
+    proposal_sigma_theta = axes["proposal_sigma_theta"]
+    proposal_n_samples = axes["proposal_n_samples"]
 
     # OGM param
     # TODO Add ogm param later
 
     # Compute wheel separation
-    h_chassis= 0.15
-    dist_chassis_to_ground= h_chassis/5
-    r_wheel= h_chassis/2 + dist_chassis_to_ground
-    w_wheel= 0.3 * r_wheel
-    r_chassis= 0.25
-    wheel_separation= 2 * r_chassis + w_wheel
+    wheel_separation = _compute_wheel_separation()
 
 
     for repeat_idx in range(1, n_repeats + 1):
@@ -180,6 +258,13 @@ def generate_param_grid(n_repeats: int = 1):
                     min_error=5e-4,
                     min_dtrans=1e-3, 
                     min_drot=1e-2,
+                    min_points=20,
+                    min_corresp=15,
+                    min_hessian_rank=3,
+                    max_hessian_condition=1e8,
+                    max_translation_jump=0.8,
+                    max_rotation_jump=np.deg2rad(120.0),
+                    max_acceptable_mean_error=0.15,
                 ),
                 robot_params=RobotParams(
                     wheel_separation=wheel_separation,
@@ -257,6 +342,13 @@ def main():
 
     # Build result writer
     result_writer = ResultWriter()
+
+    # Store compact parameter overview (grid axes + one representative ExperimentParams)
+    write_parameter_overview(
+        path=PARAMETER_OVERVIEW_PATH,
+        n_repeats=N_OPTIMIZATION_REPEATS,
+        override=OVERRIDE_EXISTING_RESULTS,
+    )
 
     # Run optimizer
     ranked_runs = scan_match_optimizer.optimize(

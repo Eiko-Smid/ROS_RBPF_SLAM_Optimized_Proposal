@@ -711,6 +711,135 @@ class RBPF:
         return neff, weighted_mean_pose
 
 
+    def update_particle_scan_match_only(
+        self,
+        particle: Particle,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+    ) -> Tuple[Particle, bool, bool]:
+        """
+        Scan-matching-only update for a single particle.
+
+        This path does not perform proposal estimation or measurement-model weighting.
+        It predicts/corrects pose with the scan matcher and updates the map only when
+        a corrected pose is available.
+        """
+        scan_match_failed = False
+        scan_match_fallback_failed = False
+
+        dl, dr = odom
+
+        t_scan_match_start = time.perf_counter()
+        corr_pose, pred_pose = particle.scan_matcher.update_pose(
+            old_pose=particle.pose,
+            dl=dl,
+            dr=dr,
+            measurements=measurements,
+        )
+        t_scan_match_s = time.perf_counter() - t_scan_match_start
+        self._timing_stats["scan_match_update_pose_sum_s"] += t_scan_match_s
+        self._timing_stats["scan_match_update_pose_count"] += 1
+
+        # Keep trajectory continuity using prediction, but only map with corrected pose.
+        new_pose = corr_pose if corr_pose is not None else pred_pose
+
+        if corr_pose is None:
+            scan_match_failed = True
+            scan_match_fallback_failed = True
+        else:
+            t_map_ext_start = time.perf_counter()
+            extension_needed = True
+            while extension_needed:
+                extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(corr_pose)
+            t_map_ext_s = time.perf_counter() - t_map_ext_start
+            self._timing_stats["map_extension_sum_s"] += t_map_ext_s
+            self._timing_stats["map_extension_count"] += 1
+
+            t_map_update_start = time.perf_counter()
+            particle.scan_matcher.ogm.update_map(
+                measurements=measurements,
+                pose=corr_pose,
+            )
+            t_map_update_s = time.perf_counter() - t_map_update_start
+            self._timing_stats["map_update_sum_s"] += t_map_update_s
+            self._timing_stats["map_update_count"] += 1
+
+        new_particle = Particle(
+            pose=new_pose,
+            weight=particle.weight,
+            scan_matcher=particle.scan_matcher,
+        )
+
+        return new_particle, scan_match_failed, scan_match_fallback_failed
+
+
+    def step_scan_match_only(
+        self,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+        true_pose: Optional[Pose2D] = None,
+    ) -> Tuple[float, Pose2D]:
+        """
+        Runs one RBPF step in scan-matching-only mode.
+
+        This mode skips proposal and measurement model updates and is intended for
+        focused scan matcher diagnostics.
+        """
+        scan_match_failed_any = False
+        scan_match_fallback_failed_any = False
+        self._step_counter += 1
+        step_idx = self._step_counter
+
+        for i, p in enumerate(self.particles):
+            self.particles[i], scan_match_failed, scan_match_fallback_failed = self.update_particle_scan_match_only(
+                particle=p,
+                odom=odom,
+                measurements=measurements,
+            )
+            scan_match_failed_any = scan_match_failed_any or scan_match_failed
+            scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
+
+        weights = np.array([p.weight for p in self.particles])
+        norm = np.sum(weights)
+
+        if norm == 0:
+            norm_weights = np.ones(len(weights)) / len(weights)
+        else:
+            norm_weights = weights / norm
+
+        for i in range(len(self.particles)):
+            self.particles[i].weight = norm_weights[i]
+
+        neff = float(self.resampler.compute_neff(norm_weights))
+        weighted_mean_pose = self._compute_weighted_mean_pose_from_particles(self.particles)
+        best_idx = int(np.argmax(norm_weights))
+        best_particle_pose = self.particles[best_idx].pose
+        particle_weight_min = float(np.min(norm_weights))
+        particle_weight_max = float(np.max(norm_weights))
+        particle_weight_mean = float(np.mean(norm_weights))
+
+        self._last_step_info = {
+            "step": step_idx,
+            "neff": neff,
+            "true_pose": true_pose,
+            "scan_match_failed_any": scan_match_failed_any,
+            "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
+            "best_particle_idx": best_idx,
+            "best_particle_pose": best_particle_pose,
+            "best_particle_map": self.particles[best_idx].scan_matcher.ogm.return_log_odds_map(),
+            "weighted_mean_pose": weighted_mean_pose,
+            "particle_weight_min": particle_weight_min,
+            "particle_weight_max": particle_weight_max,
+            "particle_weight_mean": particle_weight_mean,
+            "timing_update_particles_s": None,
+            "timing_normalize_neff_s": None,
+            "timing_metrics_s": None,
+            "timing_resampling_s": None,
+        }
+
+        return neff, weighted_mean_pose
+
+
     def step_copy(
         self,
         odom: Tuple[float, float],

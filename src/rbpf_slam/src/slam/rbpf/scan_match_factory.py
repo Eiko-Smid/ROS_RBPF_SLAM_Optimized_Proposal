@@ -42,6 +42,13 @@ class ICPParams:
     min_error: float = 5e-4
     min_dtrans: float = 1e-3 
     min_drot: float = 1e-2
+    min_points: int = 20
+    min_corresp: int = 15
+    min_hessian_rank: int = 3
+    max_hessian_condition: float = 1e8
+    max_translation_jump: float = 0.3
+    max_rotation_jump: float = 1.0471975512  # 60 deg in rad
+    max_acceptable_mean_error: float = 2.5e-3
 
 
 @dataclass(frozen=True)
@@ -100,6 +107,13 @@ class ScanMatchFactory:
                 "min_error": icp_params.min_error,
                 "min_dtrans": icp_params.min_dtrans,
                 "min_drot": icp_params.min_drot,
+                "min_points": icp_params.min_points,
+                "min_corresp": icp_params.min_corresp,
+                "min_hessian_rank": icp_params.min_hessian_rank,
+                "max_hessian_condition": icp_params.max_hessian_condition,
+                "max_translation_jump": icp_params.max_translation_jump,
+                "max_rotation_jump": icp_params.max_rotation_jump,
+                "max_acceptable_mean_error": icp_params.max_acceptable_mean_error,
             },
             max_n_points=icp_params.max_n_points,
             max_correspondence_distance=icp_params.max_correspondence_distance,

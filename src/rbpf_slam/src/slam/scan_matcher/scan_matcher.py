@@ -310,7 +310,8 @@ class ScanMatcher():
             map_points=map_points,
         )
 
-        self.pose = corr_pose
+        # Keep a valid pose even when ICP correction is rejected.
+        self.pose = corr_pose if corr_pose is not None else pred_pose
 
         return corr_pose, pred_pose
 

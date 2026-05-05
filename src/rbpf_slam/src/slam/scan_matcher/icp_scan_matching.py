@@ -20,10 +20,15 @@ from heapq import heappush, heappop
 
 Additonal TODOs for ICP implementation:
 
-1) Add counter for each stop reason in icp
+1) Add counter for each stop reason in icp (Done)
 - Counters are needed to analyze the icp algorithm and see if some reasons break the algorithm too often or maybe not often enough
 
-2) Define parameters for thresholds that are hardcoded right now
+2) Define parameters for thresholds that are hardcoded right now (Done)
+
+3) Detect scan matching failing reason
+
+
+4)  Repace parameter self.MIN_POINTS = 3 ()
 '''
 
 
@@ -165,7 +170,7 @@ class ICPStopCondition:
         self.drot_abs = None
         self.stop_reason = None
         self.rel_improvement = None
-        self.no_improvement_counter = None  
+        self.no_improvement_counter = 0
 
 
     def get_stop_reason(self) -> str:
@@ -220,7 +225,7 @@ class ICPStopCondition:
         self.drot_abs = None
         self.stop_reason = None
         self.rel_improvement = None
-        self.no_improvement_counter = None  
+        self.no_improvement_counter = 0
 
 
     def stop_icp(self, mean_err: float, dtransformation: np.ndarray) -> bool:
@@ -387,6 +392,17 @@ class IterativeClosestPoint():
     IDX_THETA= 2
     MIN_POINTS = 3
     EPSILON = 1e-9
+    LEGACY_REASON_COUNTER_MAP = {
+        "Too few input points": "count_too_few_points",
+        "Too few correspondences in first iteration": "count_too_few_corresp",
+        "Too few correspondences": "count_too_few_corresp",
+        "Non-finite H or g": "infinite_h_or_g",
+        "Ill-conditioned Hessian": "ill_cond_H",
+        "Non-finite transformation update": "infinite_dtransform",
+        "Infinite mean error": "infinite_mean_err",
+        "Best Transformation too large": "best_transf_too_large",
+        "Best mean error too large": "best_mean_err_too_large",
+    }
 
     def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, n_neighbors: int = 10):
         '''
@@ -430,16 +446,33 @@ class IterativeClosestPoint():
             min_drot=stop_params.get("min_drot", 1e-1)
         )
 
+        # Minimum data requirements (defaulted if not provided in stop_params)
+        self.min_points = int(stop_params.get("min_points", 20))
+        self.min_corresp = int(stop_params.get("min_corresp", 15))
+
+        # ICP safety thresholds (defaulted if not provided in stop_params)
+        self.min_hessian_rank = int(stop_params.get("min_hessian_rank", 3))
+        self.max_hessian_condition = float(stop_params.get("max_hessian_condition", 1e8))
+        self.max_translation_jump = float(stop_params.get("max_translation_jump", 0.3))
+        self.max_rotation_jump = float(stop_params.get("max_rotation_jump", np.deg2rad(60.0)))
+        self.max_acceptable_mean_error = float(
+            stop_params.get("max_acceptable_mean_error", self.stop_condition.min_error * 5.0)
+        )
+
         # Add info storage
         self.info: dict = {}
-        self.info["count_too_few_points"] = 0
-        self.info["count_too_few_corresp"] = 0
-        self.info["infinite_h_or_g"] = 0
-        self.info["ill_cond_H"] = 0
-        self.info["infinite_dtransform"] = 0
-        self.info["infinite_mean_err"] = 0
-        self.info["best_transf_too_large"] = 0
-        self.info["best_mean_err_too_large"]  = 0
+        self.reason_counts: dict = {}
+        self.legacy_counters = {
+            "count_too_few_points": 0,
+            "count_too_few_corresp": 0,
+            "infinite_h_or_g": 0,
+            "ill_cond_H": 0,
+            "infinite_dtransform": 0,
+            "infinite_mean_err": 0,
+            "best_transf_too_large": 0,
+            "best_mean_err_too_large": 0,
+        }
+        self.last_result_reason = None
 
         
 
@@ -452,15 +485,50 @@ class IterativeClosestPoint():
         self.list_of_corresp_numb = []
 
 
+    def _register_result_reason(self, reason: str) -> None:
+        if not reason:
+            return
+
+        self.last_result_reason = reason
+        self.reason_counts[reason] = self.reason_counts.get(reason, 0) + 1
+
+        legacy_key = self.LEGACY_REASON_COUNTER_MAP.get(reason)
+        if legacy_key is not None:
+            self.legacy_counters[legacy_key] += 1
+
+
+    def _finalize_result(self, result: ICPResult, extended: bool = True) -> ICPResult:
+        # Store one termination reason per ICP run and persist aggregate counters.
+        run_reason = result.reason or self.stop_condition.stop_reason
+        self._register_result_reason(run_reason)
+        self.store_info(extended=extended)
+        self.stop_condition.reset()
+        return result
+
+
     def store_info(self, extended: bool = False):
         '''
         Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
         '''
+        # Store stop condition info and general icp info
         self.stop_condition.store_info()
-        self.info = self.stop_condition.get_info()
+        self.info = dict(self.stop_condition.get_info())
         self.info["max_correspondence_distance"] = self.max_correspond_dist
+        self.info["min_points"] = self.min_points
+        self.info["min_corresp"] = self.min_corresp
+        self.info["min_hessian_rank"] = self.min_hessian_rank
+        self.info["max_hessian_condition"] = self.max_hessian_condition
+        self.info["max_translation_jump"] = self.max_translation_jump
+        self.info["max_rotation_jump"] = self.max_rotation_jump
+        self.info["max_acceptable_mean_error"] = self.max_acceptable_mean_error
         self.info["n_points_true_data"] = self.n_points_true_data
         self.info["n_points_new_data"] = self.n_points_new_data
+        self.info["last_result_reason"] = self.last_result_reason
+        self.info["stop_reason_counts"] = dict(self.reason_counts)
+
+        # Add legacy counters to info  
+        for key, value in self.legacy_counters.items():
+            self.info[key] = value
 
         if extended:
             self.info["transformed_new_data_list"] = self.transformed_new_data_list
@@ -1109,17 +1177,18 @@ class IterativeClosestPoint():
 
         # Check if we have enough points for icp
         if (
-            new_data_pointpairs.shape[0] < self.MIN_POINTS or
-            true_data_pointpairs.shape[0] < self.MIN_POINTS
+            new_data_pointpairs.shape[0] < self.min_points or
+            true_data_pointpairs.shape[0] < self.min_points
         ):
             self.stop_condition.stop_reason = "Too few input points"
-            return ICPResult(
+            return self._finalize_result(ICPResult(
                 transformation=np.zeros((3,1)),
                 use_transformation=False,
-                mean_error=np.inf,
+                reason="Too few input points",
+                mean_error=best_mean_error,
                 n_iterations=0,
                 n_correspondences=0
-            )
+            ), extended=True)
 
 
         # Downsample true data points
@@ -1147,14 +1216,10 @@ class IterativeClosestPoint():
         self.stop_condition.reset()
                 
         while True:
-            # Check stop condition
-            # TODO: Check if no ICPResult should be returned here            
+            # Check stop condition       
             if self.stop_condition.stop_icp(mean_err, dtransformation):
                 break
 
-            # if latest_new_data.shape[0] == 0:
-            #     break
-            
             # Find Nearest Neighbor by euclidean distance
             distances, corresp_new_data = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
             
@@ -1167,20 +1232,22 @@ class IterativeClosestPoint():
             n_correspond = cleaned_corresp.shape[0]
 
             # Check if we have enough correspondences to continue
-            # TODO: Check value of self.MIN_POINTS
-            if n_correspond < self.MIN_POINTS:
+            if n_correspond < self.min_corresp:
                 if self.stop_condition.iteration == 1:
                     # Return because it doesn't make sense to go on if we had not enough correspondences from beginning on. 
-                    return ICPResult(
+                    # Report the attempted iteration count and the observed correspondence count for diagnostics.
+                    # mean_error stays inf because no valid ICP system was solved yet.
+                    return self._finalize_result(ICPResult(
                         transformation=np.zeros((3,1)),
                         use_transformation=False,
                         reason="Too few correspondences in first iteration",
                         mean_error=np.inf,
-                        n_iterations=0,
-                        n_correspondences=0
-                    )
+                        n_iterations=self.stop_condition.iteration,
+                        n_correspondences=n_correspond
+                    ), extended=True)
                 else:
                     # If we end up here might have had good correespondecnes before and wanne use those!
+                    self.stop_condition.stop_reason = "Too few correspondences"
                     break
                 
             # Prepare the system
@@ -1194,39 +1261,39 @@ class IterativeClosestPoint():
 
             # Saftey check for H and g
             if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
-                return ICPResult(
+                return self._finalize_result(ICPResult(
                     transformation=best_transformation,
                     use_transformation=False,
                     reason="Non-finite H or g",
                     mean_error=best_mean_error,
                     n_iterations=self.stop_condition.iteration,
                     n_correspondences=n_corresp_best_iter
-                )            
+                ), extended=True)
 
-            # TODO: Check if thresholds are valid. Define global parameters for these thresholds
-            if np.linalg.matrix_rank(H) < 3 or np.linalg.cond(H) > 1e8:
-                return ICPResult(
+            # Reject non-solvable systems via configurable Hessian thresholds.
+            if np.linalg.matrix_rank(H) < self.min_hessian_rank or np.linalg.cond(H) > self.max_hessian_condition:
+                return self._finalize_result(ICPResult(
                     transformation=best_transformation,
                     use_transformation=False,
                     reason="Ill-conditioned Hessian",
                     mean_error=best_mean_error,
                     n_iterations=self.stop_condition.iteration,
                     n_correspondences=n_corresp_best_iter
-                )
+                ), extended=True)
             
             # Compute least Squares Solution
             dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
 
             # Safety check for dtransformation
             if not np.all(np.isfinite(dtransformation)):
-                return ICPResult(
+                return self._finalize_result(ICPResult(
                     transformation=best_transformation,
                     use_transformation=False,
                     reason="Non-finite transformation update",
                     mean_error=best_mean_error,
                     n_iterations=self.stop_condition.iteration,
                     n_correspondences=n_corresp_best_iter
-                )
+                ), extended=True)
 
             # Update transformation parameter 
             transformation+= dtransformation
@@ -1263,336 +1330,57 @@ class IterativeClosestPoint():
             self.squared_error_list.append(squared_error)
             self.transformation_parameter_list.append(transformation.copy())
         
+        # Append last correspondence
         if self.list_of_cleaned_corresp:
             self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
             self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
             # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
 
-        # Store info and reset stop condition for next run
-        self.store_info(extended=True)
-        self.stop_condition.reset()
-
         # Final safety checks
         if not np.isfinite(best_mean_error):
-            return ICPResult(
+            return self._finalize_result(ICPResult(
                 transformation=best_transformation,
                 use_transformation=False,
                 reason="Infinite mean error",
                 mean_error=best_mean_error,
                 n_iterations=self.stop_condition.iteration,
                 n_correspondences=n_corresp_best_iter
-            )
+            ), extended=True)
     
         # Rejact large jumps in transofrmation
         trans_norm = np.linalg.norm(best_transformation[:2])
         rot = abs(best_transformation[2,0])
 
-        # Check if trabs and rot are too big -> reject
-        # TODO: Add global parameter for these thresholds
-        if trans_norm > 0.3 or rot > np.deg2rad(60):
-            return ICPResult(
+        # Check if translation and rotation jump are too large -> reject
+        if trans_norm > self.max_translation_jump or rot > self.max_rotation_jump:
+            return self._finalize_result(ICPResult(
                 transformation=best_transformation,
                 use_transformation=False,
                 reason="Best Transformation too large",
                 mean_error=best_mean_error,
                 n_iterations=self.stop_condition.iteration,
                 n_correspondences=n_corresp_best_iter
-            )
+            ), extended=True)
 
-        # --- Reject high error ---
-        # TODO: Replace this with explicit error threshold
-        if best_mean_error > self.stop_condition.min_error * 5:
-            return ICPResult(
+        # Reject high residual error using explicit configurable threshold.
+        if best_mean_error > self.max_acceptable_mean_error:
+            return self._finalize_result(ICPResult(
                 transformation=best_transformation,
                 use_transformation=False,
                 reason="Best mean error too large",
                 mean_error=best_mean_error,
                 n_iterations=self.stop_condition.iteration,
                 n_correspondences=n_corresp_best_iter
-            )
+            ), extended=True)
 
-        return ICPResult(
+        return self._finalize_result(ICPResult(
             transformation=best_transformation,
             use_transformation=True,
             reason="All safety checks passed",
             mean_error=best_mean_error,
             n_iterations=self.stop_condition.iteration,
             n_correspondences=n_corresp_best_iter
-        )
-
-
-    def find_transformation_v2_copy(
-            self, 
-            new_data_pointpairs: np.ndarray, 
-            true_data_pointpairs: np.ndarray
-        ) -> ICPResult:
-        '''
-        Get's the new data points and the true datapoints and trys to minimize the error between the two
-        pointclouds by finding the best transformation. Returns the transformation parameters and stores 
-        relevant information in the 'info' member variable. The info contains the data for each transformation
-        run.
-
-        Parameters:
-        ----------
-        new_data_pointpairs: np.ndarray
-            Nx2 numpy array of the new data points.
-        true_data_pointpairs: np.ndarray
-            Mx2 numpy array of the true data points.
-        
-        Returns:
-        ----------
-        Result: ICPResult
-            A dataclass containing:
-                - transformation: 3x1 numpy array of the final transformation parameters (tx, ty, theta).
-                - use_transformation: Indicator whether to use tranformation (true) or not (false). 
-                - reason: str providing the reason for stopping ICP 
-                - mean_error: float representing the mean error of the correspondences from the best iteration
-                - n_iterations: int representing the number of ICP iterations performed.
-                - n_correspondences: int representing the number of correspondences of the best iteration
-        '''
-        # Santize pointclouds
-        new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
-        true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
-
-        # Check if we have enough points for icp
-        if (
-            new_data_pointpairs.shape[0] < self.MIN_POINTS or
-            true_data_pointpairs.shape[0] < self.MIN_POINTS
-        ):
-            self.stop_condition.stop_reason = "Too few input points"
-            return ICPResult(
-                transformation=np.zeros((3,1)),
-                use_transformation=False,
-                mean_error=np.inf,
-                n_iterations=0,
-                n_correspondences=0
-            )
-
-        # Init vars
-        # TFs
-        transformation = np.zeros((3, 1))
-        dtransformation = transformation.copy()
-        best_transformation = transformation.copy()
-
-        # Errors
-        squared_error = inf         # Squared error of ICP metric
-        mean_err = inf              # Mean of the Squared error  
-        best_mean_error = np.inf    # Best mean error found
-
-        # number of correspondences from best iteration
-        n_corresp_best_iter = 0     
-        
-        # Lists to store results
-        self.squared_error_list= []
-        self.transformation_parameter_list = [transformation.copy()]
-        self.transformed_new_data_list = [new_data_pointpairs.copy()]
-        latest_new_data= new_data_pointpairs.copy()
-        self.list_of_cleaned_corresp = []
-        self.list_of_cleaned_corresp_numb = []
-        self.list_of_corresp_numb = []
-        
-        # Store number of points for logging
-        self.n_points_true_data = true_data_pointpairs.shape[0]
-        self.n_points_new_data = new_data_pointpairs.shape[0]
-
-        # Downsample true data points
-        true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
-            pointcloud=true_data_pointpairs,
-            max_n_points=self.max_n_points
-        )
-        
-        # Train Nearest Neighbor with true data points 
-        self.neighbor.fit(true_data_pointpairs)
-        
-        # Compute normals of true data points
-        # Guard against sparse local maps: sklearn requires n_neighbors <= n_samples.
-        n_neighbors_normals = min(self.neighbors, true_data_pointpairs.shape[0])
-        _, indices_normal = self.neighbor.kneighbors(
-            true_data_pointpairs,
-            n_neighbors=n_neighbors_normals,
-        )
-        true_data_normals = compute_normals_numba(
-            true_data_pointpairs,
-            indices_normal
-        )
-
-        # Reset stop condition
-        self.stop_condition.reset()
-                
-        while True:
-            # Check stop condition
-            # TODO: Check if no ICPResult should be returned here            
-            if self.stop_condition.stop_icp(mean_err, dtransformation):
-                break
-
-            # if latest_new_data.shape[0] == 0:
-            #     break
-            
-            # Find Nearest Neighbor by euclidean distance
-            distances, corresp_new_data = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
-            
-            # Clean correspondences by outlier rejection
-            cleaned_corresp, sum_error = self.vectorized_outlier_rejection(                
-                distances=distances,
-                indices=corresp_new_data,
-            )
-
-            n_correspond = cleaned_corresp.shape[0]
-
-            # Check if we have enough correspondences to continue
-            # TODO: Check value of self.MIN_POINTS
-            if n_correspond < self.MIN_POINTS:
-                if self.stop_condition.iteration == 1:
-                    # Return because it doesn't make sense to go on if we had not enough correspondences from beginning on. 
-                    return ICPResult(
-                        transformation=np.zeros((3,1)),
-                        use_transformation=False,
-                        reason="Too few correspondences in first iteration",
-                        mean_error=np.inf,
-                        n_iterations=0,
-                        n_correspondences=0
-                    )
-                else:
-                    # If we end up here might have had good correespondecnes before and wanne use those!
-                    break
-                
-            # Prepare the system
-            H, g, squared_error = self.prepare_system_point_to_plane_vec(
-                transformation,
-                latest_new_data,
-                true_data_pointpairs,
-                cleaned_corresp,
-                true_data_normals,
-            )
-
-            # Saftey check for H and g
-            if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
-                return ICPResult(
-                    transformation=best_transformation,
-                    use_transformation=False,
-                    reason="Non-finite H or g",
-                    mean_error=best_mean_error,
-                    n_iterations=self.stop_condition.iteration,
-                    n_correspondences=n_corresp_best_iter
-                )            
-
-            # TODO: Check if thresholds are valid. Define global parameters for these thresholds
-            if np.linalg.matrix_rank(H) < 3 or np.linalg.cond(H) > 1e8:
-                return ICPResult(
-                    transformation=best_transformation,
-                    use_transformation=False,
-                    reason="Ill-conditioned Hessian",
-                    mean_error=best_mean_error,
-                    n_iterations=self.stop_condition.iteration,
-                    n_correspondences=n_corresp_best_iter
-                )
-            
-            # Compute least Squares Solution
-            dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
-
-            # Safety check for dtransformation
-            if not np.all(np.isfinite(dtransformation)):
-                return ICPResult(
-                    transformation=best_transformation,
-                    use_transformation=False,
-                    reason="Non-finite transformation update",
-                    mean_error=best_mean_error,
-                    n_iterations=self.stop_condition.iteration,
-                    n_correspondences=n_corresp_best_iter
-                )
-
-            # Update transformation parameter 
-            transformation+= dtransformation
-            
-            # Ensure valid angle
-            theta = float(transformation[self.IDX_THETA].item())
-            transformation[self.IDX_THETA] = atan2(sin(theta), cos(theta))
-            
-            # Update rotation and translation matrix
-            rotation_matrix= self.compute_rotation_matrix(transformation[self.IDX_THETA])
-            translation= transformation[0:self.IDX_THETA]
-            
-            # Transform new data points by rotation and translation 
-            latest_new_data_T= np.dot(rotation_matrix, new_data_pointpairs.T) + translation
-            latest_new_data= latest_new_data_T.T
-
-            # Compute mean err metric for stop condition check
-            if np.isfinite(squared_error):
-                mean_err = squared_error / n_correspond
-            else:
-                mean_err = inf
-
-            # Track best iteration 
-            if mean_err < best_mean_error:
-                best_mean_error = mean_err
-                best_transformation = transformation.copy()
-                n_corresp_best_iter = n_correspond
-            
-            # Append data to lists
-            self.transformed_new_data_list.append(latest_new_data)
-            self.list_of_cleaned_corresp.append(cleaned_corresp)
-            self.list_of_cleaned_corresp_numb.append(len(cleaned_corresp))
-            # self.list_of_corresp_numb.append(len(correspondences))
-            self.squared_error_list.append(squared_error)
-            self.transformation_parameter_list.append(transformation.copy())
-        
-        if self.list_of_cleaned_corresp:
-            self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
-            self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
-            # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
-
-        # Store info and reset stop condition for next run
-        self.store_info(extended=True)
-        self.stop_condition.reset()
-
-        # Final safety checks
-        if not np.isfinite(best_mean_error):
-            return ICPResult(
-                transformation=best_transformation,
-                use_transformation=False,
-                reason="No valid solution",
-                mean_error=best_mean_error,
-                n_iterations=self.stop_condition.iteration,
-                n_correspondences=n_corresp_best_iter
-            )
-    
-        # Rejact large jumps in transofrmation
-        trans_norm = np.linalg.norm(best_transformation[:2])
-        rot = abs(best_transformation[2,0])
-
-        # Check if trabs and rot are too big -> reject
-        # TODO: Add global parameter for these thresholds
-        if trans_norm > 0.3 or rot > np.deg2rad(60):
-            return ICPResult(
-                transformation=best_transformation,
-                use_transformation=False,
-                reason="Transformation too large",
-                mean_error=best_mean_error,
-                n_iterations=self.stop_condition.iteration,
-                n_correspondences=n_corresp_best_iter
-            )
-
-        # --- Reject high error ---
-        # TODO: Replace this with explicit error threshold
-        if best_mean_error > self.stop_condition.min_error * 5:
-            return ICPResult(
-                transformation=best_transformation,
-                use_transformation=False,
-                reason="Error too high",
-                mean_error=best_mean_error,
-                n_iterations=self.stop_condition.iteration,
-                n_correspondences=n_corresp_best_iter
-            )
-
-
-        return ICPResult(
-            transformation=best_transformation,
-            use_transformation=True,
-            reason="All safety checks passed",
-            mean_error=best_mean_error,
-            n_iterations=self.stop_condition.iteration,
-            n_correspondences=n_corresp_best_iter
-        )
+        ), extended=True)
 
 
 
@@ -1631,8 +1419,8 @@ class IterativeClosestPoint():
         mean_err = inf  
 
         if (
-            new_data_pointpairs.shape[0] < self.MIN_POINTS or
-            true_data_pointpairs.shape[0] < self.MIN_POINTS
+            new_data_pointpairs.shape[0] < self.min_points or
+            true_data_pointpairs.shape[0] < self.min_points
         ):
             return transformation_parameter
 
@@ -1711,7 +1499,7 @@ class IterativeClosestPoint():
             )
 
 
-            if len(cleaned_correspondences) < self.MIN_POINTS:
+            if len(cleaned_correspondences) < self.min_corresp:
                 break
             
             # Prepare the system
