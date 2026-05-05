@@ -211,15 +211,18 @@ class ScanMatcher():
 
         '''
         # Find best transformation for given points
-        transf_param = self.icp.find_transformation(
+        result = self.icp.find_transformation(
             new_data_pointpairs=scan_points,
             true_data_pointpairs=map_points,
         )
 
+        if not result.use_transformation:
+            return None 
+
         # Transform pose -> Correction
         pose = self.icp.correct_pose(
             pose=pose,
-            transf_param=transf_param,
+            transf_param=result.transformation,
         )
 
         return pose
@@ -295,7 +298,7 @@ class ScanMatcher():
             occ_thresh=self.occ_thres,
         )
 
-        # Check if array shape is correct and has enough elemtns, else break
+        # Check if array shape is correct and has enough elements, else break
         if map_points.ndim != 2 or map_points.shape[0] < 3:
             self.pose = pred_pose
             return corr_pose, pred_pose
@@ -310,7 +313,6 @@ class ScanMatcher():
         self.pose = corr_pose
 
         return corr_pose, pred_pose
-
 
 
 
