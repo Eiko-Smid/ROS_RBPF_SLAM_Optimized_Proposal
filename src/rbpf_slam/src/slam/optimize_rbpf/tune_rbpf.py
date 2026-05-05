@@ -66,6 +66,13 @@ from .result_writer import ResultWriter
 - Made it possible to create determinitic runs by setting a global seed.
 
 
+12: Updated ICP algorithm
+
+- Before we used the tf of the icp no matter if it succeeded or not. 
+- This could lead to problems if the icp failed and returned a bad tf.
+    Bad tf -> bad pose for propüosal estimation
+- We added some safety checks and added an inidcator wheather to use or not use the returned transformation.
+
 '''
 
 
@@ -76,17 +83,15 @@ from .result_writer import ResultWriter
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv'
 
-PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1776425398_python_playback'
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_test.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_test_steps.csv'
-
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_12_new_icp_.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_12_new_icp_steps.csv'
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 5          # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None            # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1      # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 BASE_SEED = 22                  # Set to an integer for deterministic behavior.
-RESEED_EACH_RUN = True          # True: identical random stream for each run. False: deterministic but distinct per run.
+RESEED_EACH_RUN = True          # True: identical random stream for each run. False: deterministic but individual seed per run.
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"
