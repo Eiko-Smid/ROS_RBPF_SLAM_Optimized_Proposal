@@ -95,7 +95,19 @@ from .result_writer import ResultWriter
 
 
     12.3 
-            
+
+
+
+14. New icp transformation update
+
+    - We are now using: T = dT @ T insetad of T = T + dT
+    - The one before is mathematically only valid for small dT vals.
+
+    14.1 With new transformation update
+
+
+    14.2 Same params old TF update
+    
 '''
 
 
@@ -106,9 +118,9 @@ from .result_writer import ResultWriter
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv'
 
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_3_new_icp_.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_3_new_icp_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_3_new_icp_params.json'
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_14_2_new_T_icp_.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_14_2_new_T_icp_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_14_2_new_T_icp_params.json'
 
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_test_new_icp_.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_test_new_icp_steps.csv'
@@ -150,12 +162,12 @@ def _compute_wheel_separation() -> float:
 
 def _grid_axes() -> dict:
     return {
-        "sigma_measurement": [0.25, 0.35],
+        "sigma_measurement": [0.25],
         "every_nth_beam_filter": [4],
         "every_nth_beam_map": [2],
         "n_particles": [40],
-        "proposal_sigma_xy": [0.15, 0.25],
-        "proposal_sigma_theta": [0.08, 0.12],
+        "proposal_sigma_xy": [0.25],
+        "proposal_sigma_theta": [0.08],
         "proposal_n_samples": [10],
     }
 

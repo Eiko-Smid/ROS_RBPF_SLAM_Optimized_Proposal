@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
 import itertools
+import json
 import numpy as np
+from dataclasses import asdict, is_dataclass
+from typing import Any, Dict, Iterator, List, Union
 
 from ..infrastructure.playback_loader import PlaybackLoader
 from ..infrastructure.playback_converter import PlaybackConverter
@@ -16,16 +19,17 @@ from ..rbpf.scan_match_factory import (
     ScanMatcherParams,
 )
 
-from .playback_defs import ExperimentParams
-from .evaluator import RBPFEvaluator
+from ..optimize_rbpf.playback_defs import ExperimentParams
+from .evaluator_scanmatching import ScanMatchingEvaluator
 from .playback_runner_scanmatching import PlaybackRunnerScanMatching
 from .scorer_scanmatching import ScanMatchingScorer
-from .optimizer import ScanMatcherOptimizer
+from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/scan_matching_only_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/scan_matching_only_steps.csv"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_params.json"
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
@@ -34,8 +38,22 @@ N_OPTIMIZATION_REPEATS = 1
 BASE_SEED = 22
 RESEED_EACH_RUN = True
 
-PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
+PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"
+
+
+def _to_jsonable(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if is_dataclass(value):
+        return _to_jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {k: _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    return value
 
 
 def _compute_wheel_separation() -> float:
@@ -47,7 +65,7 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
-def _grid_axes() -> dict:
+def _grid_axes() -> Dict[str, List[Union[float, int]]]:
     return {
         "every_nth_beam_filter": [4],
         "n_particles": [1],
@@ -57,7 +75,34 @@ def _grid_axes() -> dict:
     }
 
 
-def generate_param_grid(n_repeats: int = 1):
+def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
+    file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
+
+    if file_exists and not override:
+        print("\nParameter overview has not been saved because file already exists and override is set to False!")
+        return
+
+    axes = _grid_axes()
+    example_params = next(generate_param_grid(n_repeats=1), None)
+
+    payload = {
+        "playback_dir": PLAYBACK_DIR,
+        "playback_suffix": PLAYBACK_SUFFIX,
+        "n_playback_steps": N_PLAYBACK_STEPS,
+        "n_optimization_repeats": n_repeats,
+        "base_seed": BASE_SEED,
+        "reseed_each_run": RESEED_EACH_RUN,
+        "grid_axes": axes,
+        "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
+    }
+
+    with open(path, "w") as f:
+        json.dump(_to_jsonable(payload), f, indent=2)
+
+    print(f"\nParameter overview has been saved to:\n{path}")
+
+
+def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
 
@@ -144,19 +189,19 @@ def generate_param_grid(n_repeats: int = 1):
             )
 
 
-def build_optimizer():
+def build_optimizer() -> ScanMatchingOptimizer:
     runner = PlaybackRunnerScanMatching(
         factory=RBPFFactory(),
-        evaluator=RBPFEvaluator(),
+        evaluator=ScanMatchingEvaluator(),
     )
 
-    return ScanMatcherOptimizer(
+    return ScanMatchingOptimizer(
         runner=runner,
         scorer=ScanMatchingScorer(),
     )
 
 
-def main():
+def main() -> None:
     if BASE_SEED is not None:
         np.random.seed(BASE_SEED)
 
@@ -172,6 +217,13 @@ def main():
 
     optimizer = build_optimizer()
     writer = ResultWriterScanMatching()
+
+    # Store compact parameter overview (grid axes + one representative ExperimentParams)
+    write_parameter_overview(
+        path=PARAMETER_OVERVIEW_PATH,
+        n_repeats=N_OPTIMIZATION_REPEATS,
+        override=OVERRIDE_EXISTING_RESULTS,
+    )
 
     ranked_runs = optimizer.optimize(
         playback_data=playback_data,

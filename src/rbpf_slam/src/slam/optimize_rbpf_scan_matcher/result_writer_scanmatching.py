@@ -3,14 +3,14 @@ import csv
 import numbers
 import math
 
-from typing import List
+from typing import Any, List
 
-from .optimizer import RankedRun
+from .optimizer_scanmatching import RankedRunScanMatching
 
 
 class ResultWriterScanMatching:
     @staticmethod
-    def _format_csv_value(value, float_decimals: int):
+    def _format_csv_value(value: Any, float_decimals: int) -> Any:
         if isinstance(value, bool):
             return value
 
@@ -28,7 +28,7 @@ class ResultWriterScanMatching:
     @staticmethod
     def write_ranked_runs_csv(
         path: str,
-        ranked_runs: List[RankedRun],
+        ranked_runs: List[RankedRunScanMatching],
         override: bool = False,
         float_decimals: int = 4,
     ) -> None:
@@ -48,7 +48,7 @@ class ResultWriterScanMatching:
                     "n_particles",
                     "every_nth_beam_filter",
                     "scan_match_failed_count",
-                    "scan_match_fallback_failed_count",
+                    "icp_failed_count",
                     "count_too_few_points",
                     "count_too_few_corresp",
                     "infinite_h_or_g",
@@ -57,6 +57,10 @@ class ResultWriterScanMatching:
                     "infinite_mean_err",
                     "best_transf_too_large",
                     "best_mean_err_too_large",
+                    "mean_timing_sm_update_particle_ms",
+                    "mean_timing_sm_scan_match_update_pose_ms",
+                    "mean_timing_sm_map_extension_ms",
+                    "mean_timing_sm_map_update_ms",
                     "mean_trans_error",
                     "mean_rot_error_deg",
                     "rmse_trans_error",
@@ -75,7 +79,7 @@ class ResultWriterScanMatching:
                     summary.get("n_particles"),
                     run.params.every_nth_scan_filter,
                     summary.get("scan_match_failed_count"),
-                    summary.get("scan_match_fallback_failed_count"),
+                    summary.get("icp_failed_count", 0),
                     summary.get("count_too_few_points", 0),
                     summary.get("count_too_few_corresp", 0),
                     summary.get("infinite_h_or_g", 0),
@@ -84,6 +88,10 @@ class ResultWriterScanMatching:
                     summary.get("infinite_mean_err", 0),
                     summary.get("best_transf_too_large", 0),
                     summary.get("best_mean_err_too_large", 0),
+                    (summary.get("mean_timing_sm_update_particle_s", 0.0) or 0.0) * 1000.0,
+                    (summary.get("mean_timing_sm_scan_match_update_pose_s", 0.0) or 0.0) * 1000.0,
+                    (summary.get("mean_timing_sm_map_extension_s", 0.0) or 0.0) * 1000.0,
+                    (summary.get("mean_timing_sm_map_update_s", 0.0) or 0.0) * 1000.0,
                     summary.get("mean_translation_error"),
                     math.degrees(summary.get("mean_rotation_error")) if summary.get("mean_rotation_error") is not None else None,
                     summary.get("rmse_translation_error"),
@@ -104,7 +112,7 @@ class ResultWriterScanMatching:
     @staticmethod
     def write_ranked_step_traces_csv(
         output_path: str,
-        ranked_runs: List[RankedRun],
+        ranked_runs: List[RankedRunScanMatching],
         override: bool = False,
         float_decimals: int = 6,
     ) -> None:
@@ -119,22 +127,66 @@ class ResultWriterScanMatching:
             writer = csv.writer(f)
             writer.writerow(
                 [
-                    "rank",
-                    "tag",
-                    "step_id",
-                    "trans_error",
-                    "rot_error",
+                    "run_id",
+                    "step",
+                    "t",
+                    "true_x",
+                    "true_y",
+                    "true_theta_deg",
+                    "pred_x",
+                    "pred_y",
+                    "pred_theta_deg",
+                    "corr_x",
+                    "corr_y",
+                    "corr_theta_deg",
+                    "pred_trans_error",
+                    "corr_trans_error",
+                    "pred_rot_error_deg",
+                    "corr_rot_error_deg",
+                    "best_trans_norm",
+                    "best_rot_abs_deg",
+                    "pred_to_corr_dist",
+                    "pred_to_corr_rot_deg",
+                    "icp_iterations",
+                    "icp_mean_error",
+                    "n_correspondences",
+                    "use_transformation",
+                    "stop_reason",
                 ]
             )
 
             for rank, run in enumerate(ranked_runs, start=1):
                 for step in run.step_results:
+                    true_x, true_y, true_theta = step.true_pose if step.true_pose is not None else (None, None, None)
+                    pred_x, pred_y, pred_theta = step.pred_pose if step.pred_pose is not None else (None, None, None)
+                    corr_x, corr_y, corr_theta = step.corr_pose if step.corr_pose is not None else (None, None, None)
+
                     row = [
-                        rank,
                         run.params.tag,
                         step.step_idx,
-                        step.translation_error,
-                        step.rotation_error,
+                        step.t,
+                        true_x,
+                        true_y,
+                        math.degrees(true_theta) if true_theta is not None else None,
+                        pred_x,
+                        pred_y,
+                        math.degrees(pred_theta) if pred_theta is not None else None,
+                        corr_x,
+                        corr_y,
+                        math.degrees(corr_theta) if corr_theta is not None else None,
+                        step.pred_translation_error,
+                        step.corr_translation_error,
+                        math.degrees(step.pred_rotation_error) if step.pred_rotation_error is not None else None,
+                        math.degrees(step.corr_rotation_error) if step.corr_rotation_error is not None else None,
+                        step.best_trans_norm,
+                        math.degrees(step.best_rot_abs) if step.best_rot_abs is not None else None,
+                        step.pred_to_corr_dist,
+                        math.degrees(step.pred_to_corr_rot) if step.pred_to_corr_rot is not None else None,
+                        step.icp_iterations,
+                        step.icp_mean_error,
+                        step.n_correspondences,
+                        step.use_transformation,
+                        step.stop_reason,
                     ]
 
                     writer.writerow(

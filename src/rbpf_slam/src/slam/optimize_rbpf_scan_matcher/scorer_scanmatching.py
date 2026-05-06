@@ -1,5 +1,8 @@
+from typing import Mapping
+
+
 class ScanMatchingScorer:
-    def score(self, summary: dict) -> float:
+    def score(self, summary: Mapping[str, float]) -> float:
         """
         Computes a score for scan-matching-only runs.
         Lower is better.
