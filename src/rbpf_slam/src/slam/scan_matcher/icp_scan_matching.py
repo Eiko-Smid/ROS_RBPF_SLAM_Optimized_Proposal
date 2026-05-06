@@ -25,10 +25,15 @@ Additonal TODOs for ICP implementation:
 
 2) Define parameters for thresholds that are hardcoded right now (Done)
 
-3) Detect scan matching failing reason
+3) Detect scan matching failing reason (Done)
 
+- Most of the times one of these were the reason:
+    - transformation value was too large
+    - best mean error too large
 
-4)  Repace parameter self.MIN_POINTS = 3 ()
+4)  Repace parameter self.MIN_POINTS = 3 (Done)
+
+- Added min points threshold as well as well as min correspondences threshold.  
 '''
 
 
@@ -584,23 +589,52 @@ class IterativeClosestPoint():
 
 
     @staticmethod
+    def vec3_to_mat3(vec: np.ndarray) -> np.ndarray:
+        '''
+        Converts a 3D transformation vector (tx, ty, theta) to a 3x3 homogeneous transformation matrix.
+        '''
+        tx, ty, theta = vec.flatten()
+        c = np.cos(theta)
+        s = np.sin(theta)
+
+        T = np.array([
+            [c, -s, tx],
+            [s, c, ty],
+            [0, 0, 1]
+        ])
+
+        return T
+
+
+    @staticmethod
+    def mat3_to_vec3(mat: np.ndarray) -> np.ndarray:
+        '''
+        Converts a 3x3 homogeneous transformation matrix to a 3D transformation vector (tx, ty, theta).
+        '''
+        tx = mat[0, 2]
+        ty = mat[1, 2]
+        theta = np.arctan2(mat[1, 0], mat[0, 0])
+
+        vec = np.array([
+            [tx],
+            [ty],
+            [theta]
+        ])
+
+        return vec
+        
+
+    @staticmethod
     def correct_pose(pose:Tuple[float, float, float] , transf_param: np.ndarray) -> Tuple[float, float, float]:
         '''
         Corrects the given pose by the given transformation.
         '''
+        # Transform transformation vector to homogeneous transformation matrix
+        T = IterativeClosestPoint.vec3_to_mat3(transf_param)
+
+        # Extract parameters
         tx, ty, rot_theta = transf_param.flatten()
         x, y, theta = pose
-
-        # Compute sin, cos
-        c = np.cos(rot_theta)
-        s = np.sin(rot_theta)
-
-        # Define transformation matrix 
-        T = np.array([
-            [c, -s, tx],
-            [s, c, ty],
-            [0, 0, 1],
-        ])
 
         # get point
         p = np.array([x, y, 1])
@@ -1295,12 +1329,19 @@ class IterativeClosestPoint():
                     n_correspondences=n_corresp_best_iter
                 ), extended=True)
 
-            # Update transformation parameter 
-            transformation+= dtransformation
+            # Update transformation 
+            # This must be done in a multiplicative way to ensure proper handling of rotations 
+            T = self.vec3_to_mat3(transformation)
+            dT = self.vec3_to_mat3(dtransformation)
+            T = dT @ T
+            transformation = self.mat3_to_vec3(T)
+
+            # print dt
+            print(f"dT = {dtransformation[0], dtransformation[1], dtransformation[2]*180/np.pi}  (tx, ty, theta in deg)")
             
             # Ensure valid angle
-            theta = float(transformation[self.IDX_THETA].item())
-            transformation[self.IDX_THETA] = atan2(sin(theta), cos(theta))
+            # theta = float(transformation[self.IDX_THETA].item())
+            # transformation[self.IDX_THETA] = atan2(sin(theta), cos(theta))
             
             # Update rotation and translation matrix
             rotation_matrix= self.compute_rotation_matrix(transformation[self.IDX_THETA])
@@ -1381,189 +1422,3 @@ class IterativeClosestPoint():
             n_iterations=self.stop_condition.iteration,
             n_correspondences=n_corresp_best_iter
         ), extended=True)
-
-
-
-    def find_transformation_copy(
-            self, 
-            new_data_pointpairs: np.ndarray, 
-            true_data_pointpairs: np.ndarray
-        ) -> np.ndarray:
-        '''
-        Get's the new data points and the true datapoints and trys to minimize the error between the two
-        pointclouds by finding the best transformation. Returns the transformation parameters and stores 
-        relevant information in the 'info' member variable. The info contains the data for each transformation
-        run.
-
-        Parameters:
-        ----------
-        new_data_pointpairs: np.ndarray
-            Nx2 numpy array of the new data points.
-        true_data_pointpairs: np.ndarray
-            Mx2 numpy array of the true data points.
-        
-        Returns:
-        ----------
-        transformation_parameter: np.ndarray
-            3x1 numpy array of the transformation parameters (tx, ty, theta).
-        '''
-        # Santize pointclouds
-        new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
-
-        true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
-
-        # Init vars
-        transformation_parameter = np.zeros((3, 1))
-        dtransformation = transformation_parameter.copy()
-        squared_error = inf
-        mean_err = inf  
-
-        if (
-            new_data_pointpairs.shape[0] < self.min_points or
-            true_data_pointpairs.shape[0] < self.min_points
-        ):
-            return transformation_parameter
-
-        # Store number of points for logging
-        self.n_points_true_data = true_data_pointpairs.shape[0]
-        self.n_points_new_data = new_data_pointpairs.shape[0]
-
-        # Downsample true data points
-        true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
-            pointcloud=true_data_pointpairs,
-            max_n_points=self.max_n_points
-        )
-
-        # List to save results
-        self.squared_error_list= []
-        self.transformation_parameter_list = [transformation_parameter.copy()]
-        self.transformed_new_data_list = [new_data_pointpairs.copy()]
-        latest_new_data= new_data_pointpairs.copy()
-        self.list_of_cleaned_corresp = []
-        self.list_of_cleaned_corresp_numb = []
-        self.list_of_corresp_numb = []
-        
-        # Train Nearest Neighbor with true data points 
-        self.neighbor.fit(true_data_pointpairs)
-        
-        # Compute normals of true data points
-        # true_data_normals = self.compute_normals_pca(
-        #     points=true_data_pointpairs,
-        #     k=self.neighbors
-        # )
-
-        # Guard against sparse local maps: sklearn requires n_neighbors <= n_samples.
-        n_neighbors_normals = min(self.neighbors, true_data_pointpairs.shape[0])
-        _, indices_normal = self.neighbor.kneighbors(
-            true_data_pointpairs,
-            n_neighbors=n_neighbors_normals,
-        )
-        true_data_normals = compute_normals_numba(
-            true_data_pointpairs,
-            indices_normal
-        )
-                
-        # Variable to save squared error. 
-        sum_error= 10**10
-        
-        while True:
-            should_stop = self.stop_condition.stop_icp(mean_err, dtransformation)
-
-            if should_stop:
-                break
-
-            if latest_new_data.shape[0] == 0:
-                break
-            
-            # Find Nearest Neighbor by euclidean distance
-            distances, indices = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
-            
-            correspondences= []
-            
-            # # 
-            # start_time = time.perf_counter()
-
-            # for i in range(np.shape(latest_new_data)[0]):
-            #     # Push correspondences to heap, sorted by the index of the true data pointcloud j
-            #     heappush(correspondences, (indices.item(i), i, distances[i]))
-            
-            # # Outlier Rejection            
-            # cleaned_correspondences, sum_error = self.outlier_rejection(latest_new_data, true_data_pointpairs, correspondences)
-
-            # end_time = time.perf_counter()
-            # print(f"Outlier rejection took {end_time - start_time:.5f} seconds")
-            
-            cleaned_correspondences, sum_error = self.vectorized_outlier_rejection(                
-                distances=distances,
-                indices=indices,
-            )
-
-
-            if len(cleaned_correspondences) < self.min_corresp:
-                break
-            
-            # Prepare the system
-            H, g, squared_error = self.prepare_system_point_to_plane_vec(
-                transformation_parameter,
-                latest_new_data,
-                true_data_pointpairs,
-                cleaned_correspondences,
-                true_data_normals,
-            )
-
-            # Check if Hessian and g are finite
-            if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
-                break
-            
-            # Compute least Squares Solution
-            dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
-
-            if not np.all(np.isfinite(dtransformation)):
-                break
-
-            # Update transformation parameter 
-            transformation_parameter+= dtransformation
-            
-            # Ensure valid angle
-            theta = float(transformation_parameter[self.IDX_THETA].item())
-            transformation_parameter[self.IDX_THETA] = atan2(sin(theta), cos(theta))
-            
-            # Update rotation and translation matrix
-            rotation_matrix= self.compute_rotation_matrix(transformation_parameter[self.IDX_THETA])
-            translation= transformation_parameter[0:self.IDX_THETA]
-            
-            # Transform new data points by rotation and translation 
-            latest_new_data_T= np.dot(rotation_matrix, new_data_pointpairs.T) + translation
-            latest_new_data= latest_new_data_T.T
-
-            # Compute mean err metric for stop condition check
-            if np.isfinite(squared_error):
-                mean_err = squared_error / len(cleaned_correspondences)
-            else:
-                mean_err = inf
-            
-            # Append data to lists
-            self.transformed_new_data_list.append(latest_new_data)
-            self.list_of_cleaned_corresp.append(cleaned_correspondences)
-            self.list_of_cleaned_corresp_numb.append(len(cleaned_correspondences))
-            # self.list_of_corresp_numb.append(len(correspondences))
-            self.squared_error_list.append(squared_error)
-            self.transformation_parameter_list.append(transformation_parameter.copy())
-        
-        if self.list_of_cleaned_corresp:
-            self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
-            self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
-            # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
-
-        # Store info and reset stop condition for next run
-        self.store_info(extended=True)
-        self.stop_condition.reset()
-        
-        # Print stop reasons
-        # icp_stop_info = self.get_info()
-        # print("\n\nICP Stop Condition Info:")
-        # keys = ['iteration', 'mean_err', 'rel_improvement', 'no_improvement_counter', 'dtrans_norm', 'drot_abs', 'stop_reason']
-        # for key in keys:
-        #     print(f"{key}: {icp_stop_info[key]}")
-
-        return transformation_parameter
