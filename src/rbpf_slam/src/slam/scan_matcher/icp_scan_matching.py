@@ -507,8 +507,29 @@ class IterativeClosestPoint():
         run_reason = result.reason or self.stop_condition.stop_reason
         self._register_result_reason(run_reason)
         self.store_info(extended=extended)
+        self.info["best_transformation"] = np.asarray(result.transformation, dtype=float).copy()
+        self.info["icp_iterations"] = int(result.n_iterations)
+        self.info["icp_mean_error"] = float(result.mean_error) if result.mean_error is not None else None
+        self.info["n_correspondences"] = int(result.n_correspondences)
+        self.info["use_transformation"] = bool(result.use_transformation)
+        self.info["stop_reason"] = run_reason
         self.stop_condition.reset()
         return result
+
+
+    # def register_external_failure(self, reason: str) -> None:
+    #     """
+    #     Register a scan-matching failure that happens before ICP iterations start.
+
+    #     This keeps legacy counters and stop_reason_counts aligned with caller-level
+    #     scan_match_failed statistics.
+    #     """
+    #     if not reason:
+    #         return
+    #     self._register_result_reason(reason)
+    #     self.stop_condition.stop_reason = reason
+    #     self.store_info(extended=False)
+    #     self.stop_condition.reset()
 
 
     def store_info(self, extended: bool = False):
@@ -1334,15 +1355,13 @@ class IterativeClosestPoint():
             T = self.vec3_to_mat3(transformation)
             dT = self.vec3_to_mat3(dtransformation)
             T = dT @ T
-            transformation = self.mat3_to_vec3(T)
+            transformation = self.mat3_to_vec3(T)     
 
-            # print dt
-            print(f"dT = {dtransformation[0], dtransformation[1], dtransformation[2]*180/np.pi}  (tx, ty, theta in deg)")
-            
-            # Ensure valid angle
-            # theta = float(transformation[self.IDX_THETA].item())
-            # transformation[self.IDX_THETA] = atan2(sin(theta), cos(theta))
-            
+            # transformation += dtransformation
+
+            # # Normalize angles
+            # transformation[self.IDX_THETA] = atan2(sin(transformation[self.IDX_THETA]), cos(transformation[self.IDX_THETA])) 
+                           
             # Update rotation and translation matrix
             rotation_matrix= self.compute_rotation_matrix(transformation[self.IDX_THETA])
             translation= transformation[0:self.IDX_THETA]
