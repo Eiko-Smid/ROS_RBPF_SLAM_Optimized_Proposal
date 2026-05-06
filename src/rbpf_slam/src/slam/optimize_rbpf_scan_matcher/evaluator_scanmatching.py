@@ -33,6 +33,15 @@ class StepResultScanMatching:
     n_correspondences: Optional[int]
     use_transformation: Optional[bool]
     stop_reason: Optional[str]
+    n_measurements_total: Optional[int]
+    n_valid_measurements_filter: Optional[int]
+    n_valid_measurements_map_update: Optional[int]
+    n_map_points_extracted: Optional[int]
+    t_ogm: Optional[float]
+    t_scan_matching: Optional[float]
+    t_prediction: Optional[float]
+    t_map_extraction: Optional[float]
+    t_correct_pose: Optional[float]
     step_duration: Optional[float]
     timing_update_particle: Optional[float]
 
@@ -79,6 +88,15 @@ class ScanMatchingEvaluator:
         n_correspondences: Optional[int],
         use_transformation: Optional[bool],
         stop_reason: Optional[str],
+        n_measurements_total: Optional[int],
+        n_valid_measurements_filter: Optional[int],
+        n_valid_measurements_map_update: Optional[int],
+        n_map_points_extracted: Optional[int],
+        t_ogm: Optional[float],
+        t_scan_matching: Optional[float],
+        t_prediction: Optional[float],
+        t_map_extraction: Optional[float],
+        t_correct_pose: Optional[float],
         scan_match_failed: bool,
         step_duration: Optional[float],
         timing_update_particle: Optional[float],
@@ -144,6 +162,19 @@ class ScanMatchingEvaluator:
             n_correspondences=int(n_correspondences) if n_correspondences is not None else None,
             use_transformation=bool(use_transformation) if use_transformation is not None else None,
             stop_reason=str(stop_reason) if stop_reason is not None else None,
+            n_measurements_total=int(n_measurements_total) if n_measurements_total is not None else None,
+            n_valid_measurements_filter=(
+                int(n_valid_measurements_filter) if n_valid_measurements_filter is not None else None
+            ),
+            n_valid_measurements_map_update=(
+                int(n_valid_measurements_map_update) if n_valid_measurements_map_update is not None else None
+            ),
+            n_map_points_extracted=int(n_map_points_extracted) if n_map_points_extracted is not None else None,
+            t_ogm=float(t_ogm) if t_ogm is not None else None,
+            t_scan_matching=float(t_scan_matching) if t_scan_matching is not None else None,
+            t_prediction=float(t_prediction) if t_prediction is not None else None,
+            t_map_extraction=float(t_map_extraction) if t_map_extraction is not None else None,
+            t_correct_pose=float(t_correct_pose) if t_correct_pose is not None else None,
             step_duration=float(step_duration) if step_duration is not None else None,
             timing_update_particle=float(timing_update_particle) if timing_update_particle is not None else None,
         )
@@ -151,14 +182,75 @@ class ScanMatchingEvaluator:
     def summarize_run(self, step_results: List[StepResultScanMatching], params: ExperimentParams) -> Dict[str, Any]:
         trans_err = [s.translation_error for s in step_results if s.translation_error is not None]
         rot_err = [s.rotation_error for s in step_results if s.rotation_error is not None]
+        pred_trans_err = [s.pred_translation_error for s in step_results if s.pred_translation_error is not None]
+        pred_rot_err = [s.pred_rotation_error for s in step_results if s.pred_rotation_error is not None]
+        corr_trans_err = [s.corr_translation_error for s in step_results if s.corr_translation_error is not None]
+        corr_rot_err = [s.corr_rotation_error for s in step_results if s.corr_rotation_error is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
         update_particle_timings = [
             s.timing_update_particle for s in step_results if s.timing_update_particle is not None
         ]
 
+        final_drift = float("inf")
+        if step_results:
+            last_step = step_results[-1]
+            if last_step.corr_pose is not None and last_step.true_pose is not None:
+                final_drift = self.translation_error(last_step.corr_pose, last_step.true_pose)
+
+        use_transformation_vals = [
+            s.use_transformation for s in step_results if s.use_transformation is not None
+        ]
+        success_rate = (
+            float(sum(1 for v in use_transformation_vals if v)) / float(len(use_transformation_vals))
+            if use_transformation_vals
+            else 0.0
+        )
+
+        n_steps = len(step_results)
+        icp_iterations_per_step = [
+            float(s.icp_iterations) if s.icp_iterations is not None else 0.0
+            for s in step_results
+        ]
+        mean_icp_iterations = float(np.mean(icp_iterations_per_step)) if n_steps > 0 else 0.0
+
+        successful_steps = [s for s in step_results if s.use_transformation is True]
+        successful_icp_errors = [s.icp_mean_error for s in successful_steps if s.icp_mean_error is not None]
+        successful_best_trans_norm = [s.best_trans_norm for s in successful_steps if s.best_trans_norm is not None]
+        successful_best_rot_abs = [s.best_rot_abs for s in successful_steps if s.best_rot_abs is not None]
+
+        mean_icp_error = float(np.mean(successful_icp_errors)) if successful_icp_errors else float("inf")
+        mean_best_trans_norm = (
+            float(np.mean(successful_best_trans_norm)) if successful_best_trans_norm else float("inf")
+        )
+        max_best_trans_norm = (
+            float(np.max(successful_best_trans_norm)) if successful_best_trans_norm else float("inf")
+        )
+        mean_best_rot_abs = (
+            float(np.mean(successful_best_rot_abs)) if successful_best_rot_abs else float("inf")
+        )
+        max_best_rot_abs = (
+            float(np.max(successful_best_rot_abs)) if successful_best_rot_abs else float("inf")
+        )
+
         return {
-            "n_steps": len(step_results),
+            "n_steps": n_steps,
             "scan_match_failed_count": int(sum(1 for s in step_results if s.scan_match_failed)),
+            "success_rate": success_rate,
+            "mean_pred_trans_error": float(np.mean(pred_trans_err)) if pred_trans_err else float("inf"),
+            "mean_pred_rot_error": float(np.mean(pred_rot_err)) if pred_rot_err else float("inf"),
+            "mean_corr_trans_error": float(np.mean(corr_trans_err)) if corr_trans_err else float("inf"),
+            "mean_corr_rot_error": float(np.mean(corr_rot_err)) if corr_rot_err else float("inf"),
+            "rmse_pred_trans_error": float(np.sqrt(np.mean(np.square(pred_trans_err)))) if pred_trans_err else float("inf"),
+            "rmse_pred_rot_error": float(np.sqrt(np.mean(np.square(pred_rot_err)))) if pred_rot_err else float("inf"),
+            "rmse_corr_trans_error": float(np.sqrt(np.mean(np.square(corr_trans_err)))) if corr_trans_err else float("inf"),
+            "rmse_corr_rot_error": float(np.sqrt(np.mean(np.square(corr_rot_err)))) if corr_rot_err else float("inf"),
+            "final_drift": final_drift,
+            "mean_icp_iterations": mean_icp_iterations,
+            "mean_icp_error": mean_icp_error,
+            "mean_best_trans_norm": mean_best_trans_norm,
+            "max_best_trans_norm": max_best_trans_norm,
+            "mean_best_rot_abs": mean_best_rot_abs,
+            "max_best_rot_abs": max_best_rot_abs,
             "mean_translation_error": float(np.mean(trans_err)) if trans_err else float("inf"),
             "mean_rotation_error": float(np.mean(rot_err)) if rot_err else float("inf"),
             "rmse_translation_error": float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),

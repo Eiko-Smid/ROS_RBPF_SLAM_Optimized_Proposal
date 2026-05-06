@@ -44,6 +44,12 @@ class ScanMatcher():
         self.max_sensor_range = max_sensor_range
         self.delta_r = delta_r
         self.occ_thres = occ_thres
+        self.last_pred_pose = None
+        self.last_map_points_count = 0
+        self.last_t_scan_matching_s = None
+        self.last_t_prediction_s = None
+        self.last_t_map_extraction_s = None
+        self.last_t_correct_pose_s = None
 
 
     def get_pose(self) -> Pose2D:
@@ -105,6 +111,12 @@ class ScanMatcher():
         info = self.icp.get_info()
 
         info["scan_match_pose"] = self.pose
+        info["pred_pose"] = self.last_pred_pose
+        info["map_points_count"] = int(self.last_map_points_count)
+        info["timing_scan_matching"] = self.last_t_scan_matching_s
+        info["timing_prediction"] = self.last_t_prediction_s
+        info["timing_map_extraction"] = self.last_t_map_extraction_s
+        info["timing_correct_pose"] = self.last_t_correct_pose_s
         return info
     
 
@@ -260,23 +272,38 @@ class ScanMatcher():
             performed by any means, the corrected pose is None and the predicted pose is returned as the second element
             of the tuple.    
         ''' 
+        t_scan_matching_start = time.perf_counter()
+
+        def _finish_and_return(corr_pose_local, pred_pose_local):
+            self.last_t_scan_matching_s = time.perf_counter() - t_scan_matching_start
+            return corr_pose_local, pred_pose_local
+
         # Init pose
         pred_pose = None
         corr_pose = None
+        self.last_map_points_count = 0
+        self.last_t_prediction_s = None
+        self.last_t_map_extraction_s = None
+        self.last_t_correct_pose_s = None
 
         # Predict psoe based on wheel encoder information
+        t_prediction_start = time.perf_counter()
         pred_pose = self.predict_pose(
             pose=old_pose,
             dl=dl,
             dr=dr,
         )
+        self.last_t_prediction_s = time.perf_counter() - t_prediction_start
+        self.last_pred_pose = pred_pose
 
         if len(measurements) < 3:
             self.pose = pred_pose
-            return corr_pose, pred_pose
+            return _finish_and_return(corr_pose, pred_pose)
         
         # Find max measurement range
         max_meas_range = max([m[0] for m in measurements])
+
+        t_map_extraction_start = time.perf_counter()
 
         # Transform measurements (range, bearing) -> point cloud
         scan_points = self.transform_measurements_to_points(
@@ -286,9 +313,10 @@ class ScanMatcher():
 
         # Filter inf and nan values from measurements and check if enough scans are left, else break
         scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
+        self.last_t_map_extraction_s = time.perf_counter() - t_map_extraction_start
         if scan_points.shape[0] < 3:
             self.pose = pred_pose
-            return corr_pose, pred_pose
+            return _finish_and_return(corr_pose, pred_pose)
 
         # Get map points
         map_points = self.ogm.extract_map_for_scan_matching_numba(
@@ -297,23 +325,26 @@ class ScanMatcher():
             delta_r=self.delta_r,
             occ_thresh=self.occ_thres,
         )
+        self.last_map_points_count = int(map_points.shape[0]) if map_points.ndim == 2 else 0
 
         # Check if array shape is correct and has enough elements, else break
         if map_points.ndim != 2 or map_points.shape[0] < 3:
             self.pose = pred_pose
-            return corr_pose, pred_pose
+            return _finish_and_return(corr_pose, pred_pose)
 
         # Correct pose
+        t_correct_pose_start = time.perf_counter()
         corr_pose = self.correct_pose(
             pose=pred_pose, 
             scan_points=scan_points,
             map_points=map_points,
         )
+        self.last_t_correct_pose_s = time.perf_counter() - t_correct_pose_start
 
         # Keep a valid pose even when ICP correction is rejected.
         self.pose = corr_pose if corr_pose is not None else pred_pose
 
-        return corr_pose, pred_pose
+        return _finish_and_return(corr_pose, pred_pose)
 
 
 

@@ -109,19 +109,13 @@ class PlaybackRunnerScanMatching:
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
 
-            # Keep metrics outside RBPF internals: prediction from pre-step pose + odom.
-            pre_step_pose = rbpf.particles[0].pose
-            pred_pose = rbpf.particles[0].scan_matcher.predict_pose(
-                pose=pre_step_pose,
-                dl=step.dl,
-                dr=step.dr,
-            )
-
             measurements_filter = (
                 step.scan[::every_nth_scan_filter]
                 if every_nth_scan_filter > 1
                 else step.scan
             )
+
+            # For map update we want to use inf values for freeing space!
             measurements_map_update = (
                 step.scan[::every_nth_scan_map]
                 if every_nth_scan_map > 1
@@ -131,9 +125,9 @@ class PlaybackRunnerScanMatching:
             measurements_filter = [
                 (r, b) for r, b in measurements_filter if np.isfinite(r) and not np.isnan(r)
             ]
-            measurements_map_update = [
-                (r, b) for r, b in measurements_map_update if np.isfinite(r) and not np.isnan(r)
-            ]
+            # measurements_map_update = [
+            #     (r, b) for r, b in measurements_map_update if np.isfinite(r) and not np.isnan(r)
+            # ]
 
             rbpf.step_scan_match_only(
                 odom=(step.dl, step.dr),
@@ -145,19 +139,36 @@ class PlaybackRunnerScanMatching:
 
             info = rbpf.get_step_info_scan_match_only()
             icp_info = rbpf.particles[0].scan_matcher.icp.get_info()
+            scan_match_info = rbpf.particles[0].scan_matcher.get_info()
+            scan_match_failed = bool(info.get("scan_match_failed", False))
+            step_stop_reason = icp_info.get("stop_reason")
+
+            # If scan matching failed before invoking ICP, emit an explicit step reason.
+            if scan_match_failed and scan_match_info.get("timing_correct_pose") is None:
+                step_stop_reason = "scan matcher failed before icp"
+
             step_result = self.evaluator.evaluate_step(
                 step_idx=info.get("step") if info.get("step") is not None else step_idx,
                 t=step.t,
                 true_pose=step.true_pose,
-                pred_pose=pred_pose,
+                pred_pose=scan_match_info.get("pred_pose"),
                 corr_pose=info.get("particle_pose"),
                 best_transformation=icp_info.get("best_transformation"),
                 icp_iterations=icp_info.get("icp_iterations"),
                 icp_mean_error=icp_info.get("icp_mean_error"),
                 n_correspondences=icp_info.get("n_correspondences"),
                 use_transformation=icp_info.get("use_transformation"),
-                stop_reason=icp_info.get("stop_reason"),
-                scan_match_failed=bool(info.get("scan_match_failed", False)),
+                stop_reason=step_stop_reason,
+                n_measurements_total=len(step.scan),
+                n_valid_measurements_filter=len(measurements_filter),
+                n_valid_measurements_map_update=len(measurements_map_update),
+                n_map_points_extracted=scan_match_info.get("map_points_count"),
+                t_ogm=info.get("timing_ogm_update"),
+                t_scan_matching=scan_match_info.get("timing_scan_matching"),
+                t_prediction=scan_match_info.get("timing_prediction"),
+                t_map_extraction=scan_match_info.get("timing_map_extraction"),
+                t_correct_pose=scan_match_info.get("timing_correct_pose"),
+                scan_match_failed=scan_match_failed,
                 step_duration=step_duration,
                 timing_update_particle=info.get("timing_update_particle"),
             )

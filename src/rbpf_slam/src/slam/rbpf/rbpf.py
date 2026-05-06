@@ -827,6 +827,7 @@ class RBPF:
         t_map_update_s = time.perf_counter() - t_map_update_start
         self._timing_stats_scan_match_only["map_update_sum_s"] += t_map_update_s
         self._timing_stats_scan_match_only["map_update_count"] += 1
+        self._last_timing_sm_map_update_s = t_map_update_s
 
         new_particle = Particle(
             pose=new_pose,
@@ -871,6 +872,7 @@ class RBPF:
             "particle_pose": self.particles[0].pose,
             "particle_map": self.particles[0].scan_matcher.ogm.return_log_odds_map(),
             "timing_update_particle": t_update_particle_s,
+            "timing_ogm_update": getattr(self, "_last_timing_sm_map_update_s", None),
         }
 
         # Keep compatibility for callers still using get_step_info().
