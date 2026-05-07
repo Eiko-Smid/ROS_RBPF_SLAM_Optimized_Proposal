@@ -16,6 +16,7 @@ class RankedRunScanMatching:
     summary: RunSummaryScanMatching
     score: float
     step_results: List[StepResultScanMatching]
+    seed: Optional[int]
 
 
 class ScanMatchingOptimizer:
@@ -27,10 +28,13 @@ class ScanMatchingOptimizer:
         self,
         playback_data: PlaybackData,
         param_grid: Iterable[ExperimentParams],
-        base_seed: Optional[int] = None,
-        reseed_each_run: bool = False,
+        seeds: Optional[Iterable[int]] = None,
     ) -> List[RankedRunScanMatching]:
         params_list = list(param_grid)
+        seed_list = [int(s) for s in seeds] if seeds is not None else [None]
+
+        if not seed_list:
+            seed_list = [None]
 
         if not params_list:
             print("No parameter combinations provided. Nothing to optimize.")
@@ -38,24 +42,32 @@ class ScanMatchingOptimizer:
 
         ranked_runs: List[RankedRunScanMatching] = []
 
-        for run_idx, params in enumerate(
-            tqdm(params_list, total=len(params_list), desc="Scan matching optimization", unit="run")
+        for params in tqdm(
+            params_list,
+            total=len(params_list),
+            desc="Scan matching optimization",
+            unit="param",
         ):
-            if base_seed is not None:
-                run_seed = base_seed if reseed_each_run else (base_seed + run_idx)
-                np.random.seed(run_seed)
+            for run_seed in seed_list:
+                if run_seed is not None:
+                    np.random.seed(run_seed)
 
-            run_result = self.runner.run(playback_data, params)
-            score = self.scorer.score(run_result.summary)
+                # Test if seed works
+                # prob_val = np.random.normal(1.5, 1.0)
+                # print(f"Seed {run_seed} produced value: {prob_val}")
 
-            ranked_runs.append(
-                RankedRunScanMatching(
-                    params=params,
-                    summary=run_result.summary,
-                    score=score,
-                    step_results=run_result.step_results,
+                run_result = self.runner.run(playback_data, params)
+                score = self.scorer.score(run_result.summary)
+
+                ranked_runs.append(
+                    RankedRunScanMatching(
+                        params=params,
+                        summary=run_result.summary,
+                        score=score,
+                        step_results=run_result.step_results,
+                        seed=run_seed,
+                    )
                 )
-            )
 
         ranked_runs.sort(key=lambda x: x.score)
         return ranked_runs

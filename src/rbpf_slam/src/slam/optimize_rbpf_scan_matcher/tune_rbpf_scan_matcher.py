@@ -30,23 +30,27 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 1. Test final pipeline
     1.1 Test of final tuning pipeline for scan-matching-only mode on 100 steps 
 
+    1.2 Test after correction and metric changes
+
+        - First test of full run after correction and metric changes. 
+
 '''
 
-# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_4_summary.csv"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_4_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_4_params.json"
+# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_summary.csv"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_params.json"
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_steps.csv"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_step_summary.csv"
 SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_steps_trace.csv"
 PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_steps_params.json"
 
-CSV_FLOAT_DECIMALS = 4
+CSV_FLOAT_DECIMALS = 5
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = 5
 N_OPTIMIZATION_REPEATS = 1
-BASE_SEED = 22
-RESEED_EACH_RUN = True
+# SEED_LIST = [22, 23, 24, 56]
+SEED_LIST = [22]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"
@@ -100,8 +104,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         "playback_suffix": PLAYBACK_SUFFIX,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
-        "base_seed": BASE_SEED,
-        "reseed_each_run": RESEED_EACH_RUN,
+        "seed_list": SEED_LIST,
         "grid_axes": axes,
         "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
     }
@@ -217,9 +220,6 @@ def build_optimizer() -> ScanMatchingOptimizer:
 
 
 def main() -> None:
-    if BASE_SEED is not None:
-        np.random.seed(BASE_SEED)
-
     playback_loader = PlaybackLoader()
     raw_playback_data = playback_loader.load(
         file_suffix=PLAYBACK_SUFFIX,
@@ -243,8 +243,7 @@ def main() -> None:
     ranked_runs = optimizer.optimize(
         playback_data=playback_data,
         param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
-        base_seed=BASE_SEED,
-        reseed_each_run=RESEED_EACH_RUN,
+        seeds=SEED_LIST,
     )
 
     writer.write_ranked_runs_csv(

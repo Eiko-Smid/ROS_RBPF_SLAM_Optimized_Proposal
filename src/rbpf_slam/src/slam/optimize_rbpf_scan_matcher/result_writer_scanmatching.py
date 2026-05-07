@@ -46,6 +46,7 @@ class ResultWriterScanMatching:
             writer.writerow(
                 [
                     "rank",
+                    "seed",
                     "score",
                     # "tag",
                     "every_nth_beam_filter",
@@ -95,6 +96,7 @@ class ResultWriterScanMatching:
                 summary = run.summary
                 row = [
                     rank,
+                    run.seed,
                     run.score,
                     # run.params.tag,
                     run.params.every_nth_scan_filter,
@@ -169,6 +171,7 @@ class ResultWriterScanMatching:
             writer.writerow(
                 [
                     "run_id",
+                    "seed",
                     "step",
                     "t",
 
@@ -221,6 +224,7 @@ class ResultWriterScanMatching:
 
                     row = [
                         run.params.tag,
+                        run.seed,
                         step.step_idx,
                         step.t,
 
