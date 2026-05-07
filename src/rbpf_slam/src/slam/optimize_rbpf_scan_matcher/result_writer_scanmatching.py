@@ -7,6 +7,7 @@ from typing import Any, List
 
 from .optimizer_scanmatching import RankedRunScanMatching
 
+S_TO_MS = 1000.0
 
 class ResultWriterScanMatching:
     @staticmethod
@@ -19,11 +20,13 @@ class ResultWriterScanMatching:
 
         return value
 
+
     @staticmethod
     def create_path_and_check_if_file_exists(path: str) -> bool:
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         return path_obj.exists()
+
 
     @staticmethod
     def write_ranked_runs_csv(
@@ -44,12 +47,15 @@ class ResultWriterScanMatching:
                 [
                     "rank",
                     "score",
-                    "tag",
-                    "n_particles",
+                    # "tag",
                     "every_nth_beam_filter",
-                    "scan_match_failed_count",
-                    "success_rate",
+                    "every_nth_beam_map",
+                    
+                    "scan_match_failed_count",                    
                     "icp_failed_count",
+                    "icp_success_rate",
+
+                    "mean_icp_iterations",
                     "count_too_few_points",
                     "count_too_few_corresp",
                     "infinite_h_or_g",
@@ -58,10 +64,13 @@ class ResultWriterScanMatching:
                     "infinite_mean_err",
                     "best_transf_too_large",
                     "best_mean_err_too_large",
-                    "mean_timing_sm_update_particle_ms",
-                    "mean_timing_sm_scan_match_update_pose_ms",
-                    "mean_timing_sm_map_extension_ms",
-                    "mean_timing_sm_map_update_ms",
+
+                    "mean_icp_error",
+                    "mean_best_trans_norm",
+                    "max_best_trans_norm",
+                    "mean_best_rot_abs_deg",
+                    "max_best_rot_abs_deg",
+                    
                     "mean_pred_trans_error",
                     "mean_pred_rot_error_deg",
                     "mean_corr_trans_error",
@@ -70,15 +79,15 @@ class ResultWriterScanMatching:
                     "rmse_pred_rot_error",
                     "rmse_corr_trans_error",
                     "rmse_corr_rot_error",
-                    "final_drift",
+                    "final_drift",                    
+
+                    "mean_timing_sm_update_particle_ms",
+                    "mean_timing_sm_scan_match_update_pose_ms",
+                    "mean_timing_sm_map_extension_ms",
+                    "mean_timing_sm_map_update_ms",
                     "mean_step_duration_ms",
+                    
                     "n_steps",
-                    "mean_icp_iterations",
-                    "mean_icp_error",
-                    "mean_best_trans_norm",
-                    "max_best_trans_norm",
-                    "mean_best_rot_abs_deg",
-                    "max_best_rot_abs_deg",
                 ]
             )
 
@@ -87,41 +96,48 @@ class ResultWriterScanMatching:
                 row = [
                     rank,
                     run.score,
-                    run.params.tag,
-                    summary.get("n_particles"),
+                    # run.params.tag,
                     run.params.every_nth_scan_filter,
-                    summary.get("scan_match_failed_count"),
-                    summary.get("success_rate", 0.0),
-                    summary.get("icp_failed_count", 0),
-                    summary.get("count_too_few_points", 0),
-                    summary.get("count_too_few_corresp", 0),
-                    summary.get("infinite_h_or_g", 0),
-                    summary.get("ill_cond_H", 0),
-                    summary.get("infinite_dtransform", 0),
-                    summary.get("infinite_mean_err", 0),
-                    summary.get("best_transf_too_large", 0),
-                    summary.get("best_mean_err_too_large", 0),
-                    (summary.get("mean_timing_sm_update_particle_s", 0.0) or 0.0) * 1000.0,
-                    (summary.get("mean_timing_sm_scan_match_update_pose_s", 0.0) or 0.0) * 1000.0,
-                    (summary.get("mean_timing_sm_map_extension_s", 0.0) or 0.0) * 1000.0,
-                    (summary.get("mean_timing_sm_map_update_s", 0.0) or 0.0) * 1000.0,
-                    summary.get("mean_pred_trans_error"),
-                    math.degrees(summary.get("mean_pred_rot_error")) if summary.get("mean_pred_rot_error") is not None else None,
-                    summary.get("mean_corr_trans_error"),
-                    math.degrees(summary.get("mean_corr_rot_error")) if summary.get("mean_corr_rot_error") is not None else None,
-                    summary.get("rmse_pred_trans_error"),
-                    summary.get("rmse_pred_rot_error"),
-                    summary.get("rmse_corr_trans_error"),
-                    summary.get("rmse_corr_rot_error"),
-                    summary.get("final_drift"),
-                    (summary.get("mean_step_duration", 0.0) or 0.0) * 1000.0,
-                    summary.get("n_steps"),
-                    summary.get("mean_icp_iterations"),
-                    summary.get("mean_icp_error"),
-                    summary.get("mean_best_trans_norm"),
-                    summary.get("max_best_trans_norm"),
-                    math.degrees(summary.get("mean_best_rot_abs")) if summary.get("mean_best_rot_abs") is not None else None,
-                    math.degrees(summary.get("max_best_rot_abs")) if summary.get("max_best_rot_abs") is not None else None,
+                    run.params.every_nth_scan_map,
+                    
+                    summary.scan_match_failed_count,                    
+                    summary.icp_failed_count,
+                    summary.icp_success_rate,
+
+                    summary.mean_icp_iterations,
+                    summary.count_too_few_points,
+                    summary.count_too_few_corresp,
+                    summary.infinite_h_or_g,
+                    summary.ill_cond_H,
+                    summary.infinite_dtransform,
+                    summary.infinite_mean_err,
+                    summary.best_transf_too_large,
+                    summary.best_mean_err_too_large,
+
+                    summary.mean_icp_error,
+                    summary.mean_best_trans_norm,
+                    summary.max_best_trans_norm,
+                    math.degrees(summary.mean_best_rot_abs) if summary.mean_best_rot_abs is not None else None,
+                    math.degrees(summary.max_best_rot_abs) if summary.max_best_rot_abs is not None else None,
+
+                    summary.mean_pred_trans_error,
+                    math.degrees(summary.mean_pred_rot_error) if summary.mean_pred_rot_error is not None else None,
+                    summary.mean_corr_trans_error,
+                    math.degrees(summary.mean_corr_rot_error) if summary.mean_corr_rot_error is not None else None,
+                    summary.rmse_pred_trans_error,
+                    summary.rmse_pred_rot_error,
+                    summary.rmse_corr_trans_error,
+                    summary.rmse_corr_rot_error,
+                    summary.final_drift,
+
+                    (summary.mean_timing_sm_update_particle_s or 0.0) * S_TO_MS,
+                    (summary.mean_timing_sm_scan_match_update_pose_s or 0.0) * S_TO_MS,
+                    (summary.mean_timing_sm_map_extension_s or 0.0) * S_TO_MS,
+                    (summary.mean_timing_sm_map_update_s or 0.0) * S_TO_MS,
+                    (summary.mean_step_duration or 0.0) * S_TO_MS,
+                    
+                    summary.n_steps,
+                   
                 ]
 
                 writer.writerow(
@@ -132,6 +148,7 @@ class ResultWriterScanMatching:
                 )
 
         print(f"\nScan-matching summary has been saved to:\n{path}")
+
 
     @staticmethod
     def write_ranked_step_traces_csv(
@@ -154,6 +171,22 @@ class ResultWriterScanMatching:
                     "run_id",
                     "step",
                     "t",
+
+                    "scan_match_failed",
+                    "icp_iterations",
+                    "n_correspondences",
+                    "use_transformation",
+                    "stop_reason",
+
+                    "n_measurements_total",
+                    "n_valid_measurements_filter",
+                    "n_valid_measurements_map_update",
+                    "n_map_points_extracted",
+
+                    "icp_best_trans_param",
+                    "icp_best_rot_abs_deg",
+                    "icp_mean_error",
+
                     "true_x",
                     "true_y",
                     "true_theta_deg",
@@ -163,29 +196,20 @@ class ResultWriterScanMatching:
                     "corr_x",
                     "corr_y",
                     "corr_theta_deg",
+
                     "pred_trans_error",
                     "corr_trans_error",
                     "pred_rot_error_deg",
                     "corr_rot_error_deg",
-                    "best_trans_norm",
-                    "best_rot_abs_deg",
-                    "pred_to_corr_dist",
-                    "pred_to_corr_rot_deg",
-                    "scan_match_failed",
-                    "icp_iterations",
-                    "icp_mean_error",
-                    "n_correspondences",
-                    "use_transformation",
-                    "stop_reason",
-                    "n_measurements_total",
-                    "n_valid_measurements_filter",
-                    "n_valid_measurements_map_update",
-                    "n_map_points_extracted",
-                    "t_ogm",
-                    "t_scan_matching",
-                    "t_prediction",
-                    "t_map_extraction",
-                    "t_correct_pose",
+
+                    "pred_to_corr_trans_err",
+                    "pred_to_corr_rot_err_deg",                    
+                    
+                    "t_ogm_ms",
+                    "t_scan_matching_ms",
+                    "t_prediction_ms",
+                    "t_map_extraction_ms",
+                    "t_correct_pose_ms",
                 ]
             )
 
@@ -199,6 +223,22 @@ class ResultWriterScanMatching:
                         run.params.tag,
                         step.step_idx,
                         step.t,
+
+                        step.scan_match_failed,
+                        step.icp_iterations if step.icp_iterations is not None else "None",
+                        step.n_correspondences if step.n_correspondences is not None else "None",
+                        step.use_transformation if step.use_transformation is not None else "None",
+                        step.stop_reason,
+                        
+                        step.n_measurements_total,
+                        step.n_valid_measurements_filter,
+                        step.n_valid_measurements_map_update,
+                        step.n_map_points_extracted if step.n_map_points_extracted is not None else "None",
+                        
+                        step.icp_best_trans_param if step.icp_best_trans_param is not None else "None",
+                        math.degrees(step.icp_best_rot_abs_deg) if step.icp_best_rot_abs_deg is not None else "None",
+                        step.icp_mean_error if step.icp_mean_error is not None else "None",
+
                         true_x,
                         true_y,
                         math.degrees(true_theta) if true_theta is not None else None,
@@ -208,29 +248,20 @@ class ResultWriterScanMatching:
                         corr_x,
                         corr_y,
                         math.degrees(corr_theta) if corr_theta is not None else None,
+
                         step.pred_translation_error,
                         step.corr_translation_error,
                         math.degrees(step.pred_rotation_error) if step.pred_rotation_error is not None else None,
                         math.degrees(step.corr_rotation_error) if step.corr_rotation_error is not None else None,
-                        step.best_trans_norm,
-                        math.degrees(step.best_rot_abs) if step.best_rot_abs is not None else None,
-                        step.pred_to_corr_dist,
-                        math.degrees(step.pred_to_corr_rot) if step.pred_to_corr_rot is not None else None,
-                        step.scan_match_failed,
-                        step.icp_iterations if step.icp_iterations is not None else "None",
-                        step.icp_mean_error if step.icp_mean_error is not None else "None",
-                        step.n_correspondences if step.n_correspondences is not None else "None",
-                        step.use_transformation if step.use_transformation is not None else "None",
-                        step.stop_reason,
-                        step.n_measurements_total,
-                        step.n_valid_measurements_filter,
-                        step.n_valid_measurements_map_update,
-                        step.n_map_points_extracted,
-                        step.t_ogm,
-                        step.t_scan_matching,
-                        step.t_prediction,
-                        step.t_map_extraction,
-                        step.t_correct_pose if step.t_correct_pose is not None else 0.0,
+
+                        step.pred_to_corr_trans_err,
+                        math.degrees(step.pred_to_corr_rot_err) if step.pred_to_corr_rot_err is not None else None,                        
+                        
+                        step.t_ogm * S_TO_MS if step.t_ogm is not None else 0.0,
+                        step.t_scan_matching * S_TO_MS if step.t_scan_matching is not None else 0.0,
+                        step.t_prediction * S_TO_MS if step.t_prediction is not None else 0.0,
+                        step.t_map_extraction * S_TO_MS if step.t_map_extraction is not None else 0.0,
+                        step.t_correct_pose * S_TO_MS if step.t_correct_pose is not None else 0.0,
                     ]
 
                     writer.writerow(

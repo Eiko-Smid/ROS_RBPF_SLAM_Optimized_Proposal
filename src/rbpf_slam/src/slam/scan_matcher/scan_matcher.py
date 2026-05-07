@@ -116,6 +116,7 @@ class ScanMatcher():
         info["timing_scan_matching"] = self.last_t_scan_matching_s
         info["timing_prediction"] = self.last_t_prediction_s
         info["timing_map_extraction"] = self.last_t_map_extraction_s
+        # TODO: Replace this with useful thing. Dont use timing to detect this
         info["timing_correct_pose"] = self.last_t_correct_pose_s
         return info
     

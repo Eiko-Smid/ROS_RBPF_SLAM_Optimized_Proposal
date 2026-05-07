@@ -32,14 +32,18 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 
 '''
 
+# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_4_summary.csv"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_4_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_4_params.json"
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_full_steps.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_full_steps_trace.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_full_steps_params.json"
+
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_steps.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_steps_trace.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_copilot_test_full_steps_params.json"
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None
+N_PLAYBACK_STEPS = 5
 N_OPTIMIZATION_REPEATS = 1
 BASE_SEED = 22
 RESEED_EACH_RUN = True
@@ -74,7 +78,7 @@ def _compute_wheel_separation() -> float:
 def _grid_axes() -> Dict[str, List[Union[float, int]]]:
     return {
         "every_nth_beam_filter": [4],
-        "n_particles": [1],
+        "every_nth_beam_map": [2],
         "max_correspondence_distance": [0.6],
         "max_translation_jump": [0.8],
         "max_rotation_jump_deg": [120.0],
@@ -116,19 +120,24 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
     wheel_separation = _compute_wheel_separation()
 
     for repeat_idx in range(1, n_repeats + 1):
-        for every_nth_filter, n_part, max_corr_dist, max_jump_trans, max_jump_rot_deg in itertools.product(
+        for every_nth_filter, every_nth_map, max_corr_dist, max_jump_trans, max_jump_rot_deg in itertools.product(
             axes["every_nth_beam_filter"],
-            axes["n_particles"],
+            axes["every_nth_beam_map"],
             axes["max_correspondence_distance"],
             axes["max_translation_jump"],
             axes["max_rotation_jump_deg"],
         ):
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
-                    prior_probability=0.5,
+                    # All cells are initalized with this probability when map is initialized. 
+                    prior_probability=0.5, 
+                    # Min distance of the robot to the border of the map. If robot is closer than this to the border, the map will be extended.                   
                     min_distance_to_border=10.0,
+                    # Cell is increased by the log Odds of this value when beam ends in this cell
                     increasing_probability=0.7,
+                    # All cells a beam passed will decreased by the log Odds of this value  
                     decreasing_probability=0.30,
+                    # Max and Min possible log odds value a cell can have. 
                     min_log_odds=-5.0,
                     max_log_odds=5.0,
                 ),
@@ -167,7 +176,7 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                     delta_r=0.6,
                 ),
                 particle_params=ParticleParams(
-                    n_particles=n_part,
+                    n_particles=1,
                     start_pose=(0.0, 0.0, 0.0),
                 ),
                 # Unused in scan-matching-only mode but required by ExperimentParams.
@@ -184,12 +193,12 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                     sigma_measurement=0.25,
                 ),
                 every_nth_scan_filter=every_nth_filter,
-                every_nth_scan_map=2,
+                every_nth_scan_map=every_nth_map,
                 proposal_sigma_xy=1.0,
                 proposal_sigma_theta=1.0,
                 proposal_n_samples=1,
                 tag=(
-                    f"sm_only_nthf{every_nth_filter}_npart{n_part}_"
+                    f"every_nth_filter{every_nth_filter}_every_nth_map{every_nth_map}_"
                     f"mcd{max_corr_dist}_mjt{max_jump_trans}_mjrd{max_jump_rot_deg}_rep{repeat_idx}"
                 ),
             )

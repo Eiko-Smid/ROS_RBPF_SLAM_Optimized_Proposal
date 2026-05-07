@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Iterable, List, Optional
 
 import numpy as np
 from tqdm import tqdm
@@ -7,14 +7,15 @@ from tqdm import tqdm
 from ..optimize_rbpf.playback_defs import ExperimentParams, PlaybackData
 from .playback_runner_scanmatching import PlaybackRunnerScanMatching
 from .scorer_scanmatching import ScanMatchingScorer
+from .evaluator_scanmatching import RunSummaryScanMatching, StepResultScanMatching
 
 
 @dataclass
 class RankedRunScanMatching:
     params: ExperimentParams
-    summary: Dict[str, Any]
+    summary: RunSummaryScanMatching
     score: float
-    step_results: List[Any]
+    step_results: List[StepResultScanMatching]
 
 
 class ScanMatchingOptimizer:

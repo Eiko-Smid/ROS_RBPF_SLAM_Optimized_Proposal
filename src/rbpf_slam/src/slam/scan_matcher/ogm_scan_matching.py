@@ -1001,7 +1001,7 @@ class OGM:
         self.beam_out_map_count = 0
         
         # Create OccupancyGrid Message object
-        lom= LogOddsMap()
+        # lom= LogOddsMap()
         self.log_odds_map_msg= LogOddsMap()
         self.log_odds_map_msg.header.frame_id= "log_odds_map"
         
@@ -1708,6 +1708,9 @@ class OGM:
         r_cells_sq = r_cells * r_cells
 
         i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
+
+        # n_cells_great_thres = np.sum(self.log_odds_map > occ_thresh)
+        # print("\nNumber of cells above threshold: ", n_cells_great_thres)
 
         map_points = extract_map_numba(
             self.log_odds_map,
