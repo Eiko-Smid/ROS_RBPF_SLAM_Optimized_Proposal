@@ -77,10 +77,11 @@ class ResultWriterScanMatching:
                     "mean_corr_trans_error",
                     "mean_corr_rot_error_deg",
                     "rmse_pred_trans_error",
-                    "rmse_pred_rot_error",
+                    "rmse_pred_rot_error_deg",
                     "rmse_corr_trans_error",
-                    "rmse_corr_rot_error",
-                    "final_drift",                    
+                    "rmse_corr_rot_error_deg",
+                    "final_drift_trans",   
+                    "final_drift_rot_deg",                 
 
                     "mean_timing_sm_update_particle_ms",
                     "mean_timing_sm_scan_match_update_pose_ms",
@@ -127,10 +128,11 @@ class ResultWriterScanMatching:
                     summary.mean_corr_trans_error,
                     math.degrees(summary.mean_corr_rot_error) if summary.mean_corr_rot_error is not None else None,
                     summary.rmse_pred_trans_error,
-                    summary.rmse_pred_rot_error,
+                    math.degrees(summary.rmse_pred_rot_error) if summary.rmse_pred_rot_error is not None else None,
                     summary.rmse_corr_trans_error,
-                    summary.rmse_corr_rot_error,
-                    summary.final_drift,
+                    math.degrees(summary.rmse_corr_rot_error) if summary.rmse_corr_rot_error is not None else None,
+                    summary.final_drift_trans,
+                    math.degrees(summary.final_drift_rot) if summary.final_drift_rot is not None else None,
 
                     (summary.mean_timing_sm_update_particle_s or 0.0) * S_TO_MS,
                     (summary.mean_timing_sm_scan_match_update_pose_s or 0.0) * S_TO_MS,
@@ -240,7 +242,7 @@ class ResultWriterScanMatching:
                         step.n_map_points_extracted if step.n_map_points_extracted is not None else "None",
                         
                         step.icp_best_trans_param if step.icp_best_trans_param is not None else "None",
-                        math.degrees(step.icp_best_rot_abs_deg) if step.icp_best_rot_abs_deg is not None else "None",
+                        math.degrees(step.icp_best_rot_abs_rad) if step.icp_best_rot_abs_rad is not None else "None",
                         step.icp_mean_error if step.icp_mean_error is not None else "None",
 
                         true_x,

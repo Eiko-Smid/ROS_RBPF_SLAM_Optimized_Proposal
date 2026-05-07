@@ -28,7 +28,7 @@ class StepResultScanMatching:
     pred_rotation_error: Optional[float]
     corr_rotation_error: Optional[float]
     icp_best_trans_param: Optional[float]
-    icp_best_rot_abs_deg: Optional[float]
+    icp_best_rot_abs_rad: Optional[float]
     pred_to_corr_trans_err: Optional[float]
     pred_to_corr_rot_err: Optional[float]
     icp_iterations: Optional[int]
@@ -74,7 +74,9 @@ class RunSummaryScanMatching:
     rmse_pred_rot_error: float
     rmse_corr_trans_error: float
     rmse_corr_rot_error: float
-    final_drift: float
+    rmse_corr_trans_error: float
+    final_drift_trans: float
+    final_drift_rot: float
     mean_icp_iterations: float
     mean_icp_error: float
     mean_best_trans_norm: float
@@ -232,7 +234,7 @@ class ScanMatchingEvaluator:
             pred_rotation_error=pred_rot_err,
             corr_rotation_error=corr_rot_err,
             icp_best_trans_param=best_trans_norm,
-            icp_best_rot_abs_deg=best_rot_abs,
+            icp_best_rot_abs_rad=best_rot_abs,
             pred_to_corr_trans_err=pred_to_corr_trans_err,
             pred_to_corr_rot_err=pred_to_corr_rot_err,
             icp_iterations=int(icp_iterations) if icp_iterations is not None else None,
@@ -269,11 +271,14 @@ class ScanMatchingEvaluator:
             s.timing_update_particle for s in step_results if s.timing_update_particle is not None
         ]
 
-        final_drift = float("inf")
+        final_drift_trans = float("inf")
+        final_drift_rot = float("inf")
         if step_results:
             last_step = step_results[-1]
             if last_step.corr_pose is not None and last_step.true_pose is not None:
-                final_drift = self.translation_error(last_step.corr_pose, last_step.true_pose)
+                final_drift_trans = self.translation_error(last_step.corr_pose, last_step.true_pose)
+                final_drift_rot = self.angle_diff(last_step.corr_pose[2], last_step.true_pose[2])
+
 
         use_transformation_vals = [
             s.use_transformation for s in step_results if s.use_transformation is not None
@@ -298,12 +303,13 @@ class ScanMatchingEvaluator:
             float(s.icp_iterations) if s.icp_iterations is not None else 0.0
             for s in step_results
         ]
-        mean_icp_iterations = float(np.mean(icp_iterations_per_step)) if n_steps > 0 else 0.0
+        mean_icp_iterations = float(np.sum(icp_iterations_per_step) / (n_steps - scan_match_failed_count)) if n_steps > 0 else 0.0
+        # mean_icp_iterations = float(np.mean(icp_iterations_per_step)) if n_steps > 0 else 0.0
 
         successful_steps = [s for s in step_results if s.use_transformation is True]
         successful_icp_errors = [s.icp_mean_error for s in successful_steps if s.icp_mean_error is not None]
         successful_best_trans_norm = [s.icp_best_trans_param for s in successful_steps if s.icp_best_trans_param is not None]
-        successful_best_rot_abs = [s.icp_best_rot_abs_deg for s in successful_steps if s.icp_best_rot_abs_deg is not None]
+        successful_best_rot_abs = [s.icp_best_rot_abs_rad for s in successful_steps if s.icp_best_rot_abs_rad is not None]
 
         mean_icp_error = float(np.mean(successful_icp_errors)) if successful_icp_errors else float("inf")
         mean_best_trans_norm = (
@@ -333,7 +339,8 @@ class ScanMatchingEvaluator:
             rmse_pred_rot_error=float(np.sqrt(np.mean(np.square(pred_rot_err)))) if pred_rot_err else float("inf"),
             rmse_corr_trans_error=float(np.sqrt(np.mean(np.square(corr_trans_err)))) if corr_trans_err else float("inf"),
             rmse_corr_rot_error=float(np.sqrt(np.mean(np.square(corr_rot_err)))) if corr_rot_err else float("inf"),
-            final_drift=final_drift,
+            final_drift_trans=final_drift_trans,
+            final_drift_rot=final_drift_rot,
             mean_icp_iterations=mean_icp_iterations,
             mean_icp_error=mean_icp_error,
             mean_best_trans_norm=mean_best_trans_norm,
