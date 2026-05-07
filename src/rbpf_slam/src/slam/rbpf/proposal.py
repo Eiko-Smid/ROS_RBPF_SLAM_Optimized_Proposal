@@ -39,7 +39,7 @@ class ProposalEstimator:
             sigma_xy: float=1.0,
             sigma_theta: float=1.0,
             n_samples: int=10,
-    ):
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
         # Define vars
         norm = 0.0
         mu = np.zeros(3)
@@ -106,7 +106,7 @@ class ProposalEstimator:
         return mu, cov, norm
     
 
-    def sample_from_proposal(self, mu, cov):
+    def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
         '''
         Sample a new pose from a Gaussian distribution with mean mu and covariance sigma. Ensures angles are normalized.
         '''
@@ -127,7 +127,7 @@ class ProposalEstimator:
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
         n_samples: int=10,
-    ):
+    ) -> Tuple[np.ndarray, float]:
         '''
 
         '''
@@ -146,7 +146,9 @@ class ProposalEstimator:
         )
 
         # Sample pose
-        new_pose = self.sample_from_proposal(mu, cov)
-
+        # new_pose = self.sample_from_proposal(mu, cov)
+        
+        # TODO: For testing only. Only workaround so change back later! 
+        new_pose = mu 
         
         return new_pose, p_weight

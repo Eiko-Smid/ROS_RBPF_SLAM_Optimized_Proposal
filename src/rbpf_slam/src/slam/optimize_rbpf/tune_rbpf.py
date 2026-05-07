@@ -107,7 +107,31 @@ from .result_writer import ResultWriter
 
 
     14.2 Same params old TF update
-    
+
+
+15. Test with scan matcher pose insetad of proposal pose
+
+    15.1 Full run with scan matcher pose and proposal weights
+        - Low uncertainty values
+        -> worse than scan matching only variant
+
+    15.2 Full run with scan matcher pose and proposal weights
+        - High uncertainty values
+        -> made it worse
+
+    15.3 No uncertainty in scan match fallback
+        - Before everytime sm failed we added noise to odom and prdeict the pose based on noisy odom
+        - Now in fallback we used raw odom without adding noise to predict particle pose
+        -> Result is exactly as good as sm only variant
+
+        
+16. Test rbpf with proposal pose but no uncertainty in scan match fallback
+    - Better result than 15.1
+    - But still worse than scan matching only variant.
+
+
+17. use mean of proposal instead of sampling a value
+
 '''
 
 
@@ -118,13 +142,9 @@ from .result_writer import ResultWriter
 # OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv'
 
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_14_2_new_T_icp_.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_14_2_new_T_icp_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_14_2_new_T_icp_params.json'
-
-# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_test_new_icp_.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_12_test_new_icp_steps.csv'
-
+OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_params.json'
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
@@ -162,12 +182,17 @@ def _compute_wheel_separation() -> float:
 
 def _grid_axes() -> dict:
     return {
-        "sigma_measurement": [0.25],
+        "sigma_measurement": [0.05, 0.15],
         "every_nth_beam_filter": [4],
         "every_nth_beam_map": [2],
         "n_particles": [40],
-        "proposal_sigma_xy": [0.25],
-        "proposal_sigma_theta": [0.08],
+        "sigma_xy_motion": [0.08, 0.18],
+        "sigma_theta": [0.05, 0.1],
+        "ctrl_motion_fac": [0.1],
+        "ctrl_turn_fac": [0.15],
+        "neff_threshold": [0.5],
+        "proposal_sigma_xy": [0.05],
+        "proposal_sigma_theta": [0.02],
         "proposal_n_samples": [10],
     }
 
@@ -220,6 +245,11 @@ def generate_param_grid(n_repeats: int = 1):
     every_nth_beam_filter = axes["every_nth_beam_filter"]
     every_nth_beam_map = axes["every_nth_beam_map"]
     n_particles = axes["n_particles"]
+    sigma_xy_motion = axes["sigma_xy_motion"]
+    sigma_theta_motion = axes["sigma_theta"]
+    ctrl_motion_fac = axes["ctrl_motion_fac"]
+    ctrl_turn_fac = axes["ctrl_turn_fac"]
+    neff_threshold = axes["neff_threshold"]
     proposal_sigma_xy = axes["proposal_sigma_xy"]
     proposal_sigma_theta = axes["proposal_sigma_theta"]
     proposal_n_samples = axes["proposal_n_samples"]
@@ -232,11 +262,29 @@ def generate_param_grid(n_repeats: int = 1):
 
 
     for repeat_idx in range(1, n_repeats + 1):
-        for sigma_meas, every_nth_filter, every_nth_map, n_part, sigma_xy, sigma_theta, n_samples in itertools.product(
+        for (
+            sigma_meas,
+            every_nth_filter,
+            every_nth_map,
+            n_part,
+            sigma_xy_m,
+            sigma_theta_m,
+            ctrl_motion,
+            ctrl_turn,
+            neff_th,
+            sigma_xy,
+            sigma_theta,
+            n_samples,
+        ) in itertools.product(
             sigma_measurement,
             every_nth_beam_filter,
             every_nth_beam_map,
             n_particles,
+            sigma_xy_motion,
+            sigma_theta_motion,
+            ctrl_motion_fac,
+            ctrl_turn_fac,
+            neff_threshold,
             proposal_sigma_xy,
             proposal_sigma_theta,
             proposal_n_samples,
@@ -290,24 +338,26 @@ def generate_param_grid(n_repeats: int = 1):
                     start_pose=(0.0, 0.0, 0.0),
                 ),
                 motion_model_params=MotionModelParams(
-                    sigma_x=0.2,
-                    sigma_y=0.2, 
-                    sigma_theta=0.15, 
+                    sigma_x=sigma_xy_m,
+                    sigma_y=sigma_xy_m,
+                    sigma_theta=sigma_theta_m,
                     wheel_separation=wheel_separation,
-                    ctrl_motion_fac=0.1,
-                    ctrl_turn_fac=0.15, 
+                    ctrl_motion_fac=ctrl_motion,
+                    ctrl_turn_fac=ctrl_turn,
                 ),
                 measurement_model_params=MeasurementModelParams(
                     sigma_measurement=sigma_meas,
                 ),
                 every_nth_scan_filter=every_nth_filter,
                 every_nth_scan_map=every_nth_map,
+                neff_threshold=neff_th,
                 proposal_sigma_xy=sigma_xy,
                 proposal_sigma_theta=sigma_theta,
                 proposal_n_samples=n_samples,
                 tag=(
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
-                    f"psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_rep{repeat_idx}"
+                    f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
+                    f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_rep{repeat_idx}"
                 ),
             )
 
@@ -369,6 +419,16 @@ def main():
         base_seed=BASE_SEED,
         reseed_each_run=RESEED_EACH_RUN,
     )
+
+
+    # Run optimizer without proposal pose (scan matcher pose is used instead)
+    # ranked_runs = scan_match_optimizer.optimize_without_proposal_pose(
+    #     playback_data=playback_data,
+    #     param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
+    #     base_seed=BASE_SEED,
+    #     reseed_each_run=RESEED_EACH_RUN,
+    # )
+
 
     # Save results
     result_writer.write_ranked_runs_csv(

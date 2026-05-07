@@ -43,6 +43,7 @@ class ExperimentParams:
     tag: str
     every_nth_scan_filter: int = 4
     every_nth_scan_map: int = 2
+    neff_threshold: float = 0.5
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10

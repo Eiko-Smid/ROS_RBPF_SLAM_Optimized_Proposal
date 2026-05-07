@@ -47,7 +47,9 @@ class PlaybackRunnerScanMatching:
         }
 
         totals = {key: 0 for key in counter_keys}
+
         mapped_totals = {key: 0 for key in counter_keys}
+
         icp_total_runs = 0
         icp_success_count = 0
 
@@ -81,11 +83,13 @@ class PlaybackRunnerScanMatching:
 
         return totals
 
+
     @staticmethod
     def _merge_summary_dict(summary: Any, updates: Dict[str, Any]) -> None:
         for key, value in updates.items():
             if hasattr(summary, key):
                 setattr(summary, key, value)
+
 
     def run(self, playback_data: PlaybackData, params: ExperimentParams) -> RunResultScanMatching:
         rbpf = self.factory.create(
