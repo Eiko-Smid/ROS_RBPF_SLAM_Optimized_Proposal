@@ -36,3 +36,25 @@ class MeasurementModel(ABC):
         '''
         raise NotImplementedError
     
+
+    @abstractmethod
+    def likelihood_batch(
+            self, 
+            poses: np.ndarray,
+            measurements: List[Tuple[float, float]],
+            **kwargs,
+    ) -> np.ndarray:
+        '''
+        Compute the likelihood of multiple poses given a set of measurements and a scan matcher.
+
+        Parameters:
+        poses: np.ndarray
+            An array of poses for which to compute the likelihood. Shape should be (N, 3) where N is the number of poses.
+        measurements: List[Tuple[float, float]]
+            The list of measurements (e.g., LiDAR scan points) to compare against the scan matcher.
+        
+        Returns:
+        np.ndarray
+            An array of likelihood values corresponding to each pose. Shape should be (N,).
+        '''
+        raise NotImplementedError

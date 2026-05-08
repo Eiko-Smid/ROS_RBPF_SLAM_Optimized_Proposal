@@ -131,3 +131,28 @@ class MotionModel:
             (dtheta / self.sigma_theta) ** 2
         )
     )
+
+
+    def motion_probability_batch(
+        self,
+        x_new: np.ndarray,
+        x_prev: np.ndarray,
+    ) -> np.ndarray:
+        """
+        x_new shape: (N, 3)
+        x_prev shape: (3,)
+        """
+
+        dx = x_new[:, 0] - x_prev[0]
+        dy = x_new[:, 1] - x_prev[1]
+
+        dtheta = x_new[:, 2] - x_prev[2]
+        dtheta = np.arctan2(np.sin(dtheta), np.cos(dtheta))
+
+        return np.exp(
+            -0.5 * (
+                (dx / self.sigma_x) ** 2 +
+                (dy / self.sigma_y) ** 2 +
+                (dtheta / self.sigma_theta) ** 2
+            )
+        )

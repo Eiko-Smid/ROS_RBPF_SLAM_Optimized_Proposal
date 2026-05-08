@@ -45,6 +45,7 @@ class LikelihoodFiledModel(MeasurementModel):
         distances = distances[:, 0]
 
         # Clip distances to weight bad correspondences lower
+        # TODO: Define paramter for clipping. Also test without clipping
         distances = np.clip(distances, 0.0, 1.0)
 
         # Use mean error to increase measrument likelihood robustness to outliers
@@ -59,3 +60,75 @@ class LikelihoodFiledModel(MeasurementModel):
         return float(prob)
 
     
+    def likelihood_batch(
+        self,
+        poses: np.ndarray,
+        measurements,
+        scan_matcher,
+        neighbor,
+    ) -> np.ndarray:
+
+        n_poses = poses.shape[0]
+
+        if scan_matcher is None or neighbor is None:
+            return np.full(n_poses, 1e-9)
+
+        if len(measurements) < 3:
+            return np.full(n_poses, 1e-9)
+
+        # --------------------------------------------------
+        # Precompute local scan points once
+        # --------------------------------------------------
+
+        ranges = np.array([m[0] for m in measurements])
+        bearings = np.array([m[1] for m in measurements])
+
+        local_x = ranges * np.cos(bearings)
+        local_y = ranges * np.sin(bearings)
+
+        n_beams = len(ranges)
+
+        # --------------------------------------------------
+        # Transform all poses at once
+        # --------------------------------------------------
+
+        px = poses[:, 0][:, None]
+        py = poses[:, 1][:, None]
+        pt = poses[:, 2][:, None]
+
+        c = np.cos(pt)
+        s = np.sin(pt)
+
+        world_x = px + c * local_x - s * local_y
+        world_y = py + s * local_x + c * local_y
+
+        # shape -> (Nposes * Nbeams, 2)
+        all_points = np.stack(
+            [world_x.reshape(-1), world_y.reshape(-1)],
+            axis=1,
+        )
+
+        # --------------------------------------------------
+        # ONE nearest-neighbor call
+        # --------------------------------------------------
+
+        distances, _ = neighbor.kneighbors(
+            all_points,
+            n_neighbors=1,
+        )
+
+        distances = distances[:, 0]
+
+        # reshape back
+        distances = distances.reshape(n_poses, n_beams)
+
+        distances = np.clip(distances, 0.0, 1.0)
+
+        mean_error = np.mean(
+            (distances / self.sigma) ** 2,
+            axis=1,
+        )
+
+        probs = np.exp(-0.5 * mean_error)
+
+        return probs

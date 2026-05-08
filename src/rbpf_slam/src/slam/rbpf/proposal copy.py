@@ -27,43 +27,6 @@ class ProposalEstimator:
         return samples
 
 
-    @staticmethod
-    def sample_poses_deterministic(pose: Pose2D, sigma_xy: float, sigma_theta: float, n_samples_dir: int = 3) -> np.ndarray:
-        # List to store xj
-        n_xj = n_samples_dir**3
-        samples = np.zeros((n_xj, 3))
-        
-        x, y, theta = pose
-
-        xs = np.linspace(
-            x - sigma_xy,
-            x + sigma_xy,
-            n_samples_dir
-        )
-
-        ys = np.linspace(
-            y - sigma_xy,
-            y + sigma_xy,
-            n_samples_dir,
-        )
-
-        thetas = np.linspace(
-            theta - sigma_theta,
-            theta + sigma_theta,
-            n_samples_dir,
-        )
-
-        # Store samples
-        k = 0
-        for sx in xs:
-            for sy in ys:
-                for st in thetas:
-                    samples[k, :] = [sx, sy, st]
-                    k += 1
-
-        return samples, n_xj
-
-
     def compute_proposal_param(
             self,
             scan_match_pose: Pose2D,
@@ -80,22 +43,15 @@ class ProposalEstimator:
         # Define vars
         norm = 0.0
         mu = np.zeros(3)
+        weights = np.zeros(shape=(n_samples))
 
         # Sample k new poses around scan matcher pose
-        # samples = self.sample_poses(
-        #     pose=scan_match_pose,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        # )
-
-        samples, n_samples = self.sample_poses_deterministic(
+        samples = self.sample_poses(
             pose=scan_match_pose,
             sigma_xy=sigma_xy,
             sigma_theta=sigma_theta,
+            n_samples=n_samples,
         )
-
-        weights = np.zeros(shape=(n_samples))
 
         # Predict particle pose based on odometry and old particle pose 
         dl, dr = odom
@@ -148,89 +104,6 @@ class ProposalEstimator:
         cov += 1e-6 * np.eye(3)
 
         return mu, cov, norm
-
-    
-    def compute_proposal_param_batch(
-            self,
-            scan_match_pose: Pose2D,
-            particle: Particle,
-            odom: Tuple[float, float],
-            measurements: List[Tuple[float, float]],
-            neighbor: NearestNeighbors,
-            motion_model: MotionModel,
-            measurement_model: MeasurementModel,
-            sigma_xy: float=1.0,
-            sigma_theta: float=1.0,
-            n_samples: int=10,
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
-        # Define vars
-        norm = 0.0
-        mu = np.zeros(3)
-
-        # Sample k new poses around scan matcher pose
-        # samples = self.sample_poses(
-        #     pose=scan_match_pose,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        # )
-
-        samples, n_samples = self.sample_poses_deterministic(
-            pose=scan_match_pose,
-            sigma_xy=sigma_xy,
-            sigma_theta=sigma_theta,
-        )
-
-        # weights = np.zeros(shape=(n_samples))
-
-        # Predict particle pose based on odometry and old particle pose 
-        dl, dr = odom
-        pred_pose = motion_model.predict_pose(
-            pose=particle.pose,
-            dl=dl,
-            dr=dr,
-        )
-
-        # Compute probability and add to normalizer 
-        meas_prob = measurement_model.likelihood_batch(
-            poses=samples,
-            measurements=measurements,
-            scan_matcher= particle.scan_matcher,
-            neighbor=neighbor,
-        )
-
-        motion_probs = motion_model.motion_probability_batch(
-            x_new=samples,
-            x_prev=pred_pose,
-        )
-
-        weights = meas_prob * motion_probs
-                       
-        # Vectorized computation of mu and cov
-        norm = np.sum(weights)
-
-        if (not np.isfinite(norm)) or norm <= 1e-12:
-            # Fallback when all sample weights collapse to zero/invalid values.
-            mu = np.asarray(scan_match_pose, dtype=float)
-            cov = 1e-6 * np.eye(3)
-            return mu, cov, 1e-12
-
-        # Compute mu
-        mu = np.sum(samples * weights[:, None], axis=0) / norm
-
-        # Compute covariance matrix
-        # Compute deviation from the mean
-        x_minus_mu = samples - mu
-        # Ensure valid angles
-        x_minus_mu[:, self.IDX_THETA] = np.arctan2(np.sin(x_minus_mu[:, self.IDX_THETA]), np.cos(x_minus_mu[:, self.IDX_THETA]))
-        # Compute noralized covariance
-        cov = (weights[:, None] * x_minus_mu).T @ x_minus_mu / norm
-
-        # Ensure covariance matrix is positive definite by adding small values to diagonal
-        cov += 1e-6 * np.eye(3)
-
-        return mu, cov, norm
-    
     
 
     def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
@@ -259,19 +132,7 @@ class ProposalEstimator:
 
         '''
         # COmpute proposal params
-        # mu, cov, p_weight = self.compute_proposal_param(
-        #     scan_match_pose=scan_match_pose,
-        #     particle=particle,
-        #     odom=odom,
-        #     measurements=measurements,
-        #     neighbor=neighbor,
-        #     motion_model=motion_model,
-        #     measurement_model=measurement_model,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        # )
-        mu, cov, p_weight = self.compute_proposal_param_batch(
+        mu, cov, p_weight = self.compute_proposal_param(
             scan_match_pose=scan_match_pose,
             particle=particle,
             odom=odom,

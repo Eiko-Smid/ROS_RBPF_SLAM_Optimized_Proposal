@@ -150,8 +150,20 @@ from .result_writer import ResultWriter
     17.2 Use best motion and uncertainty from 17.1 and adapt proposal params only (TODO)
 
 
-18. 
+18. Use deterministic sampling around scan match pose
 
+
+19. Speedup
+
+    - because we have more xjs nowe in deterministic sampling, the proposal estimation time increased a lot.
+    - To counter that we introduced a batch version for measurement lieklihood and motion probability computation.
+
+    Results:
+        proposal compuation time before: proposal.estimate_proposal: 12.718832830819338 ms (count=20240)
+        proposal estimation time after: proposal.estimate_proposal: 2.711988692958292 ms (count=20520)
+
+        -> 4.7x speedup
+        
 '''
 
 
@@ -161,14 +173,14 @@ from .result_writer import ResultWriter
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_params.json'
 
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_19_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_19_1_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_19_1_params.json'
 
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 5             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
@@ -202,12 +214,25 @@ def _compute_wheel_separation() -> float:
 
 def _grid_axes() -> dict:
     return {
-        "sigma_measurement": [0.05, 0.15],
+        # "sigma_measurement": [0.08, 0.15],
+        # "every_nth_beam_filter": [4],
+        # "every_nth_beam_map": [2],
+        # "n_particles": [40],
+        # "sigma_xy_motion": [0.12, 0.2],
+        # "sigma_theta": [0.05],
+        # "ctrl_motion_fac": [0.1],
+        # "ctrl_turn_fac": [0.15],
+        # "neff_threshold": [20],
+        # "proposal_sigma_xy": [0.05],
+        # "proposal_sigma_theta": [0.02],
+        # "proposal_n_samples": [10],
+
+        "sigma_measurement": [0.15],
         "every_nth_beam_filter": [4],
         "every_nth_beam_map": [2],
         "n_particles": [40],
-        "sigma_xy_motion": [0.08, 0.18],
-        "sigma_theta": [0.05, 0.1],
+        "sigma_xy_motion": [0.12],
+        "sigma_theta": [0.05],
         "ctrl_motion_fac": [0.1],
         "ctrl_turn_fac": [0.15],
         "neff_threshold": [20],
@@ -250,13 +275,6 @@ def generate_param_grid(n_repeats: int = 1):
     '''
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
-
-    # Motion model params
-    # sigma_x = [0.05, 0.1, 0.2]
-    # sigma_y = [0.05, 0.1, 0.2]
-    # sigma_theta = [0.05, 0.1, 0.2]
-    # ctrl_motion_fac
-    # ctrl_turn_fac
 
     axes = _grid_axes()
 
