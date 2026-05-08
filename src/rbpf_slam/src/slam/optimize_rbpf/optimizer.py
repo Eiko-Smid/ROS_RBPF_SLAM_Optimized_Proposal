@@ -17,6 +17,7 @@ class RankedRun:
     summary: dict
     score: float
     step_results: list
+    seed: Optional[int]
 
 
 class RBPFOptimizer:
@@ -32,45 +33,48 @@ class RBPFOptimizer:
         self,
         playback_data,
         param_grid: Iterable[ExperimentParams],
-        base_seed: Optional[int] = None,
-        reseed_each_run: bool = False,
+        seeds: Optional[Iterable[int]] = None,
     ) -> List[RankedRun]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
         """
         params_list = list(param_grid)
+        seed_list = [int(s) for s in seeds] if seeds is not None else [None]
         total_runs = len(params_list)
+
+        if not seed_list:
+            seed_list = [None]
 
         if total_runs == 0:
             print("No parameter combinations provided. Nothing to optimize.")
             return []
 
-        print(f"Starting RBPF optimization with {total_runs} runs...")
+        print(f"Starting RBPF optimization with {total_runs * len(seed_list)} runs...")
         ranked_runs: List[RankedRun] = []
 
         start_time = time.time()
 
-        for run_idx, params in enumerate(
-            tqdm(params_list, total=total_runs, desc="RBPF optimization", unit="run")
-        ):
-            if base_seed is not None:
-                run_seed = base_seed if reseed_each_run else (base_seed + run_idx)
-                np.random.seed(run_seed)
+        for params in tqdm(params_list, total=total_runs, desc="RBPF optimization", unit="run"):
+            for run_seed in seed_list:
+                if run_seed is not None:
+                    np.random.seed(run_seed)
 
-            run_result = self.runner.run(playback_data, params)
-            score = self.scorer.score(run_result.summary)
+                run_result = self.runner.run(playback_data, params)
+                score = self.scorer.score(run_result.summary)
 
-            ranked_runs.append(
-                RankedRun(
-                    params=params,
-                    summary=run_result.summary,
-                    score=score,
-                    step_results=run_result.step_results,
+                ranked_runs.append(
+                    RankedRun(
+                        params=params,
+                        summary=run_result.summary,
+                        score=score,
+                        step_results=run_result.step_results,
+                        seed=run_seed,
+                    )
                 )
-            )
 
         elapsed_s = time.time() - start_time
-        print(f"Finished RBPF optimization: {total_runs}/{total_runs} runs in {elapsed_s:.2f}s")
+        n_runs = total_runs * len(seed_list)
+        print(f"Finished RBPF optimization: {n_runs}/{n_runs} runs in {elapsed_s:.2f}s")
 
         ranked_runs.sort(key=lambda x: x.score)
         return ranked_runs
@@ -80,45 +84,48 @@ class RBPFOptimizer:
         self,
         playback_data,
         param_grid: Iterable[ExperimentParams],
-        base_seed: Optional[int] = None,
-        reseed_each_run: bool = False,
+        seeds: Optional[Iterable[int]] = None,
     ) -> List[RankedRun]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
         """
         params_list = list(param_grid)
+        seed_list = [int(s) for s in seeds] if seeds is not None else [None]
         total_runs = len(params_list)
+
+        if not seed_list:
+            seed_list = [None]
 
         if total_runs == 0:
             print("No parameter combinations provided. Nothing to optimize.")
             return []
 
-        print(f"Starting RBPF optimization with {total_runs} runs...")
+        print(f"Starting RBPF optimization with {total_runs * len(seed_list)} runs...")
         ranked_runs: List[RankedRun] = []
 
         start_time = time.time()
 
-        for run_idx, params in enumerate(
-            tqdm(params_list, total=total_runs, desc="RBPF optimization", unit="run")
-        ):
-            if base_seed is not None:
-                run_seed = base_seed if reseed_each_run else (base_seed + run_idx)
-                np.random.seed(run_seed)
+        for params in tqdm(params_list, total=total_runs, desc="RBPF optimization", unit="run"):
+            for run_seed in seed_list:
+                if run_seed is not None:
+                    np.random.seed(run_seed)
 
-            run_result = self.runner.run_without_proposal_pose(playback_data, params)
-            score = self.scorer.score(run_result.summary)
+                run_result = self.runner.run_without_proposal_pose(playback_data, params)
+                score = self.scorer.score(run_result.summary)
 
-            ranked_runs.append(
-                RankedRun(
-                    params=params,
-                    summary=run_result.summary,
-                    score=score,
-                    step_results=run_result.step_results,
+                ranked_runs.append(
+                    RankedRun(
+                        params=params,
+                        summary=run_result.summary,
+                        score=score,
+                        step_results=run_result.step_results,
+                        seed=run_seed,
+                    )
                 )
-            )
 
         elapsed_s = time.time() - start_time
-        print(f"Finished RBPF optimization: {total_runs}/{total_runs} runs in {elapsed_s:.2f}s")
+        n_runs = total_runs * len(seed_list)
+        print(f"Finished RBPF optimization: {n_runs}/{n_runs} runs in {elapsed_s:.2f}s")
 
         ranked_runs.sort(key=lambda x: x.score)
         return ranked_runs

@@ -132,26 +132,46 @@ from .result_writer import ResultWriter
 
 17. use mean of proposal instead of sampling a value
 
+    17.1 Full run by adapting measurement and motion model uncertainty params.
+
+        "sigma_measurement": [0.05, 0.15],
+        "every_nth_beam_filter": [4],
+        "every_nth_beam_map": [2],
+        "n_particles": [40],
+        "sigma_xy_motion": [0.08, 0.18],
+        "sigma_theta": [0.05, 0.1],
+        "ctrl_motion_fac": [0.1],
+        "ctrl_turn_fac": [0.15],
+        "neff_threshold": [20],
+        "proposal_sigma_xy": [0.05],
+        "proposal_sigma_theta": [0.02],
+        "proposal_n_samples": [10],
+
+    17.2 Use best motion and uncertainty from 17.1 and adapt proposal params only (TODO)
+
+
+18. 
+
 '''
 
 
 # Playback data path defs
-# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/python_playback/test_python_playback'
-# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_match/optimization_results/test_optm.csv'
-# PLAYBACK_DATA_PATH_PREF = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1776425398_python_playback'
-# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv'
+# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_steps.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_params.json'
 
-OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_params.json'
+
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
+
 
 CSV_FLOAT_DECIMALS = 4
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = 5             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-BASE_SEED = 22                      # Set to an integer for deterministic behavior.
-RESEED_EACH_RUN = True              # True: identical random stream for each run. False: deterministic but individual seed per run.
+# SEED_LIST = [22, 23, 24, 56]
+SEED_LIST = [22]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"
@@ -190,7 +210,7 @@ def _grid_axes() -> dict:
         "sigma_theta": [0.05, 0.1],
         "ctrl_motion_fac": [0.1],
         "ctrl_turn_fac": [0.15],
-        "neff_threshold": [0.5],
+        "neff_threshold": [20],
         "proposal_sigma_xy": [0.05],
         "proposal_sigma_theta": [0.02],
         "proposal_n_samples": [10],
@@ -212,8 +232,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         "playback_suffix": PLAYBACK_SUFFIX,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
-        "base_seed": BASE_SEED,
-        "reseed_each_run": RESEED_EACH_RUN,
+        "seed_list": SEED_LIST,
         "grid_axes": axes,
         "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
     }
@@ -384,9 +403,6 @@ def build_optimizer():
 
 
 def main():
-    if BASE_SEED is not None:
-        np.random.seed(BASE_SEED)
-
     # Load playback data
     playback_loader = PlaybackLoader()
     raw_playback_data = playback_loader.load(
@@ -416,8 +432,7 @@ def main():
     ranked_runs = scan_match_optimizer.optimize(
         playback_data=playback_data,
         param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
-        base_seed=BASE_SEED,
-        reseed_each_run=RESEED_EACH_RUN,
+        seeds=SEED_LIST,
     )
 
 
@@ -425,14 +440,13 @@ def main():
     # ranked_runs = scan_match_optimizer.optimize_without_proposal_pose(
     #     playback_data=playback_data,
     #     param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
-    #     base_seed=BASE_SEED,
-    #     reseed_each_run=RESEED_EACH_RUN,
+    #     seeds=SEED_LIST,
     # )
 
 
     # Save results
     result_writer.write_ranked_runs_csv(
-        path=OPTIMIZATION_RESULT_PATH,
+        path=OPTM_SUMMARY_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,

@@ -61,7 +61,7 @@ class ProposalEstimator:
             dr=dr,
         )
 
-        # Compute Gaussian parameters µ and Cov
+        # Compute weights and normalizer
         for i in range(samples.shape[0]):
             xj = samples[i, :]
             meas_prob = measurement_model.likelihood(
@@ -148,7 +148,7 @@ class ProposalEstimator:
         # Sample pose
         # new_pose = self.sample_from_proposal(mu, cov)
         
-        # TODO: For testing only. Only workaround so change back later! 
+        # TODO: Keep this for the moment until we found better solution. Chat GPT recommends this version due to better results
         new_pose = mu 
         
         return new_pose, p_weight
