@@ -35,9 +35,9 @@ class StepResult:
     rot_err_mu_sm: Optional[float] = None
     trans_err_mu_pred: Optional[float] = None
     rot_err_mu_pred: Optional[float] = None
-    prop_var_x: Optional[float] = None
-    prop_var_y: Optional[float] = None
-    prop_var_theta: Optional[float] = None
+    prop_std_x: Optional[float] = None
+    prop_std_y: Optional[float] = None
+    prop_std_theta: Optional[float] = None
     corr_xy: Optional[float] = None
     corr_x_theta: Optional[float] = None
     corr_y_theta: Optional[float] = None
@@ -121,9 +121,9 @@ class RBPFEvaluator:
         rot_err_mu_sm = None
         trans_err_mu_pred = None
         rot_err_mu_pred = None
-        prop_var_x = None
-        prop_var_y = None
-        prop_var_theta = None
+        prop_std_x = None
+        prop_std_y = None
+        prop_std_theta = None
         corr_xy = None
         corr_x_theta = None
         corr_y_theta = None
@@ -161,11 +161,11 @@ class RBPFEvaluator:
                 cov_arr = np.asarray(cov, dtype=float)
                 if cov_arr.shape == (3, 3):
                     diag = np.clip(np.diag(cov_arr), a_min=0.0, a_max=None)
-                    prop_var_x = float(diag[0])
-                    prop_var_y = float(diag[1])
-                    prop_var_theta = float(diag[2])
+                    std = np.sqrt(diag)
+                    prop_std_x = float(std[0])
+                    prop_std_y = float(std[1])
+                    prop_std_theta = float(std[2])
 
-                    std = np.sqrt(np.clip(np.diag(cov_arr), a_min=0.0, a_max=None))
                     std_x = std[0]
                     std_y = std[1]
                     std_theta = std[2]
@@ -207,9 +207,9 @@ class RBPFEvaluator:
             rot_err_mu_sm=rot_err_mu_sm,
             trans_err_mu_pred=trans_err_mu_pred,
             rot_err_mu_pred=rot_err_mu_pred,
-            prop_var_x=prop_var_x,
-            prop_var_y=prop_var_y,
-            prop_var_theta=prop_var_theta,
+            prop_std_x=prop_std_x,
+            prop_std_y=prop_std_y,
+            prop_std_theta=prop_std_theta,
             corr_xy=corr_xy,
             corr_x_theta=corr_x_theta,
             corr_y_theta=corr_y_theta,
@@ -235,9 +235,9 @@ class RBPFEvaluator:
         rot_err_mu_sm_values = [s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None]
         trans_err_mu_pred_values = [s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None]
         rot_err_mu_pred_values = [s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None]
-        prop_var_x_values = [s.prop_var_x for s in step_results if s.prop_var_x is not None]
-        prop_var_y_values = [s.prop_var_y for s in step_results if s.prop_var_y is not None]
-        prop_var_theta_values = [s.prop_var_theta for s in step_results if s.prop_var_theta is not None]
+        prop_std_x_values = [s.prop_std_x for s in step_results if s.prop_std_x is not None]
+        prop_std_y_values = [s.prop_std_y for s in step_results if s.prop_std_y is not None]
+        prop_std_theta_values = [s.prop_std_theta for s in step_results if s.prop_std_theta is not None]
         prop_corr_xy_values = [s.corr_xy for s in step_results if s.corr_xy is not None]
         prop_corr_x_theta_values = [s.corr_x_theta for s in step_results if s.corr_x_theta is not None]
         prop_corr_y_theta_values = [s.corr_y_theta for s in step_results if s.corr_y_theta is not None]
@@ -279,9 +279,9 @@ class RBPFEvaluator:
             "mean_rot_err_mu_pred_deg": float(np.degrees(np.mean(rot_err_mu_pred_values))) if rot_err_mu_pred_values else float("nan"),
             "rmse_trans_err_mu_pred": float(np.sqrt(np.mean(np.square(trans_err_mu_pred_values)))) if trans_err_mu_pred_values else float("nan"),
             "rmse_rot_err_mu_pred_deg": float(np.degrees(np.sqrt(np.mean(np.square(rot_err_mu_pred_values))))) if rot_err_mu_pred_values else float("nan"),
-            "mean_prop_var_x": float(np.mean(prop_var_x_values)) if prop_var_x_values else float("nan"),
-            "mean_prop_var_y": float(np.mean(prop_var_y_values)) if prop_var_y_values else float("nan"),
-            "mean_prop_var_theta": float(np.mean(prop_var_theta_values)) if prop_var_theta_values else float("nan"),
+            "mean_prop_std_x": float(np.mean(prop_std_x_values)) if prop_std_x_values else float("nan"),
+            "mean_prop_std_y": float(np.mean(prop_std_y_values)) if prop_std_y_values else float("nan"),
+            "mean_prop_std_theta": float(np.mean(prop_std_theta_values)) if prop_std_theta_values else float("nan"),
             "mean_prop_corr_xy": float(np.mean(prop_corr_xy_values)) if prop_corr_xy_values else float("nan"),
             "mean_prop_corr_x_theta": float(np.mean(prop_corr_x_theta_values)) if prop_corr_x_theta_values else float("nan"),
             "mean_prop_corr_y_theta": float(np.mean(prop_corr_y_theta_values)) if prop_corr_y_theta_values else float("nan"),
