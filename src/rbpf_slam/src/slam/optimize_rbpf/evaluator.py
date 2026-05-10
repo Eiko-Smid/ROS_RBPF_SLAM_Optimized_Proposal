@@ -31,6 +31,17 @@ class StepResult:
     particle_weight_max: Optional[float] = None
     particle_weight_mean: Optional[float] = None
     step_duration: Optional[float] = None
+    trans_err_mu_sm: Optional[float] = None
+    rot_err_mu_sm: Optional[float] = None
+    trans_err_mu_pred: Optional[float] = None
+    rot_err_mu_pred: Optional[float] = None
+    prop_var_x: Optional[float] = None
+    prop_var_y: Optional[float] = None
+    prop_var_theta: Optional[float] = None
+    corr_xy: Optional[float] = None
+    corr_x_theta: Optional[float] = None
+    corr_y_theta: Optional[float] = None
+    xj_eff: Optional[float] = None
 
 
 @dataclass
@@ -93,6 +104,7 @@ class RBPFEvaluator:
         particle_weight_max: Optional[float],
         particle_weight_mean: Optional[float],
         step_duration: Optional[float],
+        proposal_metrics: Optional[dict] = None,
     ) -> StepResult:
         """
         Evaluates one RBPF step and returns per-step errors.
@@ -105,6 +117,17 @@ class RBPFEvaluator:
         rot_err = None
         trans_err_best_p = None
         rot_err_best_p = None
+        trans_err_mu_sm = None
+        rot_err_mu_sm = None
+        trans_err_mu_pred = None
+        rot_err_mu_pred = None
+        prop_var_x = None
+        prop_var_y = None
+        prop_var_theta = None
+        corr_xy = None
+        corr_x_theta = None
+        corr_y_theta = None
+        xj_eff = None
 
         if est_pose_t is not None:
             trans_err = self.translation_error(est_pose_t, true_pose_t)
@@ -113,6 +136,55 @@ class RBPFEvaluator:
         if best_particle_pose_t is not None:
             trans_err_best_p = self.translation_error(best_particle_pose_t, true_pose_t)
             rot_err_best_p = abs(self.angle_diff(best_particle_pose_t[2], true_pose_t[2]))
+
+        # Compute proposal metrics
+        if proposal_metrics is not None:
+            mu = proposal_metrics.get("prop_mu")
+            scan_match_pose = proposal_metrics.get("scan_match_pose")
+            pred_pose = proposal_metrics.get("pred_pose")
+            cov = proposal_metrics.get("prop_cov_matrix")
+            xj_weights = proposal_metrics.get("xj_weights")
+
+            if mu is not None and scan_match_pose is not None:
+                mu_t = self._to_pose_tuple(mu)
+                sm_t = self._to_pose_tuple(scan_match_pose)
+                trans_err_mu_sm = self.translation_error(mu_t, sm_t)
+                rot_err_mu_sm = abs(self.angle_diff(mu_t[2], sm_t[2]))
+
+            if mu is not None and pred_pose is not None:
+                mu_t = self._to_pose_tuple(mu)
+                pred_t = self._to_pose_tuple(pred_pose)
+                trans_err_mu_pred = self.translation_error(mu_t, pred_t)
+                rot_err_mu_pred = abs(self.angle_diff(mu_t[2], pred_t[2]))
+
+            if cov is not None:
+                cov_arr = np.asarray(cov, dtype=float)
+                if cov_arr.shape == (3, 3):
+                    diag = np.clip(np.diag(cov_arr), a_min=0.0, a_max=None)
+                    prop_var_x = float(diag[0])
+                    prop_var_y = float(diag[1])
+                    prop_var_theta = float(diag[2])
+
+                    std = np.sqrt(np.clip(np.diag(cov_arr), a_min=0.0, a_max=None))
+                    std_x = std[0]
+                    std_y = std[1]
+                    std_theta = std[2]
+
+                    if std_x > 0.0 and std_y > 0.0:
+                        corr_xy = float(cov_arr[0, 1] / (std_x * std_y))
+                    if std_x > 0.0 and std_theta > 0.0:
+                        corr_x_theta = float(cov_arr[0, 2] / (std_x * std_theta))
+                    if std_y > 0.0 and std_theta > 0.0:
+                        corr_y_theta = float(cov_arr[1, 2] / (std_y * std_theta))
+
+            if xj_weights is not None:
+                weights = np.asarray(xj_weights, dtype=float)
+                w_sum = float(np.sum(weights))
+                if weights.size > 0 and np.isfinite(w_sum) and w_sum > 0.0:
+                    norm_weights = weights / w_sum
+                    denom = float(np.sum(norm_weights ** 2))
+                    if np.isfinite(denom) and denom > 0.0:
+                        xj_eff = float(1.0 / denom)
 
         return StepResult(
             step_idx=step_idx,
@@ -131,6 +203,17 @@ class RBPFEvaluator:
             particle_weight_max=float(particle_weight_max) if particle_weight_max is not None else None,
             particle_weight_mean=float(particle_weight_mean) if particle_weight_mean is not None else None,
             step_duration=float(step_duration) if step_duration is not None else None,
+            trans_err_mu_sm=trans_err_mu_sm,
+            rot_err_mu_sm=rot_err_mu_sm,
+            trans_err_mu_pred=trans_err_mu_pred,
+            rot_err_mu_pred=rot_err_mu_pred,
+            prop_var_x=prop_var_x,
+            prop_var_y=prop_var_y,
+            prop_var_theta=prop_var_theta,
+            corr_xy=corr_xy,
+            corr_x_theta=corr_x_theta,
+            corr_y_theta=corr_y_theta,
+            xj_eff=xj_eff,
         )
 
     def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> dict:
@@ -148,6 +231,17 @@ class RBPFEvaluator:
         particle_weight_max_values = [s.particle_weight_max for s in step_results if s.particle_weight_max is not None]
         particle_weight_mean_values = [s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
+        trans_err_mu_sm_values = [s.trans_err_mu_sm for s in step_results if s.trans_err_mu_sm is not None]
+        rot_err_mu_sm_values = [s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None]
+        trans_err_mu_pred_values = [s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None]
+        rot_err_mu_pred_values = [s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None]
+        prop_var_x_values = [s.prop_var_x for s in step_results if s.prop_var_x is not None]
+        prop_var_y_values = [s.prop_var_y for s in step_results if s.prop_var_y is not None]
+        prop_var_theta_values = [s.prop_var_theta for s in step_results if s.prop_var_theta is not None]
+        prop_corr_xy_values = [s.corr_xy for s in step_results if s.corr_xy is not None]
+        prop_corr_x_theta_values = [s.corr_x_theta for s in step_results if s.corr_x_theta is not None]
+        prop_corr_y_theta_values = [s.corr_y_theta for s in step_results if s.corr_y_theta is not None]
+        xj_eff_values = [s.xj_eff for s in step_results if s.xj_eff is not None]
 
         drift = float("inf")
         drift_rotation_error = float("inf")
@@ -177,6 +271,21 @@ class RBPFEvaluator:
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
             "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
             "mean_step_duration": float(np.mean(step_durations)) if step_durations else 0.0,
+            "mean_trans_err_mu_sm": float(np.mean(trans_err_mu_sm_values)) if trans_err_mu_sm_values else float("nan"),
+            "mean_rot_err_mu_sm_deg": float(np.degrees(np.mean(rot_err_mu_sm_values))) if rot_err_mu_sm_values else float("nan"),
+            "rmse_trans_err_mu_sm": float(np.sqrt(np.mean(np.square(trans_err_mu_sm_values)))) if trans_err_mu_sm_values else float("nan"),
+            "rmse_rot_err_mu_sm_deg": float(np.degrees(np.sqrt(np.mean(np.square(rot_err_mu_sm_values))))) if rot_err_mu_sm_values else float("nan"),
+            "mean_trans_err_mu_pred": float(np.mean(trans_err_mu_pred_values)) if trans_err_mu_pred_values else float("nan"),
+            "mean_rot_err_mu_pred_deg": float(np.degrees(np.mean(rot_err_mu_pred_values))) if rot_err_mu_pred_values else float("nan"),
+            "rmse_trans_err_mu_pred": float(np.sqrt(np.mean(np.square(trans_err_mu_pred_values)))) if trans_err_mu_pred_values else float("nan"),
+            "rmse_rot_err_mu_pred_deg": float(np.degrees(np.sqrt(np.mean(np.square(rot_err_mu_pred_values))))) if rot_err_mu_pred_values else float("nan"),
+            "mean_prop_var_x": float(np.mean(prop_var_x_values)) if prop_var_x_values else float("nan"),
+            "mean_prop_var_y": float(np.mean(prop_var_y_values)) if prop_var_y_values else float("nan"),
+            "mean_prop_var_theta": float(np.mean(prop_var_theta_values)) if prop_var_theta_values else float("nan"),
+            "mean_prop_corr_xy": float(np.mean(prop_corr_xy_values)) if prop_corr_xy_values else float("nan"),
+            "mean_prop_corr_x_theta": float(np.mean(prop_corr_x_theta_values)) if prop_corr_x_theta_values else float("nan"),
+            "mean_prop_corr_y_theta": float(np.mean(prop_corr_y_theta_values)) if prop_corr_y_theta_values else float("nan"),
+            "mean_xj_eff": float(np.mean(xj_eff_values)) if xj_eff_values else float("nan"),
         }
 
         if params is not None:

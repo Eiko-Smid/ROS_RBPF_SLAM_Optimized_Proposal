@@ -146,44 +146,86 @@ from .result_writer import ResultWriter
         "proposal_sigma_xy": [0.05],
         "proposal_sigma_theta": [0.02],
         "proposal_n_samples": [10],
-
+ 
     17.2 Use best motion and uncertainty from 17.1 and adapt proposal params only (TODO)
 
 
 18. Use deterministic sampling around scan match pose
 
+    - Instead of taken random samples around scan matcher maxima we are using a deterministic sampling pattern. 
+    - This test resulted in the best result so far. 
+    - Unfortuntely the computation time for the proposal estimation increased a lot because we are now using 27 samples 
+      instead of 10. 
 
-19. Speedup
 
-    - because we have more xjs nowe in deterministic sampling, the proposal estimation time increased a lot.
-    - To counter that we introduced a batch version for measurement lieklihood and motion probability computation.
+19. Speedup of proposal computation
+
+    - because we have more xjs now due to deterministic sampling, the proposal estimation time increased a lot.
+    - To counter that we introduced a batch version for measurement likelihood and motion probability computation.
+    - The vectorized computation enabled a much faster proposal estimation
 
     Results:
-        proposal compuation time before: proposal.estimate_proposal: 12.718832830819338 ms (count=20240)
+        proposal computation time before: proposal.estimate_proposal: 12.718832830819338 ms (count=20240)
         proposal estimation time after: proposal.estimate_proposal: 2.711988692958292 ms (count=20520)
 
         -> 4.7x speedup
+
+
+    19_1: Speedversion test
+
+        Result:
+
+            - Same result as 18 only difference is the score because it depends on computation time and we are much faster now.
+    
+    
+    19_2: Without clipping measurements
+        
+        - This time we run the measurement likelihood without clipping the distances to the nearest neighbor.
+        - This should make the measurement likelihood more sensitive to bad correspondences but also more robust to good correspondences. 
+        - Before we clipped the distances to 1.0 which means that we did not penalize bad correspondences more than a distance of 1.0 m.
+
+
+
+20. Turtlebot map test     
+
+    - Now we are testing our algorithm on the turtlebot map dataset. 
+    - THis map has more unique structures than the cafe map 
+    - Normally this should make it easier to localize and should lead to better results.
+
+    Results:
+        mean translation error: 0.3017 m -> worse than 0.058 (best cafe map result)
+        mean rotation error: 0.6854 deg -> worse than 0.4139 deg (best cafe map result)
+
+        - Before we tuned params on cafe map -> maybe overfitted to cafe map
+        - Also we use deterministic sampling around scan match pose and use mu of proposal directly
+        - Therefore all particles end up with the same weight and we have no probabilitic inside now 
+        - We need to change this and therefore optimize the computation of the probabilits in the proposal estimation.
+
+
+21. Added proposal metrics
+    21.1: Proposal metrics test
+        - We added some metrics to the proposal estimation to better understand the behavior of the proposal distribution 
+          and its impact on the overall performance.
         
 '''
 
 
 # Playback data path defs
-# OPTIMIZATION_RESULT_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_steps.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_17_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_1_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_1_params.json'
+
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
 
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_19_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_19_1_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_19_1_params.json'
-
-
-CSV_FLOAT_DECIMALS = 4
+CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
-SEED_LIST = [22]
+SEED_LIST = [22, 51]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"

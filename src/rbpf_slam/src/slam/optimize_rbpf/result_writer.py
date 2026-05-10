@@ -2,6 +2,7 @@ from pathlib import Path
 import csv
 import numbers
 import math
+import numpy as np
 
 from typing import List
 
@@ -30,6 +31,9 @@ class ResultWriter:
 		"""
 		Format float-like values with fixed decimal places while leaving other values unchanged.
 		"""
+		if value is None:
+			return np.nan
+
 		if isinstance(value, bool):
 			return value
 
@@ -112,10 +116,28 @@ class ResultWriter:
 					"drift",
 					"mean_neff",
 					"mean_particle_weight_min",
-					"mean_particle_weight_max",
+					"mean_particle_weight_max",					
 					"mean_particle_weight_mean",
-					"mean_step_duration_ms",
+					
+					
+					"mean_trans_err_mu_sm",
+					"mean_rot_err_mu_sm_deg",
+					"rmse_trans_err_mu_sm",
+					"rmse_rot_err_mu_sm_deg",
+					"mean_trans_err_mu_pred",
+					"mean_rot_err_mu_pred_deg",
+					"rmse_trans_err_mu_pred",
+					"rmse_rot_err_mu_pred_deg",
+					"mean_prop_var_x",
+					"mean_prop_var_y",
+					"mean_prop_var_theta",
+					"mean_prop_corr_xy",
+					"mean_prop_corr_x_theta",
+					"mean_prop_corr_y_theta",
+					"mean_xj_eff",
+					
 					"n_steps",
+					"mean_step_duration_ms",
 				]
 			)
 
@@ -158,12 +180,31 @@ class ResultWriter:
 					summary.get("rmse_trans_error_best_p"),
 					math.degrees(summary.get("rmse_rot_error_best_p")) if summary.get("rmse_rot_error_best_p") is not None else None,
 					summary.get("drift"),
+					
 					summary.get("mean_neff"),
 					summary.get("mean_particle_weight_min"),
 					summary.get("mean_particle_weight_max"),
+					
 					summary.get("mean_particle_weight_mean"),
-					(summary.get("mean_step_duration", 0.0) or 0.0) * 1000.0,
+										
+					summary.get("mean_trans_err_mu_sm"),
+					summary.get("mean_rot_err_mu_sm_deg"),
+					summary.get("rmse_trans_err_mu_sm"),
+					summary.get("rmse_rot_err_mu_sm_deg"),
+					summary.get("mean_trans_err_mu_pred"),
+					summary.get("mean_rot_err_mu_pred_deg"),
+					summary.get("rmse_trans_err_mu_pred"),
+					summary.get("rmse_rot_err_mu_pred_deg"),
+					summary.get("mean_prop_var_x"),
+					summary.get("mean_prop_var_y"),
+					summary.get("mean_prop_var_theta"),
+					summary.get("mean_prop_corr_xy"),
+					summary.get("mean_prop_corr_x_theta"),
+					summary.get("mean_prop_corr_y_theta"),
+					summary.get("mean_xj_eff"),
+					
 					summary.get("n_steps"),
+					(summary.get("mean_step_duration", 0.0) or 0.0) * 1000.0,
 				]
 
 				writer.writerow(
@@ -207,14 +248,28 @@ class ResultWriter:
 					"step_id",
 					"neff",
 					"trans_error_best_p",
-					"rot_error_best_p",
+					"rot_error_best_p_deg",
 					"trans_error",
-					"rot_error",
+					"rot_error_deg",
 					"particle_weight_min",
 					"particle_weight_max",
 					"particle_weight_mean",
+					
 					"scan_match_failed",
-					"scan_match_fallback_failed",					
+					"scan_match_fallback_failed",
+					
+					"trans_err_mu_sm",
+					"rot_err_mu_sm_deg",
+					"trans_err_mu_pred",
+					"rot_err_mu_pred_deg",
+					"prop_var_x",
+					"prop_var_y",
+					"prop_var_theta",
+					"prop_corr_xy",
+					"prop_corr_x_theta",
+					"prop_corr_y_theta",
+					"xj_eff",
+					
 					"step_duration_ms",
 				]
 			)
@@ -230,14 +285,25 @@ class ResultWriter:
 						step.step_idx,
 						step.neff,
 						step.translation_error_best_p,
-						step.rotation_error_best_p,
+						math.degrees(step.rotation_error_best_p) if step.rotation_error_best_p is not None else None,
 						step.translation_error,
-						step.rotation_error,
+						math.degrees(step.rotation_error) if step.rotation_error is not None else None,
 						step.particle_weight_min,
 						step.particle_weight_max,
 						step.particle_weight_mean,
 						step.scan_match_failed,
 						step.scan_match_fallback_failed,
+						step.trans_err_mu_sm,
+						math.degrees(step.rot_err_mu_sm) if step.rot_err_mu_sm is not None else None,
+						step.trans_err_mu_pred,
+						math.degrees(step.rot_err_mu_pred) if step.rot_err_mu_pred is not None else None,
+						step.prop_var_x,
+						step.prop_var_y,
+						step.prop_var_theta,
+						step.corr_xy,
+						step.corr_x_theta,
+						step.corr_y_theta,
+						step.xj_eff,
 						(step.step_duration or 0.0) * 1000.0,
 					]
 

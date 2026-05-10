@@ -63,9 +63,9 @@ class LikelihoodFiledModel(MeasurementModel):
     def likelihood_batch(
         self,
         poses: np.ndarray,
-        measurements,
-        scan_matcher,
-        neighbor,
+        measurements: List[Tuple[float, float]],
+        scan_matcher: ScanMatcher,
+        neighbor: NearestNeighbors,
     ) -> np.ndarray:
 
         n_poses = poses.shape[0]
@@ -122,6 +122,7 @@ class LikelihoodFiledModel(MeasurementModel):
         # reshape back
         distances = distances.reshape(n_poses, n_beams)
 
+        # TODO: Add clipping again later on
         distances = np.clip(distances, 0.0, 1.0)
 
         mean_error = np.mean(

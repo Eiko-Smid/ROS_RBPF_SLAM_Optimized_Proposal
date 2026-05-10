@@ -139,16 +139,28 @@ class MotionModel:
         x_prev: np.ndarray,
     ) -> np.ndarray:
         """
-        x_new shape: (N, 3)
-        x_prev shape: (3,)
+        Get's the new poses (Nx3) and the previous pose (1x3) and computes the motion probability for each new pose based on the difference
+        between the new poses and the previous pose and the noise parameters of the motion model.
+        Parameters
+        ----------
+        x_new: np.ndarray (Nx3)
+            The new poses of the robot, given as an array of shape (N, 3) where N is the number of poses and each pose is given as a tuple (x, y, theta).
+        x_prev: np.ndarray (3)
+            The previous pose of the robot, given as a tuple (x, y, theta).
+        
+        Returns
+        -------
+        Motion probabilities: np.ndarray (N, )
+            The motion probabilities for each new pose. The closer the poses are to the previous pose, the higher the probability. 
         """
-
+        # Compute delta tranlation and rotation
         dx = x_new[:, 0] - x_prev[0]
         dy = x_new[:, 1] - x_prev[1]
 
         dtheta = x_new[:, 2] - x_prev[2]
         dtheta = np.arctan2(np.sin(dtheta), np.cos(dtheta))
 
+        # Compute motion probability for each pose in the batch
         return np.exp(
             -0.5 * (
                 (dx / self.sigma_x) ** 2 +

@@ -93,6 +93,9 @@ class PlaybackRunner:
             #     (r, b) for r, b in measurements_map if np.isfinite(r) and not np.isnan(r)
             # ]
 
+            if step_idx == 517:
+                print("Debug here")
+
             # Run rbpf filter step
             rbpf.step(
                 odom=(step.dl, step.dr),
@@ -119,6 +122,7 @@ class PlaybackRunner:
             particle_weight_min = info.get("particle_weight_min")
             particle_weight_max = info.get("particle_weight_max")
             particle_weight_mean = info.get("particle_weight_mean")
+            proposal_metrics = info.get("proposal_metrics")
 
             # Evaluate the current step and store results
             step_result = self.evaluator.evaluate_step(
@@ -134,6 +138,7 @@ class PlaybackRunner:
                 particle_weight_max=particle_weight_max,
                 particle_weight_mean=particle_weight_mean,
                 step_duration=step_duration,
+                proposal_metrics=proposal_metrics,
             )
 
             run_result.step_results.append(step_result)
@@ -255,6 +260,7 @@ class PlaybackRunner:
             particle_weight_min = info.get("particle_weight_min")
             particle_weight_max = info.get("particle_weight_max")
             particle_weight_mean = info.get("particle_weight_mean")
+            proposal_metrics = info.get("proposal_metrics")
 
             # Evaluate the current step and store results
             step_result = self.evaluator.evaluate_step(
@@ -270,6 +276,7 @@ class PlaybackRunner:
                 particle_weight_max=particle_weight_max,
                 particle_weight_mean=particle_weight_mean,
                 step_duration=step_duration,
+                proposal_metrics=proposal_metrics,
             )
 
             run_result.step_results.append(step_result)

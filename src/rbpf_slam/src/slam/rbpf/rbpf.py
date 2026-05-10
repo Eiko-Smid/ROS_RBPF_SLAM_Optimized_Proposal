@@ -194,6 +194,7 @@ class RBPF:
             "timing_normalize_neff_s": None,
             "timing_metrics_s": None,
             "timing_resampling_s": None,
+            "proposal_metrics": None,
         }
         # Dedicated per-step info for scan-matching-only mode.
         self._last_step_info_scan_match_only = {
@@ -211,6 +212,7 @@ class RBPF:
             "timing_normalize_neff_s": None,
             "timing_metrics_s": None,
             "timing_resampling_s": None,
+            "proposal_metrics": None,
         }
 
 
@@ -387,6 +389,7 @@ class RBPF:
             The updated particle with new pose, weight (not normalized) and the updated map.
         '''
         # Information for debugging
+        prop_metrics = None 
         scan_match_failed = False
         scan_match_fallback_failed = False
 
@@ -411,7 +414,7 @@ class RBPF:
         if corr_pose is not None:
             # Compute optimized proposal
             t_prop_start = time.perf_counter()
-            new_pose, p_weight = proposal.estimate_proposal(
+            new_pose, p_weight, prop_metrics = proposal.estimate_proposal(
                 scan_match_pose=corr_pose,
                 particle=particle,
                 odom=odom,
@@ -485,7 +488,7 @@ class RBPF:
             scan_matcher=particle.scan_matcher,
         )
 
-        return new_particle, scan_match_failed, scan_match_fallback_failed
+        return new_particle, scan_match_failed, scan_match_fallback_failed, prop_metrics
 
 
     def step(
@@ -535,13 +538,14 @@ class RBPF:
         
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
+        particle0_prop_metrics = None
         self._step_counter += 1
         step_idx = self._step_counter
 
         # Process each particle
         # t_update_start = time.perf_counter()
         for i, p in enumerate(self.particles):
-            self.particles[i], scan_match_failed, scan_match_fallback_failed = self.update_particle(
+            self.particles[i], scan_match_failed, scan_match_fallback_failed, prop_metrics = self.update_particle(
                 particle=p,
                 motion_model=self.motion_model,
                 measurement_model=self.measurement_model,
@@ -555,6 +559,8 @@ class RBPF:
             )
             scan_match_failed_any = scan_match_failed_any or scan_match_failed
             scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
+            if i == 0:
+                particle0_prop_metrics = prop_metrics
         # t_update_s = time.perf_counter() - t_update_start
         # self._timing_stats["update_particles_sum_s"] += t_update_s
         # self._timing_stats["update_particles_count"] += 1
@@ -619,6 +625,7 @@ class RBPF:
             "timing_normalize_neff_s": t_norm_s,
             "timing_metrics_s": t_metrics_s,
             "timing_resampling_s": t_resampling_s,
+            "proposal_metrics": particle0_prop_metrics,
         }
 
         # Resampling

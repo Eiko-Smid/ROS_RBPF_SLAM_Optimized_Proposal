@@ -131,7 +131,7 @@ class ProposalEstimator:
             # Fallback when all sample weights collapse to zero/invalid values.
             mu = np.asarray(scan_match_pose, dtype=float)
             cov = 1e-6 * np.eye(3)
-            return mu, cov, 1e-12
+            return mu, cov, 1e-12, np.ones(samples.shape[0], dtype=float), pred_pose
 
         # Compute mu
         mu = np.sum(samples * weights[:, None], axis=0) / norm
@@ -181,8 +181,6 @@ class ProposalEstimator:
             sigma_theta=sigma_theta,
         )
 
-        # weights = np.zeros(shape=(n_samples))
-
         # Predict particle pose based on odometry and old particle pose 
         dl, dr = odom
         pred_pose = motion_model.predict_pose(
@@ -229,7 +227,7 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        return mu, cov, norm
+        return mu, cov, norm, weights, pred_pose
     
     
 
@@ -254,24 +252,12 @@ class ProposalEstimator:
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
         n_samples: int=10,
-    ) -> Tuple[np.ndarray, float]:
+    ) -> Tuple[np.ndarray, float, dict]:
         '''
 
         '''
-        # COmpute proposal params
-        # mu, cov, p_weight = self.compute_proposal_param(
-        #     scan_match_pose=scan_match_pose,
-        #     particle=particle,
-        #     odom=odom,
-        #     measurements=measurements,
-        #     neighbor=neighbor,
-        #     motion_model=motion_model,
-        #     measurement_model=measurement_model,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        # )
-        mu, cov, p_weight = self.compute_proposal_param_batch(
+        # Compute proposal params
+        mu, cov, p_weight, xj_weights, pred_pose = self.compute_proposal_param_batch(
             scan_match_pose=scan_match_pose,
             particle=particle,
             odom=odom,
@@ -284,10 +270,19 @@ class ProposalEstimator:
             n_samples=n_samples,
         )
 
+        # Store raw proposal diagnostics for downstream evaluation.
+        info = {
+            "prop_mu": mu,
+            "prop_cov_matrix": cov,
+            "scan_match_pose": np.asarray(scan_match_pose, dtype=float),
+            "pred_pose": np.asarray(pred_pose, dtype=float),
+            "xj_weights": xj_weights,
+        }
+
         # Sample pose
         # new_pose = self.sample_from_proposal(mu, cov)
         
         # TODO: Keep this for the moment until we found better solution. Chat GPT recommends this version due to better results
         new_pose = mu 
         
-        return new_pose, p_weight
+        return new_pose, p_weight, info
