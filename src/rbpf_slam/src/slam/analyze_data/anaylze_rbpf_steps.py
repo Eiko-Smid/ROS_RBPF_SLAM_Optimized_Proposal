@@ -7,8 +7,11 @@ import matplotlib.pyplot as plt
 
 # ==== FILE PATHS ====
 PAYBACK_STEPS_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/1777891056_steps.csv"
-RBPF_STEPS_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_steps.csv"
-OUTPUT_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_11_old_map_step_analysis.csv"
+RBPF_STEPS_FILE = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_1_steps.csv'
+OUTPUT_FILE = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_cafe_proposal_step_analysis.csv"
+
+RANK = 1
+N_XJ = 27.0
 
 # ==== COLUMN NAMES ====
 # COL_TIME = "t"
@@ -26,11 +29,36 @@ COL_TRANS_SPEED = "v"
 COL_ROT_SPEED = "omega"
 
 COL_SPEED = ["step_id", "v", "omega"]
-COL_STEPS = ["scan_match_fallback_failed_any", "neff", "trans_error", "rot_error"]
-COL_RESUTLS = ["step_id", "scan_match_fallback_failed_any", "neff", "trans_error", "rot_error", "v", "omega"]
+COL_STEPS = ["scan_match_fallback_failed", "neff", "trans_error", "rot_error"]
+COL_RESUTLS = [
+    "step_id",
+    "scan_match_fallback_failed", 
+    "neff", 
+    "trans_error", "rot_error", 
+    "v", "omega"
+]
+
+
+# COL_SPEED = ["step_id", "v", "omega"]
+COL_STEPS_PROPOSAL = [
+    "step_id",
+    "scan_match_failed_count", 
+    "trans_err_sm_true", 
+    "rot_err_sm_true_deg",
+    "xj_eff",
+]
+COL_RESUTLS_PROPOSAL = [
+    "step_id",
+    "scan_match_failed_count", 
+    "trans_err_sm_true", 
+    "rot_err_sm_true_deg",
+    "xj_eff",
+]
+
 
 N_PARTICLES = 40.0
 NEFF_THRESHOLD = N_PARTICLES / 2.0
+
 
 
 def normalize_angle(angle):
@@ -229,13 +257,69 @@ def plot_results_v2(df):
     plt.show()
 
 
-def analyze_rbpf_run():
+def analyze_rbpf_proposal_run(rank: int):
     # Load data
     df_playback = pd.read_csv(PAYBACK_STEPS_FILE)
     df_steps = pd.read_csv(RBPF_STEPS_FILE)
 
+    # Filter step data by rank
+    df_steps = df_steps[df_steps["rank"] == rank]
+    
+    # Convert time s -> ms
+    df_playback[COL_TIME] = df_playback[COL_TIME] / 1000.0
+
+    # Filter NaN values 
+    # df_steps = df_steps.dropna(subset=COL_STEPS_PROPOSAL)
+
+    # Convert boolean indicator to int
+    df_steps["scan_match_failed"] = df_steps["scan_match_failed"].astype(int)
+
+    # Normalize xj-eff to [0, 1]
+    df_steps["xj_eff"] = df_steps["xj_eff"] / N_XJ
+
+    # Plot data
+    fig, axs = plt.subplots(2, 1, figsize=(10, 12))
+
+    # set x ticks
+    step_ticks = np.arange(0, df_steps["step_id"].max() + 1, 25)
+
+    # --- 1. Errors and xj_eff ---
+    axs[0].plot(df_steps["step_id"], df_steps["trans_err_sm_true"], label="trans_err_sm_true [m]", color="r")
+    axs[0].plot(df_steps["step_id"], df_steps["rot_err_sm_true_deg"], label="rot_err_sm_true [deg]", color="c")
+    axs[0].plot(df_steps["step_id"], df_steps["xj_eff"], label="xj_eff", color="m")
+    axs[0].set_ylabel("Error")
+    axs[1].set_xlabel("step")
+    axs[0].set_xticks(step_ticks)
+    axs[0].legend(loc="upper right")
+    axs[0].grid()
+    axs[0].set_title("Proposal Estimation Error")
+
+    # Plot scan match fallback failure
+    axs[1].step(df_steps["step_id"], df_steps["scan_match_failed"], where="post", label="scan match failed", color="black")
+    axs[1].set_ylim(-0.1, 1.1)
+    axs[1].set_ylabel("scan match failed")
+    axs[1].set_xlabel("step")
+    axs[1].set_xticks(step_ticks)
+    axs[1].legend(loc="upper right")
+    axs[1].set_title("Scan Match Failure")
+
+    # plt.tight_layout()
+    plt.grid()
+    plt.show()
+    
+
+def analyze_rbpf_run(rank: int):
+    # Load data
+    df_playback = pd.read_csv(PAYBACK_STEPS_FILE)
+    df_steps = pd.read_csv(RBPF_STEPS_FILE)
+
+    # Filter step data by rank
+    df_steps = df_steps[df_steps["rank"] == rank]
+    
     # CConvert time s -> ms
     df_playback[COL_TIME] = df_playback[COL_TIME] / 1000.0
+
+    print(df_playback.head())
 
     # Compute speed columns
     v, omega = compute_speeds(df_playback)
@@ -265,38 +349,6 @@ def analyze_rbpf_run():
     print(f"\nSaved file: {OUTPUT_FILE}")
 
 
-
-def analyze_rbpf_run_copy():
-    # Load data
-    df_playback = pd.read_csv(PAYBACK_STEPS_FILE)
-    df_steps = pd.read_csv(RBPF_STEPS_FILE)
-
-    # Compute speed columns
-    v, omega = compute_speeds_copy(df_playback)
-
-    # Define speed df
-    df_speed = df_playback.copy()
-    df_speed["v"] = v
-    df_speed["omega"] = omega
-
-    # Merge playback with steps
-    df_results = combine_data_to_result(
-        df_speed=df_speed,
-        df_steps=df_steps,
-        col_steps=COL_STEPS,
-        col_speed=COL_SPEED,
-        col_results=COL_RESUTLS
-    )
-
-    # Compute useful metrics (e.g. resampling indicator)
-    df_results = compute_useful_metrics(df_results, resample_threshold=NEFF_THRESHOLD)
-
-    # Plot result data
-    plot_results_v2(df_results)
-
-    # Store data to csv
-    df_results.to_csv(OUTPUT_FILE, index=False)
-    print(f"\nSaved file: {OUTPUT_FILE}")
 
 
 def analyze_speed_data():
@@ -330,7 +382,8 @@ def analyze_speed_data():
 
 
 def main():
-    analyze_rbpf_run()
+    # analyze_rbpf_run(rank=RANK)
+    analyze_rbpf_proposal_run(rank=RANK)
 
 
 if __name__ == "__main__":

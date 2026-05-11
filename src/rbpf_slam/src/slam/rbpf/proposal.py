@@ -211,7 +211,7 @@ class ProposalEstimator:
             # Fallback when all sample weights collapse to zero/invalid values.
             mu = np.asarray(scan_match_pose, dtype=float)
             cov = 1e-6 * np.eye(3)
-            return mu, cov, 1e-12
+            return mu, cov, 1e-12, samples, np.ones(samples.shape[0], dtype=float), pred_pose
 
         # Compute mu
         mu = np.sum(samples * weights[:, None], axis=0) / norm
@@ -227,7 +227,7 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        return mu, cov, norm, weights, pred_pose
+        return mu, cov, norm, samples, weights, pred_pose
     
     
 
@@ -257,7 +257,7 @@ class ProposalEstimator:
 
         '''
         # Compute proposal params
-        mu, cov, p_weight, xj_weights, pred_pose = self.compute_proposal_param_batch(
+        mu, cov, p_weight, xjs, xj_weights, pred_pose = self.compute_proposal_param_batch(
             scan_match_pose=scan_match_pose,
             particle=particle,
             odom=odom,
@@ -276,6 +276,7 @@ class ProposalEstimator:
             "prop_cov_matrix": cov,
             "scan_match_pose": np.asarray(scan_match_pose, dtype=float),
             "pred_pose": np.asarray(pred_pose, dtype=float),
+            "xjs": xjs,
             "xj_weights": xj_weights,
         }
 

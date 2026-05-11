@@ -33,6 +33,18 @@ class StepResult:
     step_duration: Optional[float] = None
     trans_err_mu_sm: Optional[float] = None
     rot_err_mu_sm: Optional[float] = None
+    trans_err_sm_true: Optional[float] = None
+    rot_err_sm_true: Optional[float] = None
+    
+    trans_err_best_xj_true: Optional[float] = None
+    rot_err_best_xj_true: Optional[float] = None
+    trans_err_worst_xj_true: Optional[float] = None
+    rot_err_worst_xj_true: Optional[float] = None
+    best_xj_improves_over_sm_trans : Optional[bool] = None
+    best_xj_improves_over_sm_rot : Optional[bool] = None
+    best_xj_better_than_worst_trans : Optional[bool] = None
+    best_xj_better_than_worst_rot : Optional[bool] = None
+    
     trans_err_mu_pred: Optional[float] = None
     rot_err_mu_pred: Optional[float] = None
     prop_std_x: Optional[float] = None
@@ -119,6 +131,12 @@ class RBPFEvaluator:
         rot_err_best_p = None
         trans_err_mu_sm = None
         rot_err_mu_sm = None
+        trans_err_sm_true = None
+        rot_err_sm_true = None
+        trans_err_best_xj_true = None
+        rot_err_best_xj_true = None
+        trans_err_worst_xj_true = None
+        rot_err_worst_xj_true = None
         trans_err_mu_pred = None
         rot_err_mu_pred = None
         prop_std_x = None
@@ -128,6 +146,11 @@ class RBPFEvaluator:
         corr_x_theta = None
         corr_y_theta = None
         xj_eff = None
+        best_xj_improves_over_sm_trans = None
+        best_xj_better_than_worst_trans = None
+        best_xj_improves_over_sm_rot = None
+        best_xj_better_than_worst_rot = None
+
 
         if est_pose_t is not None:
             trans_err = self.translation_error(est_pose_t, true_pose_t)
@@ -143,13 +166,43 @@ class RBPFEvaluator:
             scan_match_pose = proposal_metrics.get("scan_match_pose")
             pred_pose = proposal_metrics.get("pred_pose")
             cov = proposal_metrics.get("prop_cov_matrix")
+            xjs = proposal_metrics.get("xjs")
             xj_weights = proposal_metrics.get("xj_weights")
+
+            if xjs is not None and xj_weights is not None and true_pose_t is not None:
+                xjs_arr = np.asarray(xjs, dtype=float)
+                weights = np.asarray(xj_weights, dtype=float).reshape(-1)
+
+                if (
+                    xjs_arr.ndim == 2
+                    and xjs_arr.shape[0] > 0
+                    and xjs_arr.shape[1] >= 3
+                    and weights.shape[0] == xjs_arr.shape[0]
+                ):
+                    finite_idx = np.where(np.isfinite(weights))[0]
+                    if finite_idx.size > 0:
+                        local_best = int(np.argmax(weights[finite_idx]))
+                        local_worst = int(np.argmin(weights[finite_idx]))
+                        best_idx = int(finite_idx[local_best])
+                        worst_idx = int(finite_idx[local_worst])
+
+                        best_xj_t = self._to_pose_tuple(xjs_arr[best_idx, :3])
+                        worst_xj_t = self._to_pose_tuple(xjs_arr[worst_idx, :3])
+
+                        trans_err_best_xj_true = self.translation_error(best_xj_t, true_pose_t)
+                        rot_err_best_xj_true = abs(self.angle_diff(best_xj_t[2], true_pose_t[2]))
+                        trans_err_worst_xj_true = self.translation_error(worst_xj_t, true_pose_t)
+                        rot_err_worst_xj_true = abs(self.angle_diff(worst_xj_t[2], true_pose_t[2]))
 
             if mu is not None and scan_match_pose is not None:
                 mu_t = self._to_pose_tuple(mu)
                 sm_t = self._to_pose_tuple(scan_match_pose)
                 trans_err_mu_sm = self.translation_error(mu_t, sm_t)
                 rot_err_mu_sm = abs(self.angle_diff(mu_t[2], sm_t[2]))
+
+                if true_pose_t is not None:
+                    trans_err_sm_true = self.translation_error(sm_t, true_pose_t)
+                    rot_err_sm_true = abs(self.angle_diff(sm_t[2], true_pose_t[2]))
 
             if mu is not None and pred_pose is not None:
                 mu_t = self._to_pose_tuple(mu)
@@ -186,6 +239,22 @@ class RBPFEvaluator:
                     if np.isfinite(denom) and denom > 0.0:
                         xj_eff = float(1.0 / denom)
 
+
+            # Check if proposal improves scan match pose
+            if trans_err_best_xj_true is not None and trans_err_sm_true is not None:
+                best_xj_improves_over_sm_trans = trans_err_best_xj_true < trans_err_sm_true
+
+            if rot_err_best_xj_true is not None and rot_err_sm_true is not None:
+                best_xj_improves_over_sm_rot = rot_err_best_xj_true < rot_err_sm_true
+            
+            # Check if worst xj pose is worse than best xj pose
+            if trans_err_best_xj_true is not None and trans_err_worst_xj_true is not None:
+                best_xj_better_than_worst_trans = trans_err_best_xj_true < trans_err_worst_xj_true
+
+            if rot_err_best_xj_true is not None and rot_err_worst_xj_true is not None:
+                best_xj_better_than_worst_rot = rot_err_best_xj_true < rot_err_worst_xj_true
+
+
         return StepResult(
             step_idx=step_idx,
             t=float(t),
@@ -205,6 +274,18 @@ class RBPFEvaluator:
             step_duration=float(step_duration) if step_duration is not None else None,
             trans_err_mu_sm=trans_err_mu_sm,
             rot_err_mu_sm=rot_err_mu_sm,
+            trans_err_sm_true=trans_err_sm_true,
+            rot_err_sm_true=rot_err_sm_true,
+
+            trans_err_best_xj_true=trans_err_best_xj_true,
+            rot_err_best_xj_true=rot_err_best_xj_true,
+            trans_err_worst_xj_true=trans_err_worst_xj_true,
+            rot_err_worst_xj_true=rot_err_worst_xj_true,
+            best_xj_improves_over_sm_trans=best_xj_improves_over_sm_trans,
+            best_xj_improves_over_sm_rot=best_xj_improves_over_sm_rot,
+            best_xj_better_than_worst_trans=best_xj_better_than_worst_trans,
+            best_xj_better_than_worst_rot=best_xj_better_than_worst_rot,
+
             trans_err_mu_pred=trans_err_mu_pred,
             rot_err_mu_pred=rot_err_mu_pred,
             prop_std_x=prop_std_x,
@@ -215,6 +296,7 @@ class RBPFEvaluator:
             corr_y_theta=corr_y_theta,
             xj_eff=xj_eff,
         )
+
 
     def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> dict:
         """
@@ -231,10 +313,24 @@ class RBPFEvaluator:
         particle_weight_max_values = [s.particle_weight_max for s in step_results if s.particle_weight_max is not None]
         particle_weight_mean_values = [s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
+        
+        # Compute proposal metrics
         trans_err_mu_sm_values = [s.trans_err_mu_sm for s in step_results if s.trans_err_mu_sm is not None]
         rot_err_mu_sm_values = [s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None]
         trans_err_mu_pred_values = [s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None]
         rot_err_mu_pred_values = [s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None]
+        best_xj_improves_over_sm_trans_values = [
+            float(s.best_xj_improves_over_sm_trans) for s in step_results if s.best_xj_improves_over_sm_trans is not None
+        ]
+        best_xj_improves_over_sm_rot_values = [
+            float(s.best_xj_improves_over_sm_rot) for s in step_results if s.best_xj_improves_over_sm_rot is not None
+        ]
+        best_xj_better_than_worst_trans_values = [
+            float(s.best_xj_better_than_worst_trans) for s in step_results if s.best_xj_better_than_worst_trans is not None
+        ]
+        best_xj_better_than_worst_rot_values = [
+            float(s.best_xj_better_than_worst_rot) for s in step_results if s.best_xj_better_than_worst_rot is not None
+        ]
         prop_std_x_values = [s.prop_std_x for s in step_results if s.prop_std_x is not None]
         prop_std_y_values = [s.prop_std_y for s in step_results if s.prop_std_y is not None]
         prop_std_theta_values = [s.prop_std_theta for s in step_results if s.prop_std_theta is not None]
@@ -286,6 +382,10 @@ class RBPFEvaluator:
             "mean_rot_err_mu_pred": float(np.mean(rot_err_mu_pred_values)) if rot_err_mu_pred_values else float("nan"),
             "rmse_trans_err_mu_pred": float(np.sqrt(np.mean(np.square(trans_err_mu_pred_values)))) if trans_err_mu_pred_values else float("nan"),
             "rmse_rot_err_mu_pred": float(np.sqrt(np.mean(np.square(rot_err_mu_pred_values)))) if rot_err_mu_pred_values else float("nan"),
+            "mean_best_xj_improves_over_sm_trans": float(np.mean(best_xj_improves_over_sm_trans_values)) if best_xj_improves_over_sm_trans_values else float("nan"),
+            "mean_best_xj_improves_over_sm_rot": float(np.mean(best_xj_improves_over_sm_rot_values)) if best_xj_improves_over_sm_rot_values else float("nan"),
+            "mean_best_xj_better_than_worst_trans": float(np.mean(best_xj_better_than_worst_trans_values)) if best_xj_better_than_worst_trans_values else float("nan"),
+            "mean_best_xj_better_than_worst_rot": float(np.mean(best_xj_better_than_worst_rot_values)) if best_xj_better_than_worst_rot_values else float("nan"),
             
             "mean_prop_std_xy": mean_prop_std_xy,
             "mean_prop_std_theta": mean_std_theta,
