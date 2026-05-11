@@ -238,6 +238,12 @@ class RBPFEvaluator:
         prop_std_x_values = [s.prop_std_x for s in step_results if s.prop_std_x is not None]
         prop_std_y_values = [s.prop_std_y for s in step_results if s.prop_std_y is not None]
         prop_std_theta_values = [s.prop_std_theta for s in step_results if s.prop_std_theta is not None]
+        
+        mean_prop_std_xy = np.mean(
+            [(sx + sy) / 2.0 for sx, sy in zip(prop_std_x_values, prop_std_y_values)] 
+        )
+        mean_std_theta = np.mean(prop_std_theta_values) if prop_std_theta_values else float("nan")
+        
         prop_corr_xy_values = [s.corr_xy for s in step_results if s.corr_xy is not None]
         prop_corr_x_theta_values = [s.corr_x_theta for s in step_results if s.corr_x_theta is not None]
         prop_corr_y_theta_values = [s.corr_y_theta for s in step_results if s.corr_y_theta is not None]
@@ -271,17 +277,19 @@ class RBPFEvaluator:
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
             "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
             "mean_step_duration": float(np.mean(step_durations)) if step_durations else 0.0,
+            
             "mean_trans_err_mu_sm": float(np.mean(trans_err_mu_sm_values)) if trans_err_mu_sm_values else float("nan"),
-            "mean_rot_err_mu_sm_deg": float(np.degrees(np.mean(rot_err_mu_sm_values))) if rot_err_mu_sm_values else float("nan"),
+            "mean_rot_err_mu_sm": float(np.mean(rot_err_mu_sm_values)) if rot_err_mu_sm_values else float("nan"),
             "rmse_trans_err_mu_sm": float(np.sqrt(np.mean(np.square(trans_err_mu_sm_values)))) if trans_err_mu_sm_values else float("nan"),
-            "rmse_rot_err_mu_sm_deg": float(np.degrees(np.sqrt(np.mean(np.square(rot_err_mu_sm_values))))) if rot_err_mu_sm_values else float("nan"),
+            "rmse_rot_err_mu_sm": float(np.sqrt(np.mean(np.square(rot_err_mu_sm_values)))) if rot_err_mu_sm_values else float("nan"),
             "mean_trans_err_mu_pred": float(np.mean(trans_err_mu_pred_values)) if trans_err_mu_pred_values else float("nan"),
-            "mean_rot_err_mu_pred_deg": float(np.degrees(np.mean(rot_err_mu_pred_values))) if rot_err_mu_pred_values else float("nan"),
+            "mean_rot_err_mu_pred": float(np.mean(rot_err_mu_pred_values)) if rot_err_mu_pred_values else float("nan"),
             "rmse_trans_err_mu_pred": float(np.sqrt(np.mean(np.square(trans_err_mu_pred_values)))) if trans_err_mu_pred_values else float("nan"),
-            "rmse_rot_err_mu_pred_deg": float(np.degrees(np.sqrt(np.mean(np.square(rot_err_mu_pred_values))))) if rot_err_mu_pred_values else float("nan"),
-            "mean_prop_std_x": float(np.mean(prop_std_x_values)) if prop_std_x_values else float("nan"),
-            "mean_prop_std_y": float(np.mean(prop_std_y_values)) if prop_std_y_values else float("nan"),
-            "mean_prop_std_theta": float(np.mean(prop_std_theta_values)) if prop_std_theta_values else float("nan"),
+            "rmse_rot_err_mu_pred": float(np.sqrt(np.mean(np.square(rot_err_mu_pred_values)))) if rot_err_mu_pred_values else float("nan"),
+            
+            "mean_prop_std_xy": mean_prop_std_xy,
+            "mean_prop_std_theta": mean_std_theta,
+            
             "mean_prop_corr_xy": float(np.mean(prop_corr_xy_values)) if prop_corr_xy_values else float("nan"),
             "mean_prop_corr_x_theta": float(np.mean(prop_corr_x_theta_values)) if prop_corr_x_theta_values else float("nan"),
             "mean_prop_corr_y_theta": float(np.mean(prop_corr_y_theta_values)) if prop_corr_y_theta_values else float("nan"),

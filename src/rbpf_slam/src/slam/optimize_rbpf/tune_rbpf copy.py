@@ -265,7 +265,7 @@ def main():
     )
 
     # Save results
-    result_writer.write_ranked_runs_csv(
+    result_writer.write_run_summary_csv(
         path=OPTIMIZATION_RESULT_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,
@@ -273,7 +273,7 @@ def main():
     )
 
     # Save independent per-step diagnostic traces for each ranked run.
-    result_writer.write_ranked_step_traces_csv(
+    result_writer.write_run_steps_csv(
         output_path=STEP_TRACE_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,

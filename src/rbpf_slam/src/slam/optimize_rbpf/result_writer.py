@@ -53,7 +53,7 @@ class ResultWriter:
 
 
 	@staticmethod
-	def write_ranked_runs_csv(
+	def write_run_summary_csv(
 		path: str,
 		ranked_runs: List[RankedRun],
 		override: bool = False,
@@ -128,9 +128,8 @@ class ResultWriter:
 					"mean_rot_err_mu_pred_deg",
 					"rmse_trans_err_mu_pred",
 					"rmse_rot_err_mu_pred_deg",
-					"mean_prop_std_x",
-					"mean_prop_std_y",
-					"mean_prop_std_theta",
+					"mean_prop_std_xy",
+					"mean_prop_std_theta_deg",
 					"mean_prop_corr_xy",
 					"mean_prop_corr_x_theta",
 					"mean_prop_corr_y_theta",
@@ -188,16 +187,17 @@ class ResultWriter:
 					summary.get("mean_particle_weight_mean"),
 										
 					summary.get("mean_trans_err_mu_sm"),
-					summary.get("mean_rot_err_mu_sm_deg"),
+					math.degrees(summary.get("mean_rot_err_mu_sm")) if summary.get("mean_rot_err_mu_sm") is not None else None,
 					summary.get("rmse_trans_err_mu_sm"),
-					summary.get("rmse_rot_err_mu_sm_deg"),
+					math.degrees(summary.get("rmse_rot_err_mu_sm")) if summary.get("rmse_rot_err_mu_sm") is not None else None,
 					summary.get("mean_trans_err_mu_pred"),
-					summary.get("mean_rot_err_mu_pred_deg"),
+					math.degrees(summary.get("mean_rot_err_mu_pred")) if summary.get("mean_rot_err_mu_pred") is not None else None,
 					summary.get("rmse_trans_err_mu_pred"),
-					summary.get("rmse_rot_err_mu_pred_deg"),
-					summary.get("mean_prop_std_x"),
-					summary.get("mean_prop_std_y"),
-					summary.get("mean_prop_std_theta"),
+					math.degrees(summary.get("rmse_rot_err_mu_pred")) if summary.get("rmse_rot_err_mu_pred") is not None else None,
+					
+					summary.get("mean_prop_std_xy"),
+					math.degrees(summary.get("mean_prop_std_theta")) if summary.get("mean_prop_std_theta") is not None else None,
+					
 					summary.get("mean_prop_corr_xy"),
 					summary.get("mean_prop_corr_x_theta"),
 					summary.get("mean_prop_corr_y_theta"),
@@ -218,7 +218,7 @@ class ResultWriter:
 
 
 	@staticmethod
-	def write_ranked_step_traces_csv(
+	def write_run_steps_csv(
 		output_path: str,
 		ranked_runs: List[RankedRun],
 		override: bool = False,
@@ -264,7 +264,7 @@ class ResultWriter:
 					"rot_err_mu_pred_deg",
 					"prop_std_x",
 					"prop_std_y",
-					"prop_std_theta",
+					"prop_std_theta_deg",
 					"prop_corr_xy",
 					"prop_corr_x_theta",
 					"prop_corr_y_theta",
@@ -293,13 +293,14 @@ class ResultWriter:
 						step.particle_weight_mean,
 						step.scan_match_failed,
 						step.scan_match_fallback_failed,
+						
 						step.trans_err_mu_sm,
 						math.degrees(step.rot_err_mu_sm) if step.rot_err_mu_sm is not None else None,
 						step.trans_err_mu_pred,
 						math.degrees(step.rot_err_mu_pred) if step.rot_err_mu_pred is not None else None,
 						step.prop_std_x,
 						step.prop_std_y,
-						step.prop_std_theta,
+						math.degrees(step.prop_std_theta) if step.prop_std_theta is not None else None,
 						step.corr_xy,
 						step.corr_x_theta,
 						step.corr_y_theta,

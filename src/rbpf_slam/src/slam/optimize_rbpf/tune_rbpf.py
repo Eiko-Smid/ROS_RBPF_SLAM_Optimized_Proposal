@@ -206,29 +206,43 @@ from .result_writer import ResultWriter
     21.1: Proposal metrics test
         - We added some metrics to the proposal estimation to better understand the behavior of the proposal distribution 
           and its impact on the overall performance.
-        
+
+
+
+22. Analyze of turtle bot map based on new metrics 
+    22.1. Turtle bot map run with fixed param
+
+    22.1. Turtle bot map run with grid params
+
+
+
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_2_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_1_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_1_params.json'
-0
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_2_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_2_steps.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_21_2_params.json'
+
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_params.json'
+
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
 
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None            # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
-PLAYBACK_SUFFIX = "1777891056"
+PLAYBACK_SUFFIX = "1777891056"        # Cafe map
+# PLAYBACK_SUFFIX = "1777901198"          # Turtlebot map
 
 
 def _to_jsonable(value):
@@ -278,8 +292,8 @@ def _grid_axes() -> dict:
         "ctrl_motion_fac": [0.1],
         "ctrl_turn_fac": [0.15],
         "neff_threshold": [20],
-        "proposal_sigma_xy": [0.05],
-        "proposal_sigma_theta": [0.02],
+        "proposal_sigma_xy": [0.05, 0.1, 0.2],
+        "proposal_sigma_theta": [0.02, 0.08],
         "proposal_n_samples": [10],
     }
 
@@ -505,7 +519,7 @@ def main():
 
 
     # Save results
-    result_writer.write_ranked_runs_csv(
+    result_writer.write_run_summary_csv(
         path=OPTM_SUMMARY_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,
@@ -513,7 +527,7 @@ def main():
     )
 
     # Save independent per-step diagnostic traces for each ranked run.
-    result_writer.write_ranked_step_traces_csv(
+    result_writer.write_run_steps_csv(
         output_path=STEP_TRACE_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,
