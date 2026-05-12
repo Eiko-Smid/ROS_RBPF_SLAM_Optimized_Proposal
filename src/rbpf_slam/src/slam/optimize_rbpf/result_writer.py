@@ -128,10 +128,10 @@ class ResultWriter:
 					"mean_rot_err_mu_pred_deg",
 					"rmse_trans_err_mu_pred",
 					"rmse_rot_err_mu_pred_deg",
-					"mean_best_xj_improves_over_sm_trans",
-					"mean_best_xj_improves_over_sm_rot",
-					"mean_best_xj_better_than_worst_trans",
-					"mean_best_xj_better_than_worst_rot",
+					# "mean_best_xj_improves_over_sm_trans",
+					# "mean_best_xj_improves_over_sm_rot",
+					# "mean_best_xj_better_than_worst_trans",
+					# "mean_best_xj_better_than_worst_rot",
 					"mean_prop_std_xy",
 					"mean_prop_std_theta_deg",
 					"mean_prop_corr_xy",
@@ -198,14 +198,13 @@ class ResultWriter:
 					math.degrees(summary.get("mean_rot_err_mu_pred")) if summary.get("mean_rot_err_mu_pred") is not None else None,
 					summary.get("rmse_trans_err_mu_pred"),
 					math.degrees(summary.get("rmse_rot_err_mu_pred")) if summary.get("rmse_rot_err_mu_pred") is not None else None,
-					summary.get("mean_best_xj_improves_over_sm_trans"),
-					summary.get("mean_best_xj_improves_over_sm_rot"),
-					summary.get("mean_best_xj_better_than_worst_trans"),
-					summary.get("mean_best_xj_better_than_worst_rot"),
+					# summary.get("mean_best_xj_improves_over_sm_trans"),
+					# summary.get("mean_best_xj_improves_over_sm_rot"),
+					# summary.get("mean_best_xj_better_than_worst_trans"),
+					# summary.get("mean_best_xj_better_than_worst_rot"),
 					
 					summary.get("mean_prop_std_xy"),
 					math.degrees(summary.get("mean_prop_std_theta")) if summary.get("mean_prop_std_theta") is not None else None,
-					
 					summary.get("mean_prop_corr_xy"),
 					summary.get("mean_prop_corr_x_theta"),
 					summary.get("mean_prop_corr_y_theta"),
@@ -268,14 +267,13 @@ class ResultWriter:
 					"trans_err_sm_true",
 					"rot_err_sm_true_deg",
 					
-					"trans_err_best_xj_true",
-					"rot_err_best_xj_true_deg",
-					"trans_err_worst_xj_true",
-					"rot_err_worst_xj_true_deg",
+					"min_xj_true_err_improves_over_sm_true",
 					"best_xj_improves_over_sm_trans",
-					"best_xj_improves_over_sm_rot",
-					"best_xj_better_than_worst_trans",
-					"best_xj_better_than_worst_rot",
+					"min_xj_true_err_weight_score",
+					"corr_xjs_weights",
+					"best_xj_score",
+					"mu_trans_improvement_ratio",
+					"xj_eff",
 
 					"trans_err_mu_sm",
 					"rot_err_mu_sm_deg",
@@ -287,7 +285,7 @@ class ResultWriter:
 					"prop_corr_xy",
 					"prop_corr_x_theta",
 					"prop_corr_y_theta",
-					"xj_eff",
+					
 					
 					"step_duration_ms",
 				]
@@ -313,16 +311,16 @@ class ResultWriter:
 						step.scan_match_failed,
 						step.scan_match_fallback_failed,
 						step.trans_err_sm_true,
+						
 						math.degrees(step.rot_err_sm_true) if step.rot_err_sm_true is not None else None,
 						
-						step.trans_err_best_xj_true,
-						math.degrees(step.rot_err_best_xj_true) if step.rot_err_best_xj_true is not None else None,
-						step.trans_err_worst_xj_true,
-						math.degrees(step.rot_err_worst_xj_true) if step.rot_err_worst_xj_true is not None else None,
+						step.min_xj_true_err_improves_over_sm_true,
 						step.best_xj_improves_over_sm_trans,
-						step.best_xj_improves_over_sm_rot,
-						step.best_xj_better_than_worst_trans,
-						step.best_xj_better_than_worst_rot,
+						step.min_xj_true_err_weight_score,
+						step.corr_xjs_weights,
+						step.best_xj_score,
+						step.mu_trans_improvement_ratio,
+						step.xj_eff,
 
 						step.trans_err_mu_sm,
 						math.degrees(step.rot_err_mu_sm) if step.rot_err_mu_sm is not None else None,
@@ -334,7 +332,7 @@ class ResultWriter:
 						step.corr_xy,
 						step.corr_x_theta,
 						step.corr_y_theta,
-						step.xj_eff,
+						
 						(step.step_duration or 0.0) * 1000.0,
 					]
 

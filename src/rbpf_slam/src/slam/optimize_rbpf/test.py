@@ -12,6 +12,7 @@ class Pose2D:
     y: float
     theta: float
 
+
 def motion_probability_batch(
     x_new: np.ndarray,
     x_prev: np.ndarray,
@@ -118,9 +119,67 @@ def test_old_motion_model():
     print(f"Generated {n_samples} samples in {mean_elapsed_time:.4f} ms")
 
 
+
+
+def rank_xj_weights():
+    xj_trans_errors_true = np.array([3.0, 2.0, 1.0]) 
+    xj_weights = np.array([0.2, 0.3, 0.5])
+    # xj_weights = np.array([0.5, 0.3, 0.2])
+
+    # idx = 2
+    idx_closest_true = np.argmin(xj_trans_errors_true)
+    
+    # [0.5, 0.3, 0.2]
+    # - xj_weights = [-0.5, -0.3, -0.2]
+    # argsort -> [0, 1, 2]
+    order = np.argsort(-xj_weights)
+
+    # print(np.where(order == idx_closest_true)[0][0])
+
+    rank_of_closest = int(np.where(order == idx_closest_true)[0][0]) + 1
+
+    norm = xj_weights.shape[0]
+    rank_of_closest_norm = rank_of_closest / norm
+
+    print(f"\n\nRank of closest xj is: {rank_of_closest}")
+    print(f"\nRank of closest xj norm: {rank_of_closest_norm}")
+
+
+def rank_xj_weights_optm(xj_trans_errors_true, xj_weights):
+    idx_closest_true = np.argmin(xj_trans_errors_true)
+
+    order = np.argsort(-xj_weights)
+
+    rank_of_closest = int(np.where(order == idx_closest_true)[0][0]) + 1
+
+    N = len(xj_weights)
+
+    if N == 1:
+        rank_score = 1.0
+    else:
+        rank_score = 1.0 - (rank_of_closest - 1) / (N - 1)
+
+    print("idx_closest_true:", idx_closest_true)
+    print("rank_of_closest:", rank_of_closest)
+    print("rank_score:", rank_score)
+
+
+def test_rank_xj_weights_optm():
+    xj_trans_errors_true = np.array([3.0, 2.0, 1.0])
+    xj_weights = np.array([0.2, 0.3, 0.5])
+    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+
+    xj_trans_errors_true = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
+    xj_weights = np.array([0.2, 0.3, 0.4, 0.5, 0.6])
+    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+
 def main():
-    test_old_motion_model() 
-    test_motion_probability_batch()
+    # test_old_motion_model() 
+    # test_motion_probability_batch()
+    # rank_xj_weights()
+    test_rank_xj_weights_optm()
 
 
 if __name__=="__main__":

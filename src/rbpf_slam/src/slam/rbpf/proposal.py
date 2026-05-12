@@ -162,7 +162,7 @@ class ProposalEstimator:
             sigma_xy: float=1.0,
             sigma_theta: float=1.0,
             n_samples: int=10,
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray]:
         # Define vars
         norm = 0.0
         mu = np.zeros(3)

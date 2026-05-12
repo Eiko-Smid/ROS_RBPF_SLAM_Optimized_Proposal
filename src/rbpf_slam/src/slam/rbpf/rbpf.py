@@ -388,7 +388,7 @@ class RBPF:
         Particle
             The updated particle with new pose, weight (not normalized) and the updated map.
         '''
-        # Information for debugging
+        # Set metrics to None
         prop_metrics = None 
         scan_match_failed = False
         scan_match_fallback_failed = False
