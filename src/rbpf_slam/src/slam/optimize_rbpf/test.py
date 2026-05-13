@@ -165,21 +165,49 @@ def rank_xj_weights_optm(xj_trans_errors_true, xj_weights):
 
 
 def test_rank_xj_weights_optm():
-    xj_trans_errors_true = np.array([3.0, 2.0, 1.0])
+    xj_trans_errors_true = np.array([0.1, 0.2, 0.3])
+    xj_weights = np.array([0.3, 0.2, 0.1])
+    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+    xj_trans_errors_true = np.array([0.2, 0.1, 0.3])
+    xj_weights = np.array([0.3, 0.2, 0.1])
+    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+    xj_trans_errors_true = np.array([0.2, 0.3, 0.1])
+    xj_weights = np.array([0.3, 0.2, 0.1])
+    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+    xj_trans_errors_true = np.array([0.2, 0.3, 0.1])
+    xj_weights = np.array([0.2, 0.3, 0.1])
+    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+
+
+def test():
+    # xj_trans_errors_true = np.array([3.0, 2.0, 1.0])
+    xj_trans_errors_true = np.array([1.0, 2.0, 3.0])
     xj_weights = np.array([0.2, 0.3, 0.5])
-    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
+    idx_closest_true = np.argmin(xj_trans_errors_true)
+    order = np.argsort(-xj_weights)
+
+    rank_of_closest = np.where(order == idx_closest_true) 
+
+    print(f"idx_closest_true: {idx_closest_true}")
+    print(f"order: {order}")
+    print(f"Rank of closest xj: {rank_of_closest}")
 
 
-    xj_trans_errors_true = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
-    xj_weights = np.array([0.2, 0.3, 0.4, 0.5, 0.6])
-    rank_xj_weights_optm(xj_trans_errors_true, xj_weights)
+
 
 
 def main():
+
     # test_old_motion_model() 
     # test_motion_probability_batch()
     # rank_xj_weights()
     test_rank_xj_weights_optm()
+    # test()
 
 
 if __name__=="__main__":
