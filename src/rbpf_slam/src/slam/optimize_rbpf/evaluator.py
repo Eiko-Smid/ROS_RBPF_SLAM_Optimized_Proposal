@@ -62,6 +62,12 @@ class StepResult:
     min_xj_true_err_weight_score: Optional[float] = None
     corr_xjs_weights: Optional[float] = None
     best_xj_score: Optional[float] = None
+    motion_rank_score: Optional[float] = None
+    meas_rank_score: Optional[float] = None
+    weight_ratio_min_best_weight: Optional[float] = None
+    log_motion_range: Optional[float] = None
+    log_meas_range: Optional[float] = None
+    log_weight_range: Optional[float] = None
     
     trans_err_mu_pred: Optional[float] = None
     rot_err_mu_pred: Optional[float] = None
@@ -177,6 +183,27 @@ class RBPFEvaluator:
         return rank_score
     
 
+    @staticmethod
+    def rank_model_probs(pose_errors, weights):
+        # get idx fof max weights
+        max_weight_idx = np.argmax(weights)
+
+        # Pseudo sort pose err from low to high
+        order = np.argsort(pose_errors)
+
+        # Compute rank
+        rank = int(np.where(order == max_weight_idx)[0][0]) + 1
+
+        # Compute score
+        N = len(pose_errors)
+        if N == 1:
+            rank_score = 1.0
+        else:
+            rank_score = 1.0 - (rank - 1) / (N - 1)
+        
+        return rank_score
+    
+
     def evaluate_step(
         self,
         step_idx: int,
@@ -246,6 +273,12 @@ class RBPFEvaluator:
         min_xj_true_err_weight_score = None
         corr_xjs_weights = None
         best_xj_score = None
+        motion_rank_score = None
+        meas_rank_score = None
+        weight_ratio_min_best_weight = None
+        log_motion_range = None
+        log_meas_range = None
+        log_weight_range = None
 
         if est_pose_t is not None:
             trans_err = self.translation_error(est_pose_t, true_pose_t)
@@ -263,6 +296,9 @@ class RBPFEvaluator:
             cov = proposal_metrics.get("prop_cov_matrix")
             xjs = proposal_metrics.get("xjs")
             xj_weights = proposal_metrics.get("xj_weights")
+            motion_probs = proposal_metrics.get("motion_probs")
+            meas_probs = proposal_metrics.get("meas_probs")
+
 
             # Compute mu, sm error metrics
             if mu is not None and scan_match_pose is not None:
@@ -283,10 +319,12 @@ class RBPFEvaluator:
                     # >0: mu is better than sm, =0: mu is equal to sm, <0: mu is worse than sm,
                     mu_true_err_improves_over_sm_true = (pose_err_sm_true - pose_err_mu_true) / (pose_err_sm_true + 1e-12)
 
-            
+            # Analyze proposal xjs and weights
             if xjs is not None and xj_weights is not None and true_pose_t is not None:
                 xjs_arr = np.asarray(xjs, dtype=float)
                 weights = np.asarray(xj_weights, dtype=float).reshape(-1)
+                motion_probs_arr = np.asarray(motion_probs, dtype=float).reshape(-1)
+                meas_probs_arr = np.asarray(meas_probs, dtype=float).reshape(-1)
 
                 if (
                     xjs_arr.ndim == 2
@@ -294,32 +332,39 @@ class RBPFEvaluator:
                     and xjs_arr.shape[1] >= 3
                     and weights.shape[0] == xjs_arr.shape[0]
                 ):
+                    valid_idx = np.where(
+                        np.isfinite(weights) & np.all(np.isfinite(xjs_arr[:, :3]), axis=1)
+                    )[0]
 
-                    # Ensure finite weights for ranking and scoring
-                    finite_idx = np.where(np.isfinite(weights))[0]
-                    if finite_idx.size > 0:
+                    if valid_idx.size == 0:
+                        print(
+                            f"[RBPFEvaluator] Step {step_idx}: skipping Proposal metrics computations, no shared finite xjs/weights samples."
+                        )
+                    else:
+                        # Filter all proposal vectors on the same valid indices.
+                        xjs_arr = xjs_arr[valid_idx]
+                        weights = weights[valid_idx]
+                        motion_probs_arr = motion_probs_arr[valid_idx]
+                        meas_probs_arr = meas_probs_arr[valid_idx]
+
+                        weight_sum = float(np.sum(weights))
+                       
+                        norm_weights = weights / weight_sum
+
                         # Find index of best and worst weight
-                        local_best = int(np.argmax(weights[finite_idx]))
-                        local_worst = int(np.argmin(weights[finite_idx]))
-                        best_idx = int(finite_idx[local_best])
-                        worst_idx = int(finite_idx[local_worst])
-                        n_samples = xjs.shape[0]
+                        best_idx = int(np.argmax(weights))
+                        worst_idx = int(np.argmin(weights))
+                        n_samples = int(weights.shape[0])
 
-                        # Get highest weight of best xj
-                        weight_best_xj = weights[best_idx]
-
-                        best_xj_t = self._to_pose_tuple(xjs_arr[best_idx, :3])
-                        worst_xj_t = self._to_pose_tuple(xjs_arr[worst_idx, :3])
+                        # Store normalized best-weighted xj weight for CSV/reporting.
+                        weight_best_xj = float(norm_weights[best_idx])
 
                         # Compute errors between true pose and xjs
-                        for xj in xjs_arr:  
-                            # Transfoorm pose to tuple pose                  
-                            xj = self._to_pose_tuple(xj)
-                           
-                            # Compute errors
-                            t_err = self.translation_error(xj, true_pose_t) if xj is not None else None
-                            r_err = abs(self.angle_diff(xj[2], true_pose_t[2])) if xj is not None else None
-                            p_err = self.pose_err(t_err, r_err, ROT_SCALE) if t_err is not None and r_err is not None else None
+                        for xj in xjs_arr:
+                            xj_t = self._to_pose_tuple(xj)
+                            t_err = self.translation_error(xj_t, true_pose_t)
+                            r_err = abs(self.angle_diff(xj_t[2], true_pose_t[2]))
+                            p_err = self.pose_err(t_err, r_err, ROT_SCALE)
                             trans_errors_xj_true.append(t_err)
                             rot_errors_xj_true.append(r_err)
                             pose_errors_xj_true.append(p_err)
@@ -332,16 +377,14 @@ class RBPFEvaluator:
                         # Find xj which has min error to true pose
                         min_xj_pose_err_true = np.min(pose_errors_xj_true)
 
-                        # This ratio tells us how much closer the xj pose with lowest pose error is to the true pose compared to the scan match pose. 
-                        # High pose error between sm and true, low pose error between best xj and true -> ratio close to 1.0 (What we want)
-                        # High pose error between sm and true, high pose error between best xj and true -> ratio close to 0.0 (What we don't want)
-                        min_xj_true_err_improves_over_sm_true = (pose_err_sm_true - min_xj_pose_err_true) / (pose_err_sm_true + 1e-12)                    
+                        # This ratio tells us how much closer the xj pose with lowest pose error is to the true pose compared to the scan match pose.
+                        min_xj_true_err_improves_over_sm_true = (pose_err_sm_true - min_xj_pose_err_true) / (pose_err_sm_true + 1e-12)
 
                         # Check if best xj pose is better than scan match pose
                         best_weighted_xj_pose_err_true = pose_errors_xj_true[best_idx]
                         best_xj_true_err_improves_over_sm_true = (pose_err_sm_true - best_weighted_xj_pose_err_true) / (pose_err_sm_true + 1e-12)
 
-                        # Compute rank score of xj closest to the true pose based on the given weights. 
+                        # Compute rank score of xj closest to the true pose based on the given weights.
                         min_xj_true_err_weight_score = self.xj_weight_score(
                             xj_pose_errors_true=pose_errors_xj_true,
                             xj_weights=weights
@@ -350,20 +393,51 @@ class RBPFEvaluator:
                         # Compute correlation between all xj errors to true pose and corresponding weights
                         corr_xjs_weights, _ = spearmanr(-pose_errors_xj_true, weights)
 
-                        # Compute importance score of best xj's weight. The higher the score the more releavant the weight actually is
+                        # Compute importance score of best xj's weight.
                         min_xj_err_idx = np.argmin(pose_errors_xj_true)
-                        weight_min_xj_err = weights[min_xj_err_idx]
+                        weight_min_xj_err = float(norm_weights[min_xj_err_idx])
                         uniform_weight = 1 / n_samples
                         best_weight_importance = weight_min_xj_err / uniform_weight
 
-                        # Compute union score for best xj and it's weight. The higher the value the better the weight corresponding to the 
-                        # best xj. 
+                        # Compute union score for best xj and its weight.
                         best_xj_score = best_weight_importance * min_xj_true_err_improves_over_sm_true
+
+                        # Analyse motion and measurement model weights
+                        motion_rank_score = self.rank_model_probs(
+                            pose_errors=pose_errors_xj_true,
+                            weights=motion_probs_arr,
+                        )
+
+                        meas_rank_score = self.rank_model_probs(
+                            pose_errors=pose_errors_xj_true,
+                            weights=meas_probs_arr,
+                        )
+
+                        # Effective sample size based on the same filtered normalized weights.
+                        denom = float(np.sum(norm_weights ** 2))
+                        if np.isfinite(denom) and denom > 0.0:
+                            xj_eff = float(1.0 / denom)
+
+                        # Compute weight ratio between best xj and min xj weight
+                        weight_ratio_min_best_weight = weight_min_xj_err / weight_best_xj 
+
+                        # Motion model weight range
+                        log_motion_probs = np.log(motion_probs_arr + 1e-12)
+                        log_motion_range = np.max(log_motion_probs) - np.min(log_motion_probs)#
+
+                        # measurement model weight range
+                        log_meas_probs = np.log(meas_probs_arr + 1e-12)
+                        log_meas_range = np.max(log_meas_probs) - np.min(log_meas_probs)
+
+                        # weight range
+                        log_weights = np.log(norm_weights + 1e-12)
+                        log_weight_range = np.max(log_weights) - np.min(log_weights)
+
+                else:
+                    print(
+                        f"[RBPFEvaluator] Step {step_idx}: skipping Proposal metrics computations, invalid xjs/weights base shapes."
+                    )
                         
-                        # trans_err_best_xj_true = self.translation_error(best_xj_t, true_pose_t)
-                        # rot_err_best_xj_true = abs(self.angle_diff(best_xj_t[2], true_pose_t[2]))
-                        # trans_err_worst_xj_true = self.translation_error(worst_xj_t, true_pose_t)
-                        # rot_err_worst_xj_true = abs(self.angle_diff(worst_xj_t[2], true_pose_t[2]))
 
             if mu is not None and pred_pose is not None:
                 mu_t = self._to_pose_tuple(mu)
@@ -390,15 +464,6 @@ class RBPFEvaluator:
                         corr_x_theta = float(cov_arr[0, 2] / (std_x * std_theta))
                     if std_y > 0.0 and std_theta > 0.0:
                         corr_y_theta = float(cov_arr[1, 2] / (std_y * std_theta))
-
-            if xj_weights is not None:
-                weights = np.asarray(xj_weights, dtype=float)
-                w_sum = float(np.sum(weights))
-                if weights.size > 0 and np.isfinite(w_sum) and w_sum > 0.0:
-                    norm_weights = weights / w_sum
-                    denom = float(np.sum(norm_weights ** 2))
-                    if np.isfinite(denom) and denom > 0.0:
-                        xj_eff = float(1.0 / denom)
 
             # Check if proposal improves scan match pose
             # if trans_err_best_xj_true is not None and trans_err_sm_true is not None:
@@ -460,6 +525,12 @@ class RBPFEvaluator:
             min_xj_true_err_weight_score=min_xj_true_err_weight_score,                      # valid
             corr_xjs_weights=corr_xjs_weights,                                              # valid            
             best_xj_score=best_xj_score,
+            motion_rank_score=motion_rank_score,
+            meas_rank_score=meas_rank_score,
+            weight_ratio_min_best_weight=weight_ratio_min_best_weight,
+            log_motion_range=log_motion_range,
+            log_meas_range=log_meas_range,
+            log_weight_range=log_weight_range,
             mu_true_err_improves_over_sm_true=mu_true_err_improves_over_sm_true,
 
             prop_std_x=prop_std_x,
@@ -516,10 +587,16 @@ class RBPFEvaluator:
         min_xj_true_err_weight_score_values = [s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None]
         corr_xjs_weights_values = [s.corr_xjs_weights for s in step_results if s.corr_xjs_weights is not None]
         best_xj_score_values = [s.best_xj_score for s in step_results if s.best_xj_score is not None]
+        motion_rank_score_values = [s.motion_rank_score for s in step_results if s.motion_rank_score is not None]
+        meas_rank_score_values = [s.meas_rank_score for s in step_results if s.meas_rank_score is not None]
         mu_true_err_improves_over_sm_true_values = [s.mu_true_err_improves_over_sm_true for s in step_results if s.mu_true_err_improves_over_sm_true is not None]
         weight_min_xj_err_values = [s.weight_min_xj_err for s in step_results if s.weight_min_xj_err is not None]
         best_weighted_xj_pose_err_true_values = [s.best_weighted_xj_pose_err_true for s in step_results if s.best_weighted_xj_pose_err_true is not None]
         weight_best_xj_values = [s.weight_best_xj for s in step_results if s.weight_best_xj is not None]
+        weight_ratio_min_best_weight_values = [s.weight_ratio_min_best_weight for s in step_results if s.weight_ratio_min_best_weight is not None]
+        log_motion_range_values = [s.log_motion_range for s in step_results if s.log_motion_range is not None]
+        log_meas_range_values = [s.log_meas_range for s in step_results if s.log_meas_range is not None]
+        log_weight_range_values = [s.log_weight_range for s in step_results if s.log_weight_range is not None]
 
         drift = float("inf")
         drift_rotation_error = float("inf")
@@ -563,12 +640,21 @@ class RBPFEvaluator:
             "rmse_corr_xjs_weights": float(np.sqrt(np.mean(np.square(corr_xjs_weights_values)))) if corr_xjs_weights_values else float("nan"),
             "mean_best_xj_score": float(np.mean(best_xj_score_values)) if best_xj_score_values else float("nan"),
             "rmse_best_xj_score": float(np.sqrt(np.mean(np.square(best_xj_score_values)))) if best_xj_score_values else float("nan"),
+            "mean_motion_rank_score": float(np.mean(motion_rank_score_values)) if motion_rank_score_values else float("nan"),
+            "mean_meas_rank_score": float(np.mean(meas_rank_score_values)) if meas_rank_score_values else float("nan"),
             "mean_mu_true_err_improves_over_sm_true": float(np.mean(mu_true_err_improves_over_sm_true_values)) if mu_true_err_improves_over_sm_true_values else float("nan"),
             "rmse_mu_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(mu_true_err_improves_over_sm_true_values)))) if mu_true_err_improves_over_sm_true_values else float("nan"),
 
             "mean_weight_min_xj_err": float(np.mean(weight_min_xj_err_values)) if weight_min_xj_err_values else float("nan"),
             "mean_best_weighted_xj_pose_err_true": float(np.mean(best_weighted_xj_pose_err_true_values)) if best_weighted_xj_pose_err_true_values else float("nan"),
             "mean_weight_best_xj": float(np.mean(weight_best_xj_values)) if weight_best_xj_values else float("nan"),
+            "mean_weight_ratio_min_best_weight": float(np.mean(weight_ratio_min_best_weight_values)) if weight_ratio_min_best_weight_values else float("nan"),
+            "median_weight_ratio_min_best_weight": float(np.median(weight_ratio_min_best_weight_values)) if weight_ratio_min_best_weight_values else float("nan"),
+            "mean_log_motion_range": float(np.mean(log_motion_range_values)) if log_motion_range_values else float("nan"),
+            "median_log_motion_range": float(np.median(log_motion_range_values)) if log_motion_range_values else float("nan"),
+            "mean_log_meas_range": float(np.mean(log_meas_range_values)) if log_meas_range_values else float("nan"),
+            "median_log_meas_range": float(np.median(log_meas_range_values)) if log_meas_range_values else float("nan"),
+            "mean_log_weight_range": float(np.mean(log_weight_range_values)) if log_weight_range_values else float("nan"),
 
             "mean_trans_err_mu_true": float(np.mean(trans_err_mu_true_values)) if trans_err_mu_true_values else float("nan"),
             "mean_rot_err_mu_true": float(np.mean(rot_err_mu_true_values)) if rot_err_mu_true_values else float("nan"), 

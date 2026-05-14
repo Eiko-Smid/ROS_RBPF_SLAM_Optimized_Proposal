@@ -190,7 +190,7 @@ class ProposalEstimator:
         )
 
         # Compute probability and add to normalizer 
-        meas_prob = measurement_model.likelihood_batch(
+        meas_probs = measurement_model.likelihood_batch(
             poses=samples,
             measurements=measurements,
             scan_matcher= particle.scan_matcher,
@@ -202,7 +202,7 @@ class ProposalEstimator:
             x_prev=pred_pose,
         )
 
-        weights = meas_prob * motion_probs
+        weights = meas_probs * motion_probs
                        
         # Vectorized computation of mu and cov
         norm = np.sum(weights)
@@ -227,7 +227,7 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        return mu, cov, norm, samples, weights, pred_pose
+        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose
     
     
 
@@ -257,7 +257,7 @@ class ProposalEstimator:
 
         '''
         # Compute proposal params
-        mu, cov, p_weight, xjs, xj_weights, pred_pose = self.compute_proposal_param_batch(
+        mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch(
             scan_match_pose=scan_match_pose,
             particle=particle,
             odom=odom,
@@ -278,6 +278,8 @@ class ProposalEstimator:
             "pred_pose": np.asarray(pred_pose, dtype=float),
             "xjs": xjs,
             "xj_weights": xj_weights,
+            "motion_probs": motion_probs,
+            "meas_probs": meas_probs,
         }
 
         # Sample pose

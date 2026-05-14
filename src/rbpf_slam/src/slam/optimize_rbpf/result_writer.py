@@ -52,6 +52,181 @@ class ResultWriter:
 		return path_obj.exists()
 
 
+
+	@staticmethod
+	def write_run_steps_csv(
+		output_path: str,
+		ranked_runs: List[RankedRun],
+		override: bool = False,
+		float_decimals: int = 6,
+	) -> None:
+		"""
+		Writes one per-step trace CSV per ranked run.
+
+		This export is independent from RBPF internals and uses stored step results.
+		"""
+		output_file_path = Path(output_path)
+		output_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+		if output_file_path.exists() and not override:
+			print(f"Skipping step trace (exists, override=False): {output_file_path}")
+			return
+
+		with open(output_file_path, "w", newline="") as f:
+			writer = csv.writer(f)
+			writer.writerow(
+				[
+					"rank",
+
+					# Parameters
+					"seed",
+					"tag",
+					"every_nth_beam_filter",
+					"every_nth_beam_map",
+					"step_id",
+					# "neff",
+					# "trans_error_best_p",
+					# "rot_error_best_p_deg",
+
+					# Pose errors
+					"trans_error",
+					"rot_error_deg",
+					# "particle_weight_min",
+					# "particle_weight_max",
+					# "particle_weight_mean",
+					
+					# Scan matcher information metrics
+					"scan_match_failed",
+					"scan_match_fallback_failed",
+					"trans_err_sm_true",
+					"rot_err_sm_true_deg",
+					"pose_err_sm_true",
+					
+					# Proposal Pose errors metrics and xj weights
+					"pose_err_mu_true",
+					"min_xj_pose_err_true",
+					"weight_min_xj_err",
+					"best_weighted_xj_pose_err_true",
+					"weight_best_xj",
+
+					# Improvement metrics (Did Proposal beat sm)
+					"min_xj_true_err_improves_over_sm_true",
+					"best_xj_true_err_improves_over_sm_true",
+					"mu_true_err_improves_over_sm_true",
+					"min_xj_true_err_weight_score",
+					"corr_xjs_weights",
+					"best_xj_score",					
+					"motion_rank_score",
+					"meas_rank_score",
+					"weight_ratio_min_best_weight",
+					"log_motion_range",
+					"log_meas_range",
+					"log_weight_range",
+					"xj_eff",
+
+					# Mu errors of proposal
+					"trans_err_mu_true",
+					"rot_err_mu_true_deg",
+					"trans_err_mu_sm",
+					"rot_err_mu_sm_deg",
+					"trans_err_mu_pred",
+					"rot_err_mu_pred_deg",
+
+					# Covariance and correlation metrics of proposal
+					"prop_std_x",
+					"prop_std_y",
+					"prop_std_theta_deg",
+					"prop_corr_xy",
+					"prop_corr_x_theta",
+					"prop_corr_y_theta",
+					
+					# Step information
+					"step_duration_ms",
+				]
+			)
+
+			for rank, run in enumerate(ranked_runs, start=1):
+				for step in run.step_results:
+					row = [
+						rank,
+
+						# Parameters
+						run.seed,
+						run.params.tag,
+						run.params.every_nth_scan_filter,
+						run.params.every_nth_scan_map,
+						step.step_idx,
+						# step.neff,
+						# step.translation_error_best_p,
+						# math.degrees(step.rotation_error_best_p) if step.rotation_error_best_p is not None else None,
+
+						# Pose errors
+						step.translation_error,
+						math.degrees(step.rotation_error) if step.rotation_error is not None else None,
+						# step.particle_weight_min,
+						# step.particle_weight_max,
+						# step.particle_weight_mean,
+
+						# Scan matcher information metrics
+						step.scan_match_failed,
+						step.scan_match_fallback_failed,
+						step.trans_err_sm_true,
+						math.degrees(step.rot_err_sm_true) if step.rot_err_sm_true is not None else None,
+						step.pose_err_sm_true,
+						
+						# Proposal Pose errors metrics and xj weights
+						step.pose_err_mu_true,
+						step.min_xj_pose_err_true,
+						step.weight_min_xj_err,
+						step.best_weighted_xj_pose_err_true,
+						step.weight_best_xj,
+
+						# Improvement metrics (Did Proposal beat sm)
+						step.min_xj_true_err_improves_over_sm_true,
+						step.best_xj_true_err_improves_over_sm_true,
+						step.mu_true_err_improves_over_sm_true,
+						step.min_xj_true_err_weight_score,
+						step.corr_xjs_weights,
+						step.best_xj_score,						
+						step.motion_rank_score,
+						step.meas_rank_score,
+						step.weight_ratio_min_best_weight,
+						step.log_motion_range,
+						step.log_meas_range,
+						step.log_weight_range,
+						step.xj_eff,
+
+						# Mu errors of proposal
+						step.trans_err_mu_true,
+						math.degrees(step.rot_err_mu_true) if step.rot_err_mu_true is not None else None,
+						step.trans_err_mu_sm,
+						math.degrees(step.rot_err_mu_sm) if step.rot_err_mu_sm is not None else None,
+						step.trans_err_mu_pred,
+						math.degrees(step.rot_err_mu_pred) if step.rot_err_mu_pred is not None else None,
+						
+						# Covariance and correlation metrics of proposal
+						step.prop_std_x,
+						step.prop_std_y,
+						math.degrees(step.prop_std_theta) if step.prop_std_theta is not None else None,
+						step.corr_xy,
+						step.corr_x_theta,
+						step.corr_y_theta,
+						
+						# Step information
+						(step.step_duration or 0.0) * 1000.0,
+					]
+
+					writer.writerow(
+						[
+							ResultWriter._format_csv_value(value, float_decimals=float_decimals)
+							for value in row
+						]
+					)
+
+		print(f"\nStep trace CSV files written to:\n{output_path}")
+
+
+
 	@staticmethod
 	def write_run_summary_csv(
 		path: str,
@@ -154,6 +329,13 @@ class ResultWriter:
 					"mean_weight_min_xj_err",
 					"mean_best_weighted_xj_pose_err_true",
 					"mean_weight_best_xj",
+					"mean_weight_ratio_min_best_weight",
+					"median_weight_ratio_min_best_weight",
+					"mean_log_motion_range",
+					"median_log_motion_range",
+					"mean_log_meas_range",
+					"median_log_meas_range",
+					"mean_log_weight_range",
 
 					# Improvement metrics (Did Proposal beat sm)
 					"mean_min_xj_true_err_improves_over_sm_true",
@@ -168,6 +350,8 @@ class ResultWriter:
 					"rmse_corr_xjs_weights",
 					"mean_best_xj_score",
 					"rmse_best_xj_score",
+					"mean_motion_rank_score",
+					"mean_meas_rank_score",
 					"mean_mu_true_err_improves_over_sm_true",
 					"rmse_mu_true_err_improves_over_sm_true",
 					
@@ -256,6 +440,13 @@ class ResultWriter:
 					summary.get("mean_weight_min_xj_err"),
 					summary.get("mean_best_weighted_xj_pose_err_true"),
 					summary.get("mean_weight_best_xj"),
+					summary.get("mean_weight_ratio_min_best_weight"),
+					summary.get("median_weight_ratio_min_best_weight"),
+					summary.get("mean_log_motion_range"),
+					summary.get("median_log_motion_range"),
+					summary.get("mean_log_meas_range"),
+					summary.get("median_log_meas_range"),
+					summary.get("mean_log_weight_range"),
 					
 					# Improvement metrics (Did Proposal beat sm)
 					summary.get("mean_min_xj_true_err_improves_over_sm_true"),
@@ -270,6 +461,8 @@ class ResultWriter:
 					summary.get("rmse_corr_xjs_weights"),
 					summary.get("mean_best_xj_score"),
 					summary.get("rmse_best_xj_score"),
+					summary.get("mean_motion_rank_score"),
+					summary.get("mean_meas_rank_score"),
 					summary.get("mean_mu_true_err_improves_over_sm_true"),
 					summary.get("rmse_mu_true_err_improves_over_sm_true"),
 					
@@ -286,164 +479,3 @@ class ResultWriter:
 				)
 
 		print(f"\nOptimization run has been saved to:\n{path}")
-
-
-	@staticmethod
-	def write_run_steps_csv(
-		output_path: str,
-		ranked_runs: List[RankedRun],
-		override: bool = False,
-		float_decimals: int = 6,
-	) -> None:
-		"""
-		Writes one per-step trace CSV per ranked run.
-
-		This export is independent from RBPF internals and uses stored step results.
-		"""
-		output_file_path = Path(output_path)
-		output_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-		if output_file_path.exists() and not override:
-			print(f"Skipping step trace (exists, override=False): {output_file_path}")
-			return
-
-		with open(output_file_path, "w", newline="") as f:
-			writer = csv.writer(f)
-			writer.writerow(
-				[
-					"rank",
-
-					# Parameters
-					"seed",
-					"tag",
-					"every_nth_beam_filter",
-					"every_nth_beam_map",
-					"step_id",
-					# "neff",
-					# "trans_error_best_p",
-					# "rot_error_best_p_deg",
-
-					# Pose errors
-					"trans_error",
-					"rot_error_deg",
-					# "particle_weight_min",
-					# "particle_weight_max",
-					# "particle_weight_mean",
-					
-					# Scan matcher information metrics
-					"scan_match_failed",
-					"scan_match_fallback_failed",
-					"trans_err_sm_true",
-					"rot_err_sm_true_deg",
-					"pose_err_sm_true",
-					
-					# Proposal Pose errors metrics and xj weights
-					"pose_err_mu_true",
-					"min_xj_pose_err_true",
-					"weight_min_xj_err",
-					"best_weighted_xj_pose_err_true",
-					"weight_best_xj",
-
-					# Improvement metrics (Did Proposal beat sm)
-					"min_xj_true_err_improves_over_sm_true",
-					"best_xj_true_err_improves_over_sm_true",
-					"mu_true_err_improves_over_sm_true",
-					"min_xj_true_err_weight_score",
-					"corr_xjs_weights",
-					"best_xj_score",					
-					"xj_eff",
-
-					# Mu errors of proposal
-					"trans_err_mu_true",
-					"rot_err_mu_true_deg",
-					"trans_err_mu_sm",
-					"rot_err_mu_sm_deg",
-					"trans_err_mu_pred",
-					"rot_err_mu_pred_deg",
-
-					# Covariance and correlation metrics of proposal
-					"prop_std_x",
-					"prop_std_y",
-					"prop_std_theta_deg",
-					"prop_corr_xy",
-					"prop_corr_x_theta",
-					"prop_corr_y_theta",
-					
-					# Step information
-					"step_duration_ms",
-				]
-			)
-
-			for rank, run in enumerate(ranked_runs, start=1):
-				for step in run.step_results:
-					row = [
-						rank,
-
-						# Parameters
-						run.seed,
-						run.params.tag,
-						run.params.every_nth_scan_filter,
-						run.params.every_nth_scan_map,
-						step.step_idx,
-						# step.neff,
-						# step.translation_error_best_p,
-						# math.degrees(step.rotation_error_best_p) if step.rotation_error_best_p is not None else None,
-
-						# Pose errors
-						step.translation_error,
-						math.degrees(step.rotation_error) if step.rotation_error is not None else None,
-						# step.particle_weight_min,
-						# step.particle_weight_max,
-						# step.particle_weight_mean,
-
-						# Scan matcher information metrics
-						step.scan_match_failed,
-						step.scan_match_fallback_failed,
-						step.trans_err_sm_true,
-						math.degrees(step.rot_err_sm_true) if step.rot_err_sm_true is not None else None,
-						step.pose_err_sm_true,
-						
-						# Proposal Pose errors metrics and xj weights
-						step.pose_err_mu_true,
-						step.min_xj_pose_err_true,
-						step.weight_min_xj_err,
-						step.best_weighted_xj_pose_err_true,
-						step.weight_best_xj,
-
-						# Improvement metrics (Did Proposal beat sm)
-						step.min_xj_true_err_improves_over_sm_true,
-						step.best_xj_true_err_improves_over_sm_true,
-						step.mu_true_err_improves_over_sm_true,
-						step.min_xj_true_err_weight_score,
-						step.corr_xjs_weights,
-						step.best_xj_score,						
-						step.xj_eff,
-
-						# Mu errors of proposal
-						step.trans_err_mu_true,
-						math.degrees(step.rot_err_mu_true) if step.rot_err_mu_true is not None else None,
-						step.trans_err_mu_sm,
-						math.degrees(step.rot_err_mu_sm) if step.rot_err_mu_sm is not None else None,
-						step.trans_err_mu_pred,
-						math.degrees(step.rot_err_mu_pred) if step.rot_err_mu_pred is not None else None,
-						
-						# Covariance and correlation metrics of proposal
-						step.prop_std_x,
-						step.prop_std_y,
-						math.degrees(step.prop_std_theta) if step.prop_std_theta is not None else None,
-						step.corr_xy,
-						step.corr_x_theta,
-						step.corr_y_theta,
-						
-						# Step information
-						(step.step_duration or 0.0) * 1000.0,
-					]
-
-					writer.writerow(
-						[
-							ResultWriter._format_csv_value(value, float_decimals=float_decimals)
-							for value in row
-						]
-					)
-
-		print(f"\nStep trace CSV files written to:\n{output_path}")
