@@ -199,6 +199,30 @@ def test():
 
 
 
+def test_1():
+    xj_trans_errors_true = np.array([1.0, 2.0, 3.0])
+    min_xj_err_idx = np.argmin(xj_trans_errors_true)
+
+    weights = np.array([0.1, 0.2, 0.3])
+    order = np.argsort(-weights)
+    print(f"\nOrder: {order}")
+
+    rank = np.where(order == min_xj_err_idx)
+    
+    print(rank)
+
+
+def test_1():
+    xj_trans_errors_true = np.array([1.0, 2.0, 3.0])
+    min_xj_err_idx = np.argmin(xj_trans_errors_true)
+
+    weights = np.array([0.1, 0.2, 0.3])
+    order = np.argsort(-weights)
+    print(f"\nOrder: {order}")
+
+    rank = np.where(order == min_xj_err_idx)
+    
+    print(rank)
 
 
 def main():
@@ -206,8 +230,9 @@ def main():
     # test_old_motion_model() 
     # test_motion_probability_batch()
     # rank_xj_weights()
-    test_rank_xj_weights_optm()
+    # test_rank_xj_weights_optm()
     # test()
+    test_1()
 
 
 if __name__=="__main__":

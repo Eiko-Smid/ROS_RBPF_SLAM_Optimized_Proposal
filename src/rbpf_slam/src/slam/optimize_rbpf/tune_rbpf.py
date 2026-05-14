@@ -215,18 +215,47 @@ from .result_writer import ResultWriter
     22.1. Turtle bot map run with grid params
 
 
-23. AAdded multiple metrics to analyze proposal
+23. Added multiple metrics to analyze proposal
 
+    23.1 Analyse which xj gets preferred and if it is correct
 
+        - Short answer: 
+            - The xj closest to the true pose is most of the time not the one with the highest weight. 
+            - This means we can and must improve the weight compuation.
 
+    
+    23.2 Don't clip measurement model this time
+            
+        - We are not clipping the NN distances now in measurement lieklihood computation. 
+
+        Results:
+            - Made the pose errors of sm, proposal and xj worse
+            - xj closest to true pose still doesn't get the highest weights most of the time
+    
+            
+    23.3 Clip t0 1.5 insetad of 1 m
+
+        Results:
+            - Compared to clip of 1 m this also made the pose errorsr worse
+            - Also the xj closest to true pose now got even slightly worse weights 
+            
+    
+    23.4 Clip even clsoer (0.7 m)
+
+        Results:
+            - Kind of like same results than 23.3
+            - 1m clipping seems to be near sweet spot for this dataset and param combination. 
+            - Clipping is a double edged sword. It can make the measurement likelihood more
+            robust to outliers but also less sensitive to good correspondences
+    
 
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_1_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_4_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_4_steps.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_23_4_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
