@@ -261,28 +261,99 @@ from .result_writer import ResultWriter
 
     -  Now we need to analyze why we follow the wrong xj most of the time
 
+    25.1
+
+        results:
+            Motion model:
+                - The motion model shows a normal correlation with the xj pose errors (0.342). 
+                - However the model shows strong correlation with the weights (0.904)
+                - This means the motion model is the main driver for the proposal distribution and its values are reasonable
+                - From the "median_log_motion_range" we can also see that the distribution of the weights is quiet flat 0.381916
+                  This values shows us how far away the max and min probs values of each step are away in average over an entire run
+
+            Measurement model:
+                - The measurement model shows a weaker correlation to the xj pose errors than the motion model (0.275)
+                - However the model shows stronger correlation to the weights, but not as much as motion model (0.641)
+                - This means that the measruement model don't benefit good xj poses, which is bad
+                - Also the overall probs are to equal. They are big but they are not spreaded out well. We can see this from the 
+                  "mean_log_meas_range" which has a value of 0.229785 which is even more flat than the motion model probs. 
+                  Measurement models shouls have a high peak and therefore a high range between max and min values. 
+
+            Conclusion:
+
+                - For now the motion model is finde
+                - But we need to make the measurement model a lot sharper
+                - Currently we computing the mean over all distacnes between the map points and the beam endppoints. This makes
+                  the measurement model too flat.
 
 
+26. Adapt weight computaion
+
+    26.1 Compute weights in log Odds space with scaling factors
+        - We are now scaling the motion and measurement weights in klgo odds space
+        
+        Results:
+            - We coldnt beat the ebst result so far
+            - As expected the measurement weights are still as close to each other as before -> Flat measurement distribution
+            - The correlations between the motion model and the xj pose err are as they were before. Lower alpha values reduce this fact
+            - The corr between motion and weights could be reduced thanks to alpha
+            
+            - The corr between the measurment probs and the xjs errors have not really been increases. SO we still don't punish bad xjs
+            - The corr between the meas probs and the weights could be increased. But this is meanigless if the models distribution is flat. 
+        
+    
+    26.2 Use scaled measruement probs
+
+        mean_error = np.mean(
+            (distances / self.sigma) ** 2,
+            axis=1,
+        )
+
+        k = 5.0
+        scaled_mean = -0.5 * k * mean_error
+        
+        # probs = np.exp(-0.5 * mean_error)
+        probs = np.exp(scaled_mean)
+
+        
+        26.2.1 K = 5    
+
+            this does the follwoing:
+                old: 0.95 vs 0.90
+                new: 0.95^5 vs 0.90^5
+                    0.774 vs 0.590
+
+            So it should make the measurements distribution more peaked
+
+            
+        26.2.1 K = 10
+        
+
+        26.2.3 k = 5 
+
+
+                          
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_25_1_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_25_1_steps.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_25_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
-
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 10             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
@@ -330,7 +401,7 @@ def _grid_axes() -> dict:
         # "proposal_sigma_theta": [0.02],
         # "proposal_n_samples": [10],
 
-        "sigma_measurement": [0.15],
+        "sigma_measurement": [0.05, 0.1, 0.15],
         "every_nth_beam_filter": [4],
         "every_nth_beam_map": [2],
         "n_particles": [1],
@@ -339,11 +410,13 @@ def _grid_axes() -> dict:
         "ctrl_motion_fac": [0.1],
         "ctrl_turn_fac": [0.15],
         "neff_threshold": [20],
-        "proposal_sigma_xy": [0.05, 0.1, 0.2],
-        "proposal_sigma_theta": [0.02, 0.08],       # in rad
-        # "proposal_sigma_xy": [0.03, 0.05, 0.08],
-        # "proposal_sigma_theta": [0.01, 0.02, 0.04],       # in rad
+        # "proposal_sigma_xy": [0.05, 0.1, 0.2],
+        # "proposal_sigma_theta": [0.02, 0.08],       # in rad
+        "proposal_sigma_xy": [0.05],
+        "proposal_sigma_theta": [0.02],       # in rad
         "proposal_n_samples": [10],
+        "proposal_alpha": [0.25, 0.5, 1.0],
+        "proposal_beta": [1.0, 2.0, 4.0],
     }
 
 
@@ -395,6 +468,8 @@ def generate_param_grid(n_repeats: int = 1):
     proposal_sigma_xy = axes["proposal_sigma_xy"]
     proposal_sigma_theta = axes["proposal_sigma_theta"]
     proposal_n_samples = axes["proposal_n_samples"]
+    proposal_alpha = axes["proposal_alpha"]
+    proposal_beta = axes["proposal_beta"]
 
     # OGM param
     # TODO Add ogm param later
@@ -417,6 +492,8 @@ def generate_param_grid(n_repeats: int = 1):
             sigma_xy,
             sigma_theta,
             n_samples,
+            alpha,
+            beta,
         ) in itertools.product(
             sigma_measurement,
             every_nth_beam_filter,
@@ -430,6 +507,8 @@ def generate_param_grid(n_repeats: int = 1):
             proposal_sigma_xy,
             proposal_sigma_theta,
             proposal_n_samples,
+            proposal_alpha,
+            proposal_beta,
         ):
             # Define experiment params for each run
             yield ExperimentParams(
@@ -496,10 +575,13 @@ def generate_param_grid(n_repeats: int = 1):
                 proposal_sigma_xy=sigma_xy,
                 proposal_sigma_theta=sigma_theta,
                 proposal_n_samples=n_samples,
+                proposal_alpha=alpha,
+                proposal_beta=beta,
                 tag=(
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
-                    f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_rep{repeat_idx}"
+                    f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_"
+                    f"pa{alpha}_pb{beta}_rep{repeat_idx}"
                 ),
             )
 
@@ -578,6 +660,14 @@ def main():
     # Save independent per-step diagnostic traces for each ranked run.
     result_writer.write_run_steps_csv(
         output_path=STEP_TRACE_PATH,
+        ranked_runs=ranked_runs,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
+    result_writer.write_proposal_weights_csv(
+        output_path=PROPOSAL_WEIGHTS_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,

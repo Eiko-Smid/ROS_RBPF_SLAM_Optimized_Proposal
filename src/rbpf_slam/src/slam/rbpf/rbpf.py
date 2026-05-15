@@ -355,6 +355,8 @@ class RBPF:
         proposal_sigma_xy: float,
         proposal_sigma_theta: float,
         proposal_n_samples: int,
+        proposal_alpha: float,
+        proposal_beta: float,
     ) -> Tuple[Particle, bool, bool]:
         '''
         Update step for a single particle. Updates the particle pose, weight and map based on the given odometry
@@ -425,6 +427,8 @@ class RBPF:
                 sigma_xy=proposal_sigma_xy,
                 sigma_theta=proposal_sigma_theta,
                 n_samples=proposal_n_samples,
+                alpha=proposal_alpha,
+                beta=proposal_beta,
             )
             t_prop_s = time.perf_counter() - t_prop_start
             self._timing_stats["proposal_estimation_sum_s"] += t_prop_s
@@ -500,6 +504,8 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
+        proposal_alpha: float = 0.5,
+        proposal_beta: float = 2.0,
     ) -> Tuple[float, Pose2D]:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
@@ -556,6 +562,8 @@ class RBPF:
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
+                proposal_alpha=proposal_alpha,
+                proposal_beta=proposal_beta,
             )
             scan_match_failed_any = scan_match_failed_any or scan_match_failed
             scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
@@ -778,6 +786,8 @@ class RBPF:
         proposal_sigma_xy: float,
         proposal_sigma_theta: float,
         proposal_n_samples: int,
+        proposal_alpha: float,
+        proposal_beta: float,
     ) -> Tuple[Particle, bool, bool]:
         '''
         Update step for a single particle. Updates the particle pose, weight and map based on the given odometry
@@ -850,6 +860,8 @@ class RBPF:
                 sigma_xy=proposal_sigma_xy,
                 sigma_theta=proposal_sigma_theta,
                 n_samples=proposal_n_samples,
+                alpha=proposal_alpha,
+                beta=proposal_beta,
             )
 
             new_pose = corr_pose
@@ -929,6 +941,8 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
+        proposal_alpha: float = 0.5,
+        proposal_beta: float = 2.0,
     ):
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
@@ -949,6 +963,8 @@ class RBPF:
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
+                proposal_alpha=proposal_alpha,
+                proposal_beta=proposal_beta,
             )
             scan_match_failed_any = scan_match_failed_any or scan_match_failed
             scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed

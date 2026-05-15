@@ -105,6 +105,8 @@ class PlaybackRunner:
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
+                proposal_alpha=params.proposal_alpha,
+                proposal_beta=params.proposal_beta,
             )
 
             # Measure step duration
@@ -243,6 +245,8 @@ class PlaybackRunner:
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
+                proposal_alpha=params.proposal_alpha,
+                proposal_beta=params.proposal_beta,
             )
 
             # Measure step duration

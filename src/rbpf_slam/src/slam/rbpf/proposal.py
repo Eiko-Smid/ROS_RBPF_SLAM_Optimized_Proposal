@@ -162,6 +162,96 @@ class ProposalEstimator:
             sigma_xy: float=1.0,
             sigma_theta: float=1.0,
             n_samples: int=10,
+                alpha: float=0.5,
+                beta: float=2.0,
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray]:
+        # Define vars
+        norm = 0.0
+        mu = np.zeros(3)
+
+        # Sample k new poses around scan matcher pose
+        # samples = self.sample_poses(
+        #     pose=scan_match_pose,
+        #     sigma_xy=sigma_xy,
+        #     sigma_theta=sigma_theta,
+        #     n_samples=n_samples,
+        # )
+
+        samples, n_samples = self.sample_poses_deterministic(
+            pose=scan_match_pose,
+            sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
+        )
+
+        # Predict particle pose based on odometry and old particle pose 
+        dl, dr = odom
+        pred_pose = motion_model.predict_pose(
+            pose=particle.pose,
+            dl=dl,
+            dr=dr,
+        )
+
+        # Compute probability and add to normalizer 
+        meas_probs = measurement_model.likelihood_batch(
+            poses=samples,
+            measurements=measurements,
+            scan_matcher= particle.scan_matcher,
+            neighbor=neighbor,
+        )
+
+        motion_probs = motion_model.motion_probability_batch(
+            x_new=samples,
+            x_prev=pred_pose,
+        )
+
+        # Transfer probs into log space
+        log_meas_probs = np.log(meas_probs + 1e-12)
+        log_motion_probs = np.log(motion_probs + 1e-12)
+
+        log_weights = alpha * log_motion_probs + beta * log_meas_probs
+        log_weights = log_weights - np.max(log_weights)
+
+        weights = np.exp(log_weights)
+                       
+        # Vectorized computation of mu and cov
+        norm = np.sum(weights)
+
+        if (not np.isfinite(norm)) or norm <= 1e-12:
+            # Fallback when all sample weights collapse to zero/invalid values.
+            mu = np.asarray(scan_match_pose, dtype=float)
+            cov = 1e-6 * np.eye(3)
+            return mu, cov, 1e-12, samples, np.ones(samples.shape[0], dtype=float), pred_pose
+
+        # Compute mu
+        mu = np.sum(samples * weights[:, None], axis=0) / norm
+
+        # Compute covariance matrix
+        # Compute deviation from the mean
+        x_minus_mu = samples - mu
+        # Ensure valid angles
+        x_minus_mu[:, self.IDX_THETA] = np.arctan2(np.sin(x_minus_mu[:, self.IDX_THETA]), np.cos(x_minus_mu[:, self.IDX_THETA]))
+        # Compute noralized covariance
+        cov = (weights[:, None] * x_minus_mu).T @ x_minus_mu / norm
+
+        # Ensure covariance matrix is positive definite by adding small values to diagonal
+        cov += 1e-6 * np.eye(3)
+
+        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose
+    
+
+
+    def compute_proposal_param_batch_copy(
+            self,
+            scan_match_pose: Pose2D,
+            particle: Particle,
+            odom: Tuple[float, float],
+            measurements: List[Tuple[float, float]],
+            neighbor: NearestNeighbors,
+            motion_model: MotionModel,
+            measurement_model: MeasurementModel,
+            sigma_xy: float=1.0,
+            sigma_theta: float=1.0,
+            n_samples: int=10,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray]:
         # Define vars
         norm = 0.0
@@ -227,9 +317,8 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose
-    
-    
+        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose    
+
 
     def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
         '''
@@ -252,6 +341,8 @@ class ProposalEstimator:
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
         n_samples: int=10,
+        alpha: float=0.5,
+        beta: float=2.0,
     ) -> Tuple[np.ndarray, float, dict]:
         '''
 
@@ -268,6 +359,8 @@ class ProposalEstimator:
             sigma_xy=sigma_xy,
             sigma_theta=sigma_theta,
             n_samples=n_samples,
+            alpha=alpha,
+            beta=beta,
         )
 
         # Store raw proposal diagnostics for downstream evaluation.

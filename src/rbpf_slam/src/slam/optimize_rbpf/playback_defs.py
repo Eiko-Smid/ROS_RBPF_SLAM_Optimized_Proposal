@@ -47,3 +47,5 @@ class ExperimentParams:
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10
+    proposal_alpha: float = 0.5
+    proposal_beta: float = 2.0

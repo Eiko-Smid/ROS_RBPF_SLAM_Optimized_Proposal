@@ -115,6 +115,10 @@ class ResultWriter:
 					"mu_true_err_improves_over_sm_true",
 					"min_xj_true_err_weight_score",
 					"corr_xjs_weights",
+					"corr_xjs_motion",
+					"corr_xjs_meas",
+					"corr_weights_motion",
+					"corr_weights_meas",
 					"best_xj_score",					
 					"motion_rank_score",
 					"meas_rank_score",
@@ -123,6 +127,8 @@ class ResultWriter:
 					"log_meas_range",
 					"log_weight_range",
 					"xj_eff",
+					"xj_eff_motion",
+					"xj_eff_meas",
 
 					# Mu errors of proposal
 					"trans_err_mu_true",
@@ -187,6 +193,10 @@ class ResultWriter:
 						step.mu_true_err_improves_over_sm_true,
 						step.min_xj_true_err_weight_score,
 						step.corr_xjs_weights,
+						step.corr_xjs_motion,
+						step.corr_xjs_meas,
+						step.corr_weights_motion,
+						step.corr_weights_meas,
 						step.best_xj_score,						
 						step.motion_rank_score,
 						step.meas_rank_score,
@@ -195,6 +205,8 @@ class ResultWriter:
 						step.log_meas_range,
 						step.log_weight_range,
 						step.xj_eff,
+						step.xj_eff_motion,
+						step.xj_eff_meas,
 
 						# Mu errors of proposal
 						step.trans_err_mu_true,
@@ -224,6 +236,105 @@ class ResultWriter:
 					)
 
 		print(f"\nStep trace CSV files written to:\n{output_path}")
+
+
+	@staticmethod
+	def write_proposal_weights_csv(
+		output_path: str,
+		ranked_runs: List[RankedRun],
+		override: bool = False,
+		float_decimals: int = 6,
+	) -> None:
+		"""
+		Writes one row per step and per proposal sample j with raw (not normalized) values.
+		"""
+		output_file_path = Path(output_path)
+		output_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+		if output_file_path.exists() and not override:
+			print(f"Skipping proposal weights trace (exists, override=False): {output_file_path}")
+			return
+
+		with open(output_file_path, "w", newline="") as f:
+			writer = csv.writer(f)
+			writer.writerow(
+				[
+					"rank",
+					"seed",
+					"step_id",
+					"j",
+					"xj_pose_err",
+					"xj_weight",
+					"xj_motion",
+					"xj_meas",
+				]
+			)
+
+			for rank, run in enumerate(ranked_runs, start=1):
+				for step in run.step_results:
+					indices = step.xj_indices
+					pose_err = step.xj_pose_err
+					weights = step.xj_weight
+					motion = step.xj_motion
+					meas = step.xj_meas
+
+					if not indices or not pose_err or not weights or not motion or not meas:
+						row = [
+							rank,
+							run.seed,
+							step.step_idx,
+							"none",
+							"none",
+							"none",
+							"none",
+							"none",
+						]
+						writer.writerow(
+							[
+								ResultWriter._format_csv_value(value, float_decimals=float_decimals)
+								for value in row
+							]
+						)
+						continue
+
+					n = min(len(indices), len(pose_err), len(weights), len(motion), len(meas))
+					if n <= 0:
+						row = [
+							rank,
+							run.seed,
+							step.step_idx,
+							"none",
+							"none",
+							"none",
+							"none",
+							"none",
+						]
+						writer.writerow(
+							[
+								ResultWriter._format_csv_value(value, float_decimals=float_decimals)
+								for value in row
+							]
+						)
+						continue
+					for i in range(n):
+						row = [
+							rank,
+							run.seed,
+							step.step_idx,
+							indices[i],
+							pose_err[i],
+							weights[i],
+							motion[i],
+							meas[i],
+						]
+						writer.writerow(
+							[
+								ResultWriter._format_csv_value(value, float_decimals=float_decimals)
+								for value in row
+							]
+						)
+
+		print(f"\nProposal weights CSV files written to:\n{output_path}")
 
 
 
@@ -263,6 +374,8 @@ class ResultWriter:
 					"every_nth_beam_map",
 					"n_particles",
 					"sigma_measurement",
+					"proposal_alpha",
+					"proposal_beta",
 					"sigma_x_motion",
 					"sigma_y_motion",
 					"sigma_theta_motion",
@@ -320,6 +433,8 @@ class ResultWriter:
 					"mean_prop_corr_x_theta",
 					"mean_prop_corr_y_theta",
 					"mean_xj_eff",
+					"mean_xj_eff_motion",
+					"mean_xj_eff_meas",
 
 					# Pose errrors metrics and xj weights
 					"mean_pose_err_sm_true",	
@@ -347,7 +462,15 @@ class ResultWriter:
 					"mean_min_xj_true_err_weight_score",
 					"rmse_min_xj_true_err_weight_score",
 					"mean_corr_xjs_weights",
-					"rmse_corr_xjs_weights",
+					"median_corr_xjs_weights",
+					"mean_corr_xjs_motion",
+					"median_corr_xjs_motion",
+					"mean_corr_xjs_meas",
+					"median_corr_xjs_meas",
+					"mean_corr_weights_motion",
+					"median_corr_weights_motion",
+					"mean_corr_weights_meas",
+					"median_corr_weights_meas",
 					"mean_best_xj_score",
 					"rmse_best_xj_score",
 					"mean_motion_rank_score",
@@ -374,6 +497,8 @@ class ResultWriter:
 					run.params.every_nth_scan_map,
 					run.params.particle_params.n_particles,
 					run.params.measurement_model_params.sigma_measurement,
+					run.params.proposal_alpha,
+					run.params.proposal_beta,
 					run.params.motion_model_params.sigma_x,
 					run.params.motion_model_params.sigma_y,
 					run.params.motion_model_params.sigma_theta,
@@ -431,6 +556,8 @@ class ResultWriter:
 					summary.get("mean_prop_corr_x_theta"),
 					summary.get("mean_prop_corr_y_theta"),
 					summary.get("mean_xj_eff"),
+					summary.get("mean_xj_eff_motion"),
+					summary.get("mean_xj_eff_meas"),
 					
 					# Pose errors metrics and xj weights
 					summary.get("mean_pose_err_sm_true"),
@@ -458,7 +585,15 @@ class ResultWriter:
 					summary.get("mean_min_xj_true_err_weight_score"),
 					summary.get("rmse_min_xj_true_err_weight_score"),
 					summary.get("mean_corr_xjs_weights"),
-					summary.get("rmse_corr_xjs_weights"),
+					summary.get("median_corr_xjs_weights"),
+					summary.get("mean_corr_xjs_motion"),
+					summary.get("median_corr_xjs_motion"),
+					summary.get("mean_corr_xjs_meas"),
+					summary.get("median_corr_xjs_meas"),
+					summary.get("mean_corr_weights_motion"),
+					summary.get("median_corr_weights_motion"),
+					summary.get("mean_corr_weights_meas"),
+					summary.get("median_corr_weights_meas"),
 					summary.get("mean_best_xj_score"),
 					summary.get("rmse_best_xj_score"),
 					summary.get("mean_motion_rank_score"),

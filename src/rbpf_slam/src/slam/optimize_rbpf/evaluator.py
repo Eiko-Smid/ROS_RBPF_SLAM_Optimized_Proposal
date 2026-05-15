@@ -61,6 +61,10 @@ class StepResult:
     best_xj_better_than_worst_rot : Optional[bool] = None
     min_xj_true_err_weight_score: Optional[float] = None
     corr_xjs_weights: Optional[float] = None
+    corr_xjs_motion: Optional[float] = None
+    corr_xjs_meas: Optional[float] = None
+    corr_weights_motion: Optional[float] = None
+    corr_weights_meas: Optional[float] = None
     best_xj_score: Optional[float] = None
     motion_rank_score: Optional[float] = None
     meas_rank_score: Optional[float] = None
@@ -68,6 +72,11 @@ class StepResult:
     log_motion_range: Optional[float] = None
     log_meas_range: Optional[float] = None
     log_weight_range: Optional[float] = None
+    xj_indices: Optional[List[int]] = None
+    xj_pose_err: Optional[List[float]] = None
+    xj_weight: Optional[List[float]] = None
+    xj_motion: Optional[List[float]] = None
+    xj_meas: Optional[List[float]] = None
     
     trans_err_mu_pred: Optional[float] = None
     rot_err_mu_pred: Optional[float] = None
@@ -78,6 +87,8 @@ class StepResult:
     corr_x_theta: Optional[float] = None
     corr_y_theta: Optional[float] = None
     xj_eff: Optional[float] = None
+    xj_eff_motion: Optional[float] = None
+    xj_eff_meas: Optional[float] = None
 
 
 @dataclass
@@ -95,7 +106,6 @@ class RBPFEvaluator:
     """
     Computes per-step errors and run-level metrics for one RBPF playback run.
     """
-
 
     @staticmethod
     def _to_pose_tuple(pose) -> Optional[Pose2D]:
@@ -254,6 +264,8 @@ class RBPFEvaluator:
         corr_x_theta = None
         corr_y_theta = None
         xj_eff = None
+        xj_eff_motion = None
+        xj_eff_meas = None
 
         min_xj_pose_err_true = None
         weight_min_xj_err = None
@@ -272,6 +284,10 @@ class RBPFEvaluator:
         xj_improves_over_sm_rot_ratio = None
         min_xj_true_err_weight_score = None
         corr_xjs_weights = None
+        corr_xjs_motion = None
+        corr_xjs_meas = None
+        corr_weights_motion = None
+        corr_weights_meas = None
         best_xj_score = None
         motion_rank_score = None
         meas_rank_score = None
@@ -279,6 +295,11 @@ class RBPFEvaluator:
         log_motion_range = None
         log_meas_range = None
         log_weight_range = None
+        xj_indices = None
+        xj_pose_err = None
+        xj_weight = None
+        xj_motion = None
+        xj_meas = None
 
         if est_pose_t is not None:
             trans_err = self.translation_error(est_pose_t, true_pose_t)
@@ -341,6 +362,8 @@ class RBPFEvaluator:
                             f"[RBPFEvaluator] Step {step_idx}: skipping Proposal metrics computations, no shared finite xjs/weights samples."
                         )
                     else:
+                        xj_indices = valid_idx.astype(int).tolist()
+
                         # Filter all proposal vectors on the same valid indices.
                         xjs_arr = xjs_arr[valid_idx]
                         weights = weights[valid_idx]
@@ -374,6 +397,12 @@ class RBPFEvaluator:
                         rot_errors_xj_true = np.asarray(rot_errors_xj_true, dtype=float)
                         pose_errors_xj_true = np.asarray(pose_errors_xj_true, dtype=float)
 
+                        # Store per-sample proposal diagnostics for optional CSV export.
+                        xj_pose_err = pose_errors_xj_true.astype(float).tolist()
+                        xj_weight = weights.astype(float).tolist()
+                        xj_motion = motion_probs_arr.astype(float).tolist()
+                        xj_meas = meas_probs_arr.astype(float).tolist()
+
                         # Find xj which has min error to true pose
                         min_xj_pose_err_true = np.min(pose_errors_xj_true)
 
@@ -390,8 +419,13 @@ class RBPFEvaluator:
                             xj_weights=weights
                         )
 
-                        # Compute correlation between all xj errors to true pose and corresponding weights
+                        # Compute correlation between all xj errors to true pose and corresponding weights/probs
                         corr_xjs_weights, _ = spearmanr(-pose_errors_xj_true, weights)
+                        corr_xjs_motion, _ = spearmanr(-pose_errors_xj_true, motion_probs_arr)
+                        corr_xjs_meas, _ = spearmanr(-pose_errors_xj_true, meas_probs_arr)
+                        # COmpute correlation between weights and probs
+                        corr_weights_motion, _ = spearmanr(weights, motion_probs_arr)
+                        corr_weights_meas, _ = spearmanr(weights, meas_probs_arr)
 
                         # Compute importance score of best xj's weight.
                         min_xj_err_idx = np.argmin(pose_errors_xj_true)
@@ -417,6 +451,21 @@ class RBPFEvaluator:
                         denom = float(np.sum(norm_weights ** 2))
                         if np.isfinite(denom) and denom > 0.0:
                             xj_eff = float(1.0 / denom)
+
+                        # Effective sample size for motion-model weights.
+                        motion_sum = float(np.sum(motion_probs_arr))
+                        motion_norm = motion_probs_arr / motion_sum
+                        denom_motion = float(np.sum(motion_norm ** 2))                    
+                        xj_eff_motion = float(1.0 / denom_motion)
+
+                        # Effective sample size for measurement-model weights.
+                        meas_sum = float(np.sum(meas_probs_arr))                        
+                        meas_norm = meas_probs_arr / meas_sum
+                        denom_meas = float(np.sum(meas_norm ** 2))
+                        xj_eff_meas = float(1.0 / denom_meas)
+
+                        if norm_weights.shape[0] < 27:
+                            print("Weights lower than 27")
 
                         # Compute weight ratio between best xj and min xj weight
                         weight_ratio_min_best_weight = weight_min_xj_err / weight_best_xj 
@@ -520,10 +569,14 @@ class RBPFEvaluator:
             # best_xj_improves_over_sm_rot=best_xj_improves_over_sm_rot,
             # best_xj_better_than_worst_trans=best_xj_better_than_worst_trans,
             # best_xj_better_than_worst_rot=best_xj_better_than_worst_rot,
-            min_xj_true_err_improves_over_sm_true=min_xj_true_err_improves_over_sm_true,    # valid
-            best_xj_true_err_improves_over_sm_true=best_xj_true_err_improves_over_sm_true,  # valid
-            min_xj_true_err_weight_score=min_xj_true_err_weight_score,                      # valid
-            corr_xjs_weights=corr_xjs_weights,                                              # valid            
+            min_xj_true_err_improves_over_sm_true=min_xj_true_err_improves_over_sm_true,    
+            best_xj_true_err_improves_over_sm_true=best_xj_true_err_improves_over_sm_true,  
+            min_xj_true_err_weight_score=min_xj_true_err_weight_score,                      
+            corr_xjs_weights=corr_xjs_weights,                                                         
+            corr_xjs_motion=corr_xjs_motion,                                                  
+            corr_xjs_meas=corr_xjs_meas,                                                       
+            corr_weights_motion=corr_weights_motion,
+            corr_weights_meas=corr_weights_meas,
             best_xj_score=best_xj_score,
             motion_rank_score=motion_rank_score,
             meas_rank_score=meas_rank_score,
@@ -531,6 +584,11 @@ class RBPFEvaluator:
             log_motion_range=log_motion_range,
             log_meas_range=log_meas_range,
             log_weight_range=log_weight_range,
+            xj_indices=xj_indices,
+            xj_pose_err=xj_pose_err,
+            xj_weight=xj_weight,
+            xj_motion=xj_motion,
+            xj_meas=xj_meas,
             mu_true_err_improves_over_sm_true=mu_true_err_improves_over_sm_true,
 
             prop_std_x=prop_std_x,
@@ -540,6 +598,8 @@ class RBPFEvaluator:
             corr_x_theta=corr_x_theta,
             corr_y_theta=corr_y_theta,
             xj_eff=xj_eff,
+            xj_eff_motion=xj_eff_motion,
+            xj_eff_meas=xj_eff_meas,
         )
 
 
@@ -581,11 +641,17 @@ class RBPFEvaluator:
         prop_corr_x_theta_values = [s.corr_x_theta for s in step_results if s.corr_x_theta is not None]
         prop_corr_y_theta_values = [s.corr_y_theta for s in step_results if s.corr_y_theta is not None]
         xj_eff_values = [s.xj_eff for s in step_results if s.xj_eff is not None]
+        xj_eff_motion_values = [s.xj_eff_motion for s in step_results if s.xj_eff_motion is not None]
+        xj_eff_meas_values = [s.xj_eff_meas for s in step_results if s.xj_eff_meas is not None]
         min_xj_pose_err_true_values = [s.min_xj_pose_err_true for s in step_results if s.min_xj_pose_err_true is not None]
         min_xj_true_err_improves_over_sm_true_values = [s.min_xj_true_err_improves_over_sm_true for s in step_results if s.min_xj_true_err_improves_over_sm_true is not None]
         best_xj_true_err_improves_over_sm_true_values = [s.best_xj_true_err_improves_over_sm_true for s in step_results if s.best_xj_true_err_improves_over_sm_true is not None]
         min_xj_true_err_weight_score_values = [s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None]
         corr_xjs_weights_values = [s.corr_xjs_weights for s in step_results if s.corr_xjs_weights is not None]
+        corr_xjs_motion_values = [s.corr_xjs_motion for s in step_results if s.corr_xjs_motion is not None]
+        corr_xjs_meas_values = [s.corr_xjs_meas for s in step_results if s.corr_xjs_meas is not None]
+        corr_weights_motion_values = [s.corr_weights_motion for s in step_results if s.corr_weights_motion is not None]
+        corr_weights_meas_values = [s.corr_weights_meas for s in step_results if s.corr_weights_meas is not None]
         best_xj_score_values = [s.best_xj_score for s in step_results if s.best_xj_score is not None]
         motion_rank_score_values = [s.motion_rank_score for s in step_results if s.motion_rank_score is not None]
         meas_rank_score_values = [s.meas_rank_score for s in step_results if s.meas_rank_score is not None]
@@ -637,7 +703,15 @@ class RBPFEvaluator:
             "mean_min_xj_true_err_weight_score": float(np.mean(min_xj_true_err_weight_score_values)) if min_xj_true_err_weight_score_values else float("nan"),
             "rmse_min_xj_true_err_weight_score": float(np.sqrt(np.mean(np.square(min_xj_true_err_weight_score_values)))) if min_xj_true_err_weight_score_values else float("nan"),
             "mean_corr_xjs_weights": float(np.mean(corr_xjs_weights_values)) if corr_xjs_weights_values else float("nan"),
-            "rmse_corr_xjs_weights": float(np.sqrt(np.mean(np.square(corr_xjs_weights_values)))) if corr_xjs_weights_values else float("nan"),
+            "median_corr_xjs_weights": float(np.median(corr_xjs_weights_values)) if corr_xjs_weights_values else float("nan"),
+            "mean_corr_xjs_motion": float(np.mean(corr_xjs_motion_values)) if corr_xjs_motion_values else float("nan"),
+            "median_corr_xjs_motion": float(np.median(corr_xjs_motion_values)) if corr_xjs_motion_values else float("nan"),
+            "mean_corr_xjs_meas": float(np.mean(corr_xjs_meas_values)) if corr_xjs_meas_values else float("nan"),
+            "median_corr_xjs_meas": float(np.median(corr_xjs_meas_values)) if corr_xjs_meas_values else float("nan"),
+            "mean_corr_weights_motion": float(np.mean(corr_weights_motion_values)) if corr_weights_motion_values else float("nan"),
+            "median_corr_weights_motion": float(np.median(corr_weights_motion_values)) if corr_weights_motion_values else float("nan"),
+            "mean_corr_weights_meas": float(np.mean(corr_weights_meas_values)) if corr_weights_meas_values else float("nan"),
+            "median_corr_weights_meas": float(np.median(corr_weights_meas_values)) if corr_weights_meas_values else float("nan"),
             "mean_best_xj_score": float(np.mean(best_xj_score_values)) if best_xj_score_values else float("nan"),
             "rmse_best_xj_score": float(np.sqrt(np.mean(np.square(best_xj_score_values)))) if best_xj_score_values else float("nan"),
             "mean_motion_rank_score": float(np.mean(motion_rank_score_values)) if motion_rank_score_values else float("nan"),
@@ -677,6 +751,8 @@ class RBPFEvaluator:
             "mean_prop_corr_x_theta": float(np.mean(prop_corr_x_theta_values)) if prop_corr_x_theta_values else float("nan"),
             "mean_prop_corr_y_theta": float(np.mean(prop_corr_y_theta_values)) if prop_corr_y_theta_values else float("nan"),
             "mean_xj_eff": float(np.mean(xj_eff_values)) if xj_eff_values else float("nan"),
+            "mean_xj_eff_motion": float(np.mean(xj_eff_motion_values)) if xj_eff_motion_values else float("nan"),
+            "mean_xj_eff_meas": float(np.mean(xj_eff_meas_values)) if xj_eff_meas_values else float("nan"),
 
         }
 
