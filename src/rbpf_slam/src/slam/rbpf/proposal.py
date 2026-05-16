@@ -205,13 +205,15 @@ class ProposalEstimator:
         )
 
         # Transfer probs into log space
-        log_meas_probs = np.log(meas_probs + 1e-12)
-        log_motion_probs = np.log(motion_probs + 1e-12)
+        # log_meas_probs = np.log(meas_probs + 1e-12)
+        # log_motion_probs = np.log(motion_probs + 1e-12)
 
-        log_weights = alpha * log_motion_probs + beta * log_meas_probs
-        log_weights = log_weights - np.max(log_weights)
+        # # Scale and combine log probs into log weights
+        # log_weights = alpha * log_motion_probs + beta * log_meas_probs
+        # log_weights = log_weights - np.max(log_weights)
+        # weights = np.exp(log_weights)
 
-        weights = np.exp(log_weights)
+        weights = meas_probs * motion_probs
                        
         # Vectorized computation of mu and cov
         norm = np.sum(weights)

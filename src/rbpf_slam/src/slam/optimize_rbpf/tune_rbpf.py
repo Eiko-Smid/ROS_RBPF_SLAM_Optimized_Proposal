@@ -332,15 +332,30 @@ from .result_writer import ResultWriter
         26.2.3 k = 5 
 
 
+27. Adapt measruement model
+
+    - make changes accordign to chatgpt chat. Dont forget to negatze some of the former changes, 
+    - But gpt wrote this already down.
+
+
+    27.1 gmapping style
+
+
+    27.2 likelihood field model
+
+    
+    27.3 Beam range finder model 
+
                           
+
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_26_2_3_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
@@ -412,11 +427,13 @@ def _grid_axes() -> dict:
         "neff_threshold": [20],
         # "proposal_sigma_xy": [0.05, 0.1, 0.2],
         # "proposal_sigma_theta": [0.02, 0.08],       # in rad
-        "proposal_sigma_xy": [0.05],
-        "proposal_sigma_theta": [0.02],       # in rad
+        "proposal_sigma_xy": [0.05, 0.1],
+        "proposal_sigma_theta": [0.02, 0.05],       # in rad
         "proposal_n_samples": [10],
-        "proposal_alpha": [0.25, 0.5, 1.0],
-        "proposal_beta": [1.0, 2.0, 4.0],
+
+        # TODO: Delete proposal values when no longer needed later on
+        "proposal_alpha": [1.0],
+        "proposal_beta": [1.0],
     }
 
 
@@ -456,20 +473,20 @@ def generate_param_grid(n_repeats: int = 1):
 
     axes = _grid_axes()
 
-    sigma_measurement = axes["sigma_measurement"]
-    every_nth_beam_filter = axes["every_nth_beam_filter"]
-    every_nth_beam_map = axes["every_nth_beam_map"]
-    n_particles = axes["n_particles"]
-    sigma_xy_motion = axes["sigma_xy_motion"]
-    sigma_theta_motion = axes["sigma_theta"]
-    ctrl_motion_fac = axes["ctrl_motion_fac"]
-    ctrl_turn_fac = axes["ctrl_turn_fac"]
-    neff_threshold = axes["neff_threshold"]
-    proposal_sigma_xy = axes["proposal_sigma_xy"]
-    proposal_sigma_theta = axes["proposal_sigma_theta"]
-    proposal_n_samples = axes["proposal_n_samples"]
-    proposal_alpha = axes["proposal_alpha"]
-    proposal_beta = axes["proposal_beta"]
+    sigma_measurement = axes.get("sigma_measurement", [0.05])
+    every_nth_beam_filter = axes.get("every_nth_beam_filter", [4])
+    every_nth_beam_map = axes.get("every_nth_beam_map", [2])
+    n_particles = axes.get("n_particles", [40])
+    sigma_xy_motion = axes.get("sigma_xy_motion", [0.12])
+    sigma_theta_motion = axes.get("sigma_theta", [0.05])
+    ctrl_motion_fac = axes.get("ctrl_motion_fac", [0.1])
+    ctrl_turn_fac = axes.get("ctrl_turn_fac", [0.15])
+    neff_threshold = axes.get("neff_threshold", [20])
+    proposal_sigma_xy = axes.get("proposal_sigma_xy", [0.05])
+    proposal_sigma_theta = axes.get("proposal_sigma_theta", [0.02])
+    proposal_n_samples = axes.get("proposal_n_samples", [10])
+    proposal_alpha = axes.get("proposal_alpha", [1.0])
+    proposal_beta = axes.get("proposal_beta", [1.0])
 
     # OGM param
     # TODO Add ogm param later
