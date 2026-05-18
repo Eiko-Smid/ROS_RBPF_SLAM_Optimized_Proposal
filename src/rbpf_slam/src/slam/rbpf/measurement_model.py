@@ -19,10 +19,10 @@ class MeasurementModel(ABC):
     '''
     @abstractmethod
     def likelihood(
-            self, 
-            pose: Pose2D,
-            measurements: List[Tuple[float, float]],
-            **kwargs,
+        self, 
+        pose: Pose2D,
+        measurements: List[Tuple[float, float]],
+        **kwargs,
     ) -> float:
         '''
         Compute the likelihood of a pose given a set of measurements and a scan matcher.
@@ -39,10 +39,10 @@ class MeasurementModel(ABC):
 
     @abstractmethod
     def likelihood_batch(
-            self, 
-            poses: np.ndarray,
-            measurements: List[Tuple[float, float]],
-            **kwargs,
+        self, 
+        poses: np.ndarray,
+        measurements: List[Tuple[float, float]],
+        **kwargs,
     ) -> np.ndarray:
         '''
         Compute the likelihood of multiple poses given a set of measurements and a scan matcher.
@@ -56,5 +56,19 @@ class MeasurementModel(ABC):
         Returns:
         np.ndarray
             An array of likelihood values corresponding to each pose. Shape should be (N,).
+        '''
+        raise NotImplementedError
+    
+
+    @abstractmethod
+    def gmapping_likelihood(
+        self, pose: Pose2D,
+        measurements: List[Tuple[float, float]],
+        **kwargs,
+    ) -> Tuple[float, float, int]:
+        '''
+        gmapping likelihood function that computes the likelihood of a pose given a set of measurements and an OGM map.
+
+            - 
         '''
         raise NotImplementedError

@@ -1776,15 +1776,15 @@ class OGM:
     def colorize_grid_black(self, grid_cell_indices: Tuple[int, int]) -> None:
         '''For testing. Change the color of the given grid cell to black.'''
         # Define log Odds value that correspond's to black
-        logOdds_one= 100.0                               
+        logOdds_one= self.max_log_odds                               
         grid_idx_x, grid_idx_y= grid_cell_indices
         self.log_odds_map[grid_idx_x][grid_idx_y]= logOdds_one
 
     
     def colorize_grid_white(self, grid_cell_indices: Tuple[int, int]) -> None:
         '''For testing. Change the color of the given grid cell to white.'''
-        # Define log Odds value that correspond's to black
-        logOdds_zero= -100                               
+        # Define log Odds value that correspond's to white
+        logOdds_zero= self.min_log_odds                               
         grid_idx_x, grid_idx_y= grid_cell_indices
         self.log_odds_map[grid_idx_x][grid_idx_y]= logOdds_zero
 

@@ -355,6 +355,8 @@ class RBPF:
         proposal_sigma_xy: float,
         proposal_sigma_theta: float,
         proposal_n_samples: int,
+        meas_kernel_size: int,
+        gaussian_sigma: float,
         proposal_alpha: float,
         proposal_beta: float,
     ) -> Tuple[Particle, bool, bool]:
@@ -427,6 +429,8 @@ class RBPF:
                 sigma_xy=proposal_sigma_xy,
                 sigma_theta=proposal_sigma_theta,
                 n_samples=proposal_n_samples,
+                meas_kernel_size=meas_kernel_size,
+                gaussian_sigma=gaussian_sigma,
                 alpha=proposal_alpha,
                 beta=proposal_beta,
             )
@@ -504,6 +508,8 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
+        meas_kernel_size: int = 1,
+        gaussian_sigma: float = 0.05,
         proposal_alpha: float = 0.5,
         proposal_beta: float = 2.0,
     ) -> Tuple[float, Pose2D]:
@@ -562,6 +568,8 @@ class RBPF:
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
+                meas_kernel_size=meas_kernel_size,
+                gaussian_sigma=gaussian_sigma,
                 proposal_alpha=proposal_alpha,
                 proposal_beta=proposal_beta,
             )
@@ -786,6 +794,8 @@ class RBPF:
         proposal_sigma_xy: float,
         proposal_sigma_theta: float,
         proposal_n_samples: int,
+        meas_kernel_size: int,
+        gaussian_sigma: float,
         proposal_alpha: float,
         proposal_beta: float,
     ) -> Tuple[Particle, bool, bool]:
@@ -860,6 +870,8 @@ class RBPF:
                 sigma_xy=proposal_sigma_xy,
                 sigma_theta=proposal_sigma_theta,
                 n_samples=proposal_n_samples,
+                meas_kernel_size=meas_kernel_size,
+                gaussian_sigma=gaussian_sigma,
                 alpha=proposal_alpha,
                 beta=proposal_beta,
             )
@@ -941,6 +953,8 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
+        meas_kernel_size: int = 1,
+        gaussian_sigma: float = 0.05,
         proposal_alpha: float = 0.5,
         proposal_beta: float = 2.0,
     ):
@@ -963,6 +977,8 @@ class RBPF:
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
+                meas_kernel_size=meas_kernel_size,
+                gaussian_sigma=gaussian_sigma,
                 proposal_alpha=proposal_alpha,
                 proposal_beta=proposal_beta,
             )

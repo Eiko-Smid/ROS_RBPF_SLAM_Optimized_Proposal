@@ -338,24 +338,66 @@ from .result_writer import ResultWriter
     - But gpt wrote this already down.
 
 
-    27.1 gmapping style
+    27.1 gmapping style likelihood computation on NN version
+
+        - Here we used the old distances computation based on the trained map pints from the NN kdtree from scan matcher
+        - But we replaced the likelihood computation with the gmapping style:
+            - Define distance threshold
+            - All distances above max_distance threshold are treated as invalid distances and are punished by the same value (no_hit)
+            - 
+
+        27.1.1 Old sampling window
+            - Run with new likelihood computation but old sampling window (27 samples)
+
+            Result:
+                - For more see one note
+                - More stable trans and rot errors but also worse than before (best 6 runs under 0.2 trans error)
+                - Correlation between xj errors amd measurement probs is still very low.
+                    -> Main issue stays the same
 
 
+        27.1.2 new sampling window
+            - Run with new likelihood computation but new sampling window (125 samples)
+
+            Result:
+                - See one drive
+                - Increasing samples made results even worse
+                - Main problem is still the measurement model itself. SO our NN approach alone is not enough
+
+
+    27.2 gmapping style likelihood computation
+        - We implemented the original gmapping measurement likelihood computation consisting of:
+            - Estimate reflecting grid cell
+            - Define a small grid search around the beam endpoint
+            - Check if cell before occ candidate in beam direction is free -> valid candidate
+            - Find closest distance among all valid candidates
+            - Compute log_likelihood based on that
+        
+            27.2.1 Test run
+        
+                
     27.2 likelihood field model
+
+        27.2.1 First run
+
+
+        27.2.2 Make measurement likelihood more uncertain
+
+          sigma_measurement = [0.2, 0.5, 1.0, 2.0]
 
     
     27.3 Beam range finder model 
-
+    
                           
 
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_1_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
@@ -414,23 +456,30 @@ def _grid_axes() -> dict:
         # "neff_threshold": [20],
         # "proposal_sigma_xy": [0.05],
         # "proposal_sigma_theta": [0.02],
-        # "proposal_n_samples": [10],
+        # "n_samples_dir": [3],
 
-        "sigma_measurement": [0.05, 0.1, 0.15],
-        "every_nth_beam_filter": [4],
-        "every_nth_beam_map": [2],
-        "n_particles": [1],
-        "sigma_xy_motion": [0.12],
-        "sigma_theta": [0.05],
-        "ctrl_motion_fac": [0.1],
-        "ctrl_turn_fac": [0.15],
-        "neff_threshold": [20],
+        # General rbpf params
+        "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
+        "every_nth_beam_map": [2],                  # use every nth beam for map update
+        "n_particles": [1],                         # number of particles in the RBPF
+        "neff_threshold": [20],                     # Number of effective particles threshold for resampling
+
+        # measurement model params
+        "sigma_measurement": [0.2, 0.5, 1.0, 2.0],     # measurement uncertainty [m]
+        "meas_kernel_size": [1, 2],                 # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+        # Motion model params
+        "sigma_xy_motion": [0.12],                  # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.05],                      # motion model uncertainty in theta direction [rad]
+        "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+        "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+        # Proposal params
         # "proposal_sigma_xy": [0.05, 0.1, 0.2],
         # "proposal_sigma_theta": [0.02, 0.08],       # in rad
-        "proposal_sigma_xy": [0.05, 0.1],
-        "proposal_sigma_theta": [0.02, 0.05],       # in rad
-        "proposal_n_samples": [10],
-
+        "proposal_sigma_xy": [0.05],                # Proposal window size in x/y direction [m]
+        "proposal_sigma_theta": [0.02],             # Proposal window size in theta direction [rad]
+        "n_samples_dir": [3],                       # number of samples in each direction (x, y, theta)  for proposal sampling        
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
         "proposal_beta": [1.0],
@@ -484,12 +533,10 @@ def generate_param_grid(n_repeats: int = 1):
     neff_threshold = axes.get("neff_threshold", [20])
     proposal_sigma_xy = axes.get("proposal_sigma_xy", [0.05])
     proposal_sigma_theta = axes.get("proposal_sigma_theta", [0.02])
-    proposal_n_samples = axes.get("proposal_n_samples", [10])
+    n_samples_dir = axes.get("n_samples_dir", [3])
+    meas_kernel_size = axes.get("meas_kernel_size", [1])
     proposal_alpha = axes.get("proposal_alpha", [1.0])
     proposal_beta = axes.get("proposal_beta", [1.0])
-
-    # OGM param
-    # TODO Add ogm param later
 
     # Compute wheel separation
     wheel_separation = _compute_wheel_separation()
@@ -508,7 +555,8 @@ def generate_param_grid(n_repeats: int = 1):
             neff_th,
             sigma_xy,
             sigma_theta,
-            n_samples,
+            samples_dir,
+            kernel_size,
             alpha,
             beta,
         ) in itertools.product(
@@ -523,7 +571,8 @@ def generate_param_grid(n_repeats: int = 1):
             neff_threshold,
             proposal_sigma_xy,
             proposal_sigma_theta,
-            proposal_n_samples,
+            n_samples_dir,
+            meas_kernel_size,
             proposal_alpha,
             proposal_beta,
         ):
@@ -591,13 +640,15 @@ def generate_param_grid(n_repeats: int = 1):
                 neff_threshold=neff_th,
                 proposal_sigma_xy=sigma_xy,
                 proposal_sigma_theta=sigma_theta,
-                proposal_n_samples=n_samples,
+                proposal_n_samples=samples_dir,
+                meas_kernel_size=kernel_size,
+                gaussian_sigma=0.05,
                 proposal_alpha=alpha,
                 proposal_beta=beta,
                 tag=(
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
-                    f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_pns{n_samples}_"
+                    f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
                     f"pa{alpha}_pb{beta}_rep{repeat_idx}"
                 ),
             )

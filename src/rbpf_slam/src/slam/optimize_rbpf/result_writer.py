@@ -384,7 +384,8 @@ class ResultWriter:
 					"neff_threshold",
 					"proposal_sigma_xy",
 					"proposal_sigma_theta",
-					"proposal_n_samples",
+					"n_samples_dir",
+					"meas_kernel_size",
 
 					# Scan matcher information metrics
 					"scan_match_failed_count",
@@ -508,6 +509,7 @@ class ResultWriter:
 					run.params.proposal_sigma_xy,
 					run.params.proposal_sigma_theta,
 					run.params.proposal_n_samples,
+					run.params.meas_kernel_size,
 
 					# Scan matcher information metrics
 					summary.get("scan_match_failed_count"),

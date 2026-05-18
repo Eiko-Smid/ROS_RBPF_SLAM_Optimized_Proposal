@@ -105,6 +105,8 @@ class PlaybackRunner:
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
+                meas_kernel_size=params.meas_kernel_size,
+                gaussian_sigma=params.gaussian_sigma,
                 proposal_alpha=params.proposal_alpha,
                 proposal_beta=params.proposal_beta,
             )
@@ -245,6 +247,8 @@ class PlaybackRunner:
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
+                meas_kernel_size=params.meas_kernel_size,
+                gaussian_sigma=params.gaussian_sigma,
                 proposal_alpha=params.proposal_alpha,
                 proposal_beta=params.proposal_beta,
             )
