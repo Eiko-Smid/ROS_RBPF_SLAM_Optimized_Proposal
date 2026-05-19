@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from dataclasses import dataclass
 
-from math import atan2, cos, sin
+from math import atan2, cos, sin, floor
 from typing import Tuple
 import numpy as np
 
@@ -75,8 +75,18 @@ def rank_model_probs():
     return rank_score
 
 
+def test():
+    wrong_problem = -1.95
+    print(floor(wrong_problem))
+
+
+    val = 2.05
+    print(floor(val))
+
+
 def main():
-    rank_model_probs()
+    # rank_model_probs()
+    test()
 
 
 if __name__=="__main__":

@@ -74,7 +74,7 @@ class ScanMatchFactory:
         icp_params: ICPParams,
         robo_param: RobotParams,
         sm_params: ScanMatcherParams,
-    ):
+    ) -> ScanMatcher:
         # init OGM algorithm
         ogm = OGM(
             map_parameter=occ_param.min_distance_to_border,

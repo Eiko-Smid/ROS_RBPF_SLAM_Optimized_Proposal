@@ -79,7 +79,6 @@ class LikelihoodFiledModel(MeasurementModel):
         TODO: 
         If used later on we need to make the compuation of the max_distances dependend on grid resolution. 
         max_distance = np.sqrt(2.0) * (kernel_size + 0.5) * resolution
-
         
         '''
         # Compute no git lieklihood for punishment
