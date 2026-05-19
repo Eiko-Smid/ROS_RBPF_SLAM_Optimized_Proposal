@@ -1503,7 +1503,7 @@ class OGM:
         # Extract pose
         x, y, heading = pose
 
-        stauts, counter = update_map_numba(
+        status, counter = update_map_numba(
             self.log_odds_map,
             measurements_np,
             x,

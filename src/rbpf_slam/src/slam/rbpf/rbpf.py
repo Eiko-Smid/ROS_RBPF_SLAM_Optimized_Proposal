@@ -434,6 +434,8 @@ class RBPF:
                 alpha=proposal_alpha,
                 beta=proposal_beta,
             )
+            
+
             t_prop_s = time.perf_counter() - t_prop_start
             self._timing_stats["proposal_estimation_sum_s"] += t_prop_s
             self._timing_stats["proposal_estimation_count"] += 1

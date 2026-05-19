@@ -266,7 +266,11 @@ class ProposalEstimator:
         n_samples: int=1,
         alpha: float=0.5,
         beta: float=2.0,
-    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D]:
+        '''
+        Proposal computation with deterministic sampling around scan match pose. Motion and measurement probabilities are 
+        computed in batch to speedup process. The gmapping measurement model is used here!
+        '''
         # Define vars
         norm = 0.0
         mu = np.zeros(3)
@@ -302,6 +306,7 @@ class ProposalEstimator:
             neighbor=neighbor,
         )
 
+
         motion_probs = motion_model.motion_probability_batch(
             x_new=samples,
             x_prev=pred_pose,
@@ -325,7 +330,10 @@ class ProposalEstimator:
             # Fallback when all sample weights collapse to zero/invalid values.
             mu = np.asarray(scan_match_pose, dtype=float)
             cov = 1e-6 * np.eye(3)
-            return mu, cov, 1e-12, samples, np.ones(samples.shape[0], dtype=float), pred_pose
+            weights = np.ones(samples.shape[0], dtype=float)
+            meas_probs = np.ones(samples.shape[0], dtype=float)
+            motion_probs = np.ones(samples.shape[0], dtype=float)
+            return mu, cov, 1e-12, samples, weights, meas_probs, motion_probs, pred_pose
 
         # Compute mu
         mu = np.sum(samples * weights[:, None], axis=0) / norm
@@ -357,18 +365,14 @@ class ProposalEstimator:
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
         n_samples: int=10,
-    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D]:
+        '''
+        Proposal computation with deterministic sampling around scan match pose. Motion and measurement probabilities are 
+        computed in batch to speedup process. The old NN based measurment model is used here with clipped distances!
+        '''
         # Define vars
         norm = 0.0
         mu = np.zeros(3)
-
-        # Sample k new poses around scan matcher pose
-        # samples = self.sample_poses(
-        #     pose=scan_match_pose,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        # )
 
         samples, n_samples = self.sample_poses_deterministic(
             pose=scan_match_pose,
@@ -386,7 +390,7 @@ class ProposalEstimator:
         )
 
         # Compute probability and add to normalizer 
-        meas_probs = measurement_model.likelihood_batch(
+        meas_probs = measurement_model.likelihood_batch_copy(
             poses=samples,
             measurements=measurements,
             scan_matcher= particle.scan_matcher,
@@ -407,7 +411,10 @@ class ProposalEstimator:
             # Fallback when all sample weights collapse to zero/invalid values.
             mu = np.asarray(scan_match_pose, dtype=float)
             cov = 1e-6 * np.eye(3)
-            return mu, cov, 1e-12, samples, np.ones(samples.shape[0], dtype=float), pred_pose
+            weights = np.ones(samples.shape[0], dtype=float)
+            meas_probs = np.ones(samples.shape[0], dtype=float)
+            motion_probs = np.ones(samples.shape[0], dtype=float)
+            return mu, cov, 1e-12, samples, weights, meas_probs, motion_probs, pred_pose
 
         # Compute mu
         mu = np.sum(samples * weights[:, None], axis=0) / norm
@@ -455,6 +462,20 @@ class ProposalEstimator:
         '''
 
         '''
+        # Compute proposal parameters old variant (NN tree distances + clip)
+        mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch_copy(
+            scan_match_pose=scan_match_pose,
+            particle=particle,
+            odom=odom,
+            measurements=measurements,
+            neighbor=neighbor,
+            motion_model=motion_model,
+            measurement_model=measurement_model,
+            sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
+            n_samples=n_samples,
+        )
+
         # Compute proposal params
         # mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch(
         #     scan_match_pose=scan_match_pose,
@@ -471,21 +492,21 @@ class ProposalEstimator:
         #     beta=beta,
         # )
 
-        mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_gmapping(
-            scan_match_pose=scan_match_pose,
-            particle=particle,
-            odom=odom,
-            measurements=measurements,
-            motion_model=motion_model,
-            measurement_model=measurement_model,
-            meas_kernel_size=meas_kernel_size,
-            gaussian_sigma=gaussian_sigma,
-            sigma_xy=sigma_xy,
-            sigma_theta=sigma_theta,
-            n_samples_dir=n_samples,
-            alpha=alpha,
-            beta=beta,
-        )
+        # mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_gmapping(
+        #     scan_match_pose=scan_match_pose,
+        #     particle=particle,
+        #     odom=odom,
+        #     measurements=measurements,
+        #     motion_model=motion_model,
+        #     measurement_model=measurement_model,
+        #     meas_kernel_size=meas_kernel_size,
+        #     gaussian_sigma=gaussian_sigma,
+        #     sigma_xy=sigma_xy,
+        #     sigma_theta=sigma_theta,
+        #     n_samples_dir=n_samples,
+        #     alpha=alpha,
+        #     beta=beta,
+        # )
 
         # Store raw proposal diagnostics for downstream evaluation.
         info = {

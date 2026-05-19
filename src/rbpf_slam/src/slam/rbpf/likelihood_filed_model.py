@@ -229,11 +229,11 @@ class LikelihoodFiledModel(MeasurementModel):
             axis=1,
         )
 
-        k = 5.0
-        scaled_mean = -0.5 * k * mean_error
+        # k = 5.0
+        # scaled_mean = -0.5 * k * mean_error
         
-        # probs = np.exp(-0.5 * mean_error)
-        probs = np.exp(scaled_mean)
+        probs = np.exp(-0.5 * mean_error)
+        # probs = np.exp(mean_error)
 
         return probs
     

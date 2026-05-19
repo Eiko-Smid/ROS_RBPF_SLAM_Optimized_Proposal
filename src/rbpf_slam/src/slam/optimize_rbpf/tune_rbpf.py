@@ -150,7 +150,7 @@ from .result_writer import ResultWriter
     17.2 Use best motion and uncertainty from 17.1 and adapt proposal params only (TODO)
 
 
-18. Use deterministic sampling around scan match pose
+18. Use deterministic sampling around scan match pose (Best run so far!!!)
 
     - Instead of taken random samples around scan matcher maxima we are using a deterministic sampling pattern. 
     - This test resulted in the best result so far. 
@@ -394,19 +394,19 @@ from .result_writer import ResultWriter
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_params.json'
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -465,8 +465,8 @@ def _grid_axes() -> dict:
         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
 
         # measurement model params
-        "sigma_measurement": [0.2, 0.5, 1.0, 2.0],     # measurement uncertainty [m]
-        "meas_kernel_size": [1, 2],                 # Define search space size around beam endpoint for gmapping like measurement likelihood
+        "sigma_measurement": [0.15],                # measurement uncertainty [m]
+        "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
         
         # Motion model params
         "sigma_xy_motion": [0.12],                  # motion model uncertainty in x and y direction [m]
@@ -476,7 +476,7 @@ def _grid_axes() -> dict:
         
         # Proposal params
         # "proposal_sigma_xy": [0.05, 0.1, 0.2],
-        # "proposal_sigma_theta": [0.02, 0.08],       # in rad
+        # "proposal_sigma_theta": [0.02, 0.08],     # in rad
         "proposal_sigma_xy": [0.05],                # Proposal window size in x/y direction [m]
         "proposal_sigma_theta": [0.02],             # Proposal window size in theta direction [rad]
         "n_samples_dir": [3],                       # number of samples in each direction (x, y, theta)  for proposal sampling        
