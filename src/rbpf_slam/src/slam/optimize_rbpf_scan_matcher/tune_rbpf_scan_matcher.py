@@ -35,26 +35,35 @@ from .result_writer_scanmatching import ResultWriterScanMatching
         - First test of full run after correction and metric changes. 
 
 
+2. Optimize further
+    - We added new metrics, increased the grid parameters and added new parameters to the grid. 
+    - Also we computed search window for surface detection in map extractor 
+
+    2.1 Over cafe map
+
+    2.2 over turtlebot map
+
+        2.2.2 Same run over 4 different seeds
 
 '''
 
-# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_summary.csv"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1777901198_2_2_2_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1777901198_2_2_2_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1777901198_2_2_2_params.json"
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_params.json"
+# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_summary.csv"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_params.json"
 
 CSV_FLOAT_DECIMALS = 5
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 8
+N_PLAYBACK_STEPS = 30
 N_OPTIMIZATION_REPEATS = 1
-# SEED_LIST = [22, 23, 24, 56]
-SEED_LIST = [22]
+SEED_LIST = [22, 23, 24, 56]
+# SEED_LIST = [22]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
-PLAYBACK_SUFFIX = "1777891056"
+PLAYBACK_SUFFIX = "1777901198"
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -87,14 +96,16 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "every_nth_beam_map": [2],
 
         # OccupancyParams (OGM)
-        "increasing_probability": [0.7],
-        "decreasing_probability": [0.30],
+        "increasing_probability": [0.7, 0.85],
+        "decreasing_probability": [0.30, 0.15],
         "min_log_odds": [-5.0],
         "max_log_odds": [5.0],
 
         # ScanMatcherParams
-        "occ_thres": [1.2],
-        "delta_r": [0.6],
+        "occ_thres": [0.8, 1.6],
+        "delta_r": [0.4, 0.6],
+        "surface_radius_m": [0.1, 0.2],
+        "min_free_ratio": [0.25, 0.4],
 
         # ICPParams
         "max_n_points": [400],
@@ -103,7 +114,7 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "max_correspondence_distance": [0.6],
         "min_corresp": [15],
         "max_translation_jump": [0.8],
-        "max_rotation_jump_deg": [120.0],
+        "max_rotation_jump_deg": [80.0, 120.0],
         "max_acceptable_mean_error": [0.15],
     }
 
@@ -139,18 +150,28 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
 
     axes = _grid_axes()
+    increasing_probs = axes["increasing_probability"]
+    decreasing_probs = axes["decreasing_probability"]
+    if len(increasing_probs) != len(decreasing_probs):
+        raise ValueError(
+            "increasing_probability and decreasing_probability must have the same length "
+            "to be evaluated as paired values."
+        )
+    occupancy_prob_pairs = list(zip(increasing_probs, decreasing_probs))
+
     wheel_separation = _compute_wheel_separation()
 
     for repeat_idx in range(1, n_repeats + 1):
         for (
             every_nth_filter,
             every_nth_map,
-            increasing_probability,
-            decreasing_probability,
+            occupancy_prob_pair,
             min_log_odds,
             max_log_odds,
             occ_thres,
             delta_r,
+            surface_radius_m,
+            min_free_ratio,
             max_n_points,
             neighbors_pca,
             max_iterations,
@@ -162,12 +183,13 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
         ) in itertools.product(
             axes["every_nth_beam_filter"],
             axes["every_nth_beam_map"],
-            axes["increasing_probability"],
-            axes["decreasing_probability"],
+            occupancy_prob_pairs,
             axes["min_log_odds"],
             axes["max_log_odds"],
             axes["occ_thres"],
             axes["delta_r"],
+            axes["surface_radius_m"],
+            axes["min_free_ratio"],
             axes["max_n_points"],
             axes["neighbors_pca"],
             axes["max_iterations"],
@@ -177,6 +199,7 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
             axes["max_rotation_jump_deg"],
             axes["max_acceptable_mean_error"],
         ):
+            increasing_probability, decreasing_probability = occupancy_prob_pair
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
                     # All cells are initalized with this probability when map is initialized. 
@@ -224,6 +247,8 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                 scan_matcher_params=ScanMatcherParams(
                     occ_thres=occ_thres,
                     delta_r=delta_r,
+                    surface_radius_m=surface_radius_m,
+                    min_free_ratio=min_free_ratio,
                 ),
                 particle_params=ParticleParams(
                     n_particles=1,
@@ -248,8 +273,14 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                 proposal_sigma_theta=1.0,
                 proposal_n_samples=1,
                 tag=(
-                    f"every_nth_filter{every_nth_filter}_every_nth_map{every_nth_map}_"
-                    f"mcd{max_corr_dist}_mjt{max_jump_trans}_mjrd{max_jump_rot_deg}_rep{repeat_idx}"
+                    f"nf{every_nth_filter}_nm{every_nth_map}_"
+                    f"ip{increasing_probability}_dp{decreasing_probability}_"
+                    f"lomin{min_log_odds}_lomax{max_log_odds}_"
+                    f"ot{occ_thres}_dr{delta_r}_sr{surface_radius_m}_mfr{min_free_ratio}_"
+                    f"mnp{max_n_points}_npca{neighbors_pca}_mi{max_iterations}_"
+                    f"mcd{max_corr_dist}_mc{min_corresp}_mjt{max_jump_trans}_"
+                    f"mjrd{max_jump_rot_deg}_mae{max_acceptable_mean_error}_"
+                    f"rep{repeat_idx}"
                 ),
             )
 

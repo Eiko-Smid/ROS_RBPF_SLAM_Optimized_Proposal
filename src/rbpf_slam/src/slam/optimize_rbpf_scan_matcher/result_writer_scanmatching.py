@@ -22,6 +22,24 @@ class ResultWriterScanMatching:
 
 
     @staticmethod
+    def _build_tag_from_params(params: Any) -> str:
+        """Build a deterministic tag from the actual parameter values used for a run."""
+        return (
+            f"nf{params.every_nth_scan_filter}_nm{params.every_nth_scan_map}_"
+            f"ip{params.occupancy_params.increasing_probability}_"
+            f"dp{params.occupancy_params.decreasing_probability}_"
+            f"lomin{params.occupancy_params.min_log_odds}_lomax{params.occupancy_params.max_log_odds}_"
+            f"ot{params.scan_matcher_params.occ_thres}_dr{params.scan_matcher_params.delta_r}_"
+            f"sr{params.scan_matcher_params.surface_radius_m}_mfr{params.scan_matcher_params.min_free_ratio}_"
+            f"mnp{params.icp_params.max_n_points}_npca{params.icp_params.neighbors_pca}_"
+            f"mi{params.icp_params.max_iterations}_mcd{params.icp_params.max_correspondence_distance}_"
+            f"mc{params.icp_params.min_corresp}_mjt{params.icp_params.max_translation_jump}_"
+            f"mjrd{math.degrees(params.icp_params.max_rotation_jump)}_"
+            f"mae{params.icp_params.max_acceptable_mean_error}"
+        )
+
+
+    @staticmethod
     def create_path_and_check_if_file_exists(path: str) -> bool:
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
@@ -46,7 +64,8 @@ class ResultWriterScanMatching:
             writer = csv.writer(f)
             writer.writerow(
                 [
-                    "run_id",
+                    "rank",
+                    "tag",
                     "seed",
                     "step",
                     "t",
@@ -92,14 +111,17 @@ class ResultWriterScanMatching:
                 ]
             )
 
-            for rank, run in enumerate(ranked_runs, start=1):
+            ordered_runs = sorted(ranked_runs, key=lambda run: run.score)
+            for rank, run in enumerate(ordered_runs, start=1):
+                run_tag = ResultWriterScanMatching._build_tag_from_params(run.params)
                 for step in run.step_results:
                     true_x, true_y, true_theta = step.true_pose if step.true_pose is not None else (None, None, None)
                     pred_x, pred_y, pred_theta = step.pred_pose if step.pred_pose is not None else (None, None, None)
                     corr_x, corr_y, corr_theta = step.corr_pose if step.corr_pose is not None else (None, None, None)
 
                     row = [
-                        run.params.tag,
+                        rank,
+                        run_tag,
                         run.seed,
                         step.step_idx,
                         step.t,
@@ -174,9 +196,33 @@ class ResultWriterScanMatching:
                     "rank",
                     "seed",
                     "score",
-                    # "tag",
+                    "tag",
+
+                    # Grid parameters: playback sampling
                     "every_nth_beam_filter",
                     "every_nth_beam_map",
+
+                    # Grid parameters: OccupancyParams (OGM)
+                    "increasing_probability",
+                    "decreasing_probability",
+                    "min_log_odds",
+                    "max_log_odds",
+
+                    # Grid parameters: ScanMatcherParams
+                    "occ_thres",
+                    "delta_r",
+                    "surface_radius_m",
+                    "min_free_ratio",
+
+                    # Grid parameters: ICPParams
+                    "max_n_points",
+                    "neighbors_pca",
+                    "max_iterations",
+                    "max_correspondence_distance",
+                    "min_corresp",
+                    "max_translation_jump",
+                    "max_rotation_jump_deg",
+                    "max_acceptable_mean_error",
                     
                     "scan_match_failed_count",                    
                     "icp_failed_count",
@@ -238,13 +284,38 @@ class ResultWriterScanMatching:
 
             for rank, run in enumerate(ranked_runs, start=1):
                 summary = run.summary
+                run_tag = ResultWriterScanMatching._build_tag_from_params(run.params)
                 row = [
                     rank,
                     run.seed,
                     run.score,
-                    # run.params.tag,
+                    run_tag,
+
+                    # Grid parameters: playback sampling
                     run.params.every_nth_scan_filter,
                     run.params.every_nth_scan_map,
+
+                    # Grid parameters: OccupancyParams (OGM)
+                    run.params.occupancy_params.increasing_probability,
+                    run.params.occupancy_params.decreasing_probability,
+                    run.params.occupancy_params.min_log_odds,
+                    run.params.occupancy_params.max_log_odds,
+
+                    # Grid parameters: ScanMatcherParams
+                    run.params.scan_matcher_params.occ_thres,
+                    run.params.scan_matcher_params.delta_r,
+                    run.params.scan_matcher_params.surface_radius_m,
+                    run.params.scan_matcher_params.min_free_ratio,
+
+                    # Grid parameters: ICPParams
+                    run.params.icp_params.max_n_points,
+                    run.params.icp_params.neighbors_pca,
+                    run.params.icp_params.max_iterations,
+                    run.params.icp_params.max_correspondence_distance,
+                    run.params.icp_params.min_corresp,
+                    run.params.icp_params.max_translation_jump,
+                    math.degrees(run.params.icp_params.max_rotation_jump),
+                    run.params.icp_params.max_acceptable_mean_error,
                     
                     summary.scan_match_failed_count,                    
                     summary.icp_failed_count,

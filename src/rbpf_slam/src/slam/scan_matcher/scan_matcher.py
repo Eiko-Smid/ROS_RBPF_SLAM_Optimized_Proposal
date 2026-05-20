@@ -29,7 +29,11 @@ class ScanMatcher():
             self,
             ogm: OGM,
             icp: IterativeClosestPoint, 
-            robo_param: float, sensor_parameters: Tuple[float, float], occ_thres: float
+        robo_param: float,
+        sensor_parameters: Tuple[float, float],
+        occ_thres: float,
+        surface_radius_m: float = 0.1,
+        min_free_ratio: float = 0.25,
     ):
         # Extract parameter
         self.ogm = ogm
@@ -44,6 +48,8 @@ class ScanMatcher():
         self.max_sensor_range = max_sensor_range
         self.delta_r = delta_r
         self.occ_thres = occ_thres
+        self.surface_radius_m = surface_radius_m
+        self.min_free_ratio = min_free_ratio
         self.last_pred_pose = None
         self.last_map_points_count = 0
         self.last_t_scan_matching_s = None
@@ -323,8 +329,10 @@ class ScanMatcher():
         map_points = self.ogm.extract_map_for_scan_matching_numba(
             pose=pred_pose,
             radius=max_meas_range,
-            delta_r=self.delta_r,
+            delta_radius=self.delta_r,
             occ_thresh=self.occ_thres,
+            surface_radius_m=self.surface_radius_m,
+            min_free_ratio=self.min_free_ratio,
         )
         self.last_map_points_count = int(map_points.shape[0]) if map_points.ndim == 2 else 0
 

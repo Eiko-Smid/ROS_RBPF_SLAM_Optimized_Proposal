@@ -483,6 +483,10 @@ def _grid_axes() -> dict:
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
         "proposal_beta": [1.0],
+
+        # ScanMatcherParams (map extraction)
+        "surface_radius_m": [0.1],
+        "min_free_ratio": [0.25],
     }
 
 
@@ -537,6 +541,8 @@ def generate_param_grid(n_repeats: int = 1):
     meas_kernel_size = axes.get("meas_kernel_size", [1])
     proposal_alpha = axes.get("proposal_alpha", [1.0])
     proposal_beta = axes.get("proposal_beta", [1.0])
+    surface_radius_m = axes.get("surface_radius_m", [0.1])
+    min_free_ratio = axes.get("min_free_ratio", [0.25])
 
     # Compute wheel separation
     wheel_separation = _compute_wheel_separation()
@@ -559,6 +565,8 @@ def generate_param_grid(n_repeats: int = 1):
             kernel_size,
             alpha,
             beta,
+            surface_r,
+            min_free,
         ) in itertools.product(
             sigma_measurement,
             every_nth_beam_filter,
@@ -575,6 +583,8 @@ def generate_param_grid(n_repeats: int = 1):
             meas_kernel_size,
             proposal_alpha,
             proposal_beta,
+            surface_radius_m,
+            min_free_ratio,
         ):
             # Define experiment params for each run
             yield ExperimentParams(
@@ -619,6 +629,8 @@ def generate_param_grid(n_repeats: int = 1):
                 scan_matcher_params=ScanMatcherParams(
                     occ_thres=1.2,
                     delta_r=0.6,
+                    surface_radius_m=surface_r,
+                    min_free_ratio=min_free,
                 ),
                 particle_params=ParticleParams(
                     n_particles=n_part,
@@ -649,7 +661,7 @@ def generate_param_grid(n_repeats: int = 1):
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
                     f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
-                    f"pa{alpha}_pb{beta}_rep{repeat_idx}"
+                    f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}_rep{repeat_idx}"
                 ),
             )
 

@@ -360,8 +360,13 @@ class ScanMatchingEvaluator:
         )
 
         # Compute max rolling mean of corr pose
-        corr_trans_err_squared_ser = pd.Series(corr_trans_err **2).dropna()
-        corr_rot_err_squared_ser = pd.Series(corr_rot_err **2).dropna()
+        corr_trans_err_arr = np.asarray(corr_trans_err, dtype=float)
+        corr_rot_err_arr = np.asarray(corr_rot_err, dtype=float)
+        pred_trans_err_arr = np.asarray(pred_trans_err, dtype=float)
+        pred_rot_err_arr = np.asarray(pred_rot_err, dtype=float)
+
+        corr_trans_err_squared_ser = pd.Series(corr_trans_err_arr ** 2).dropna()
+        corr_rot_err_squared_ser = pd.Series(corr_rot_err_arr ** 2).dropna()
 
         rolling_rmse_corr_trans  = corr_trans_err_squared_ser.rolling(window=ROLLING_WINDOW).mean().apply(np.sqrt)
         rolling_rmse_corr_rot = corr_rot_err_squared_ser.rolling(window=ROLLING_WINDOW).mean().apply(np.sqrt)
@@ -370,12 +375,12 @@ class ScanMatchingEvaluator:
         max_rolling_rmse_corr_rot_error = float(rolling_rmse_corr_rot.max()) if not rolling_rmse_corr_rot.empty else float("inf")   
 
         # Compute scan match fail rate
-        corr_worse_rate_trans = np.mean(corr_trans_err > pred_trans_err)
-        corr_worse_rate_rot = np.mean(corr_rot_err > pred_rot_err)  
+        corr_worse_rate_trans = np.mean(corr_trans_err_arr > pred_trans_err_arr)
+        corr_worse_rate_rot = np.mean(corr_rot_err_arr > pred_rot_err_arr)  
 
         # Compute sm improvement value
-        mean_corr_trans_improvm = float(np.mean(pred_trans_err - corr_trans_err)) 
-        mean_corr_rot_improvm = float(np.mean(pred_rot_err - corr_rot_err))
+        mean_corr_trans_improvm = float(np.mean(pred_trans_err_arr - corr_trans_err_arr)) 
+        mean_corr_rot_improvm = float(np.mean(pred_rot_err_arr - corr_rot_err_arr))
 
         return RunSummaryScanMatching(
             # General information

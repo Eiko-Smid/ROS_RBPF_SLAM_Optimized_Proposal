@@ -58,6 +58,8 @@ class ScanMatcherParams:
     '''
     occ_thres: float
     delta_r: float
+    surface_radius_m: float = 0.1
+    min_free_ratio: float = 0.25
 
 
 @dataclass(frozen=True)
@@ -131,6 +133,8 @@ class ScanMatchFactory:
                 sm_params.delta_r,
             ),
             occ_thres=sm_params.occ_thres,
+            surface_radius_m=sm_params.surface_radius_m,
+            min_free_ratio=sm_params.min_free_ratio,
         )
         
         return scan_matcher

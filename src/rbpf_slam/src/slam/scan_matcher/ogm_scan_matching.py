@@ -600,18 +600,49 @@ def update_map_numba_inf_free_space(
 
 @njit
 def extract_map_numba(
-    log_odds_map,
-    i_pose,
-    j_pose,
-    r_cells,
-    r_cells_sq,
-    occ_thresh,
-    free_thresh,
-    min_free_count,
-    grid_res,
-    shift_x,
-    shift_y
-):
+    log_odds_map: np.ndarray,
+    i_pose: int,
+    j_pose: int,
+    r_cells: int,
+    r_cells_sq: int,
+    surface_r_cells: int,
+    occ_thresh: float,
+    free_thresh: float,
+    min_free_count: int,
+    grid_res: float,
+    shift_x: float,
+    shift_y: float
+) -> np.ndarray:
+    '''
+    Map extractor that extracts map points in a circular area around the given pose. To be a valid map point a cell has 
+    to fulfill the following criteria:
+        1. The cell has to be occupied (log odds value above occ_thresh)    
+        2. The cell has to belong to a surface, which is defined as having at least min_free_count free cells 
+    
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        2D log-odds occupancy grid map
+    i_pose, j_pose : int
+        Robot pose in grid indices
+    r_cells : int
+        Radius of the circular area in cells
+    r_cells_sq : int
+        Radius squared (pre-computed for efficiency)
+    surface_r_cells : int
+        Radius of the surface window in cells (used to check if cell belongs to surface)
+    occ_thresh : float
+        Log-odds threshold to consider a cell occupied
+    free_thresh : float
+        Log-odds threshold to consider a cell free
+    min_free_count : int
+        Minimum number of free cells in the surface window to consider a cell as belonging to a surface
+    grid_res : float
+        Grid resolution in meters
+    shift_x, shift_y : float
+        Map origin shift (centered map)
+    '''
+
     n_rows, n_cols = log_odds_map.shape
 
     # Define maximum number of points that can be extracted and pre-allocate array for points
@@ -634,8 +665,13 @@ def extract_map_numba(
             i = i_pose + di
             j = j_pose + dj
 
-            # Check if cell is inside the map
-            if i < 1 or i >= n_rows-1 or j < 1 or j >= n_cols-1:
+            # Check if surface window is inside map
+            if (
+                i < surface_r_cells
+                or i >= n_rows - surface_r_cells
+                or j < surface_r_cells
+                or j >= n_cols - surface_r_cells
+            ):
                 continue
             
             # Check if cell is free -> skip
@@ -644,8 +680,8 @@ def extract_map_numba(
 
             # Check if cell belongs to surface
             free_count = 0
-            for ni in range(i-1, i+2):
-                for nj in range(j-1, j+2):
+            for ni in range(i-surface_r_cells, i+surface_r_cells + 1):
+                for nj in range(j-surface_r_cells, j+surface_r_cells + 1):
                     # Exclude pose
                     if ni == i and nj == j:
                         continue
@@ -1680,11 +1716,18 @@ class OGM:
                 x, y = self.transform_grid_cell_to_point((i, j))
                 valid_points.append((x, y))
 
-        return np.copy(valid_points)
-    
+        return np.copy(valid_points)    
 
 
-    def extract_map_for_scan_matching_numba(self, pose, radius, delta_r=1.0, occ_thresh=2.0):
+    def extract_map_for_scan_matching_numba(
+            self,
+            pose,
+            radius,
+            delta_radius=1.0,
+            occ_thresh=2.0,
+            surface_radius_m : float = 0.1,
+            min_free_ratio: float = 0.25
+    ) -> np.ndarray:
         '''
         Extracts the map for scan matching. This variant is speed optimized using numba.
 
@@ -1694,18 +1737,32 @@ class OGM:
             The pose of the robot (x, y, heading) for which the map should be extracted.
         radius: float
             The radius around the robot pose for which the map should be extracted.
-        delta_r: float, optional
+        delta_radius: float, optional
             An additional radius that is added to the given radius to ensure that enough points are extracted for scan matching. Default is 1.0.
         occ_thresh: float, optional
             The log Odds threshold for a cell to be considered occupied. Default is 2.0.
+        surface_radius_m: float, optional
+            The radius around a map point to consider for surface validation. Default is 0.1.
+        min_free_ratio: float, optional
+            The minimum ratio of free cells around a occ map point to be valid. We assume those point lies on a surface.
         
         Returns
         -------
         np.ndarray
             An array of shape (N, 2) containing the (x, y) coordinates of the valid points in the map for scan matching.
         '''
-        r_cells = int(np.ceil((radius + delta_r) / self.grid_resolution_m))
-        r_cells_sq = r_cells ** 2
+        # Transfer map extraction parameters from continuous space to discrete space
+        r_cells = int(ceil((radius + delta_radius) / self.grid_resolution_m))
+        r_cells_sq = int(r_cells ** 2) 
+
+        # Compute surface radius in grid cells (floating point safe)
+        surface_radius_cells = int(ceil(surface_radius_m / self.grid_resolution_m - 1e-12))
+
+        # Compute minimum free cells for surface validation
+        surface_window = 2 * surface_radius_cells + 1
+        n_cells_surface_window = surface_window**2
+        n_neighbors = n_cells_surface_window - 1
+        min_free_count = int(ceil(n_neighbors * min_free_ratio))
 
         i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
 
@@ -1732,10 +1789,11 @@ class OGM:
             j_pose=j_pose,
             r_cells=r_cells,
             r_cells_sq=r_cells_sq,
+            surface_r_cells=surface_radius_cells,
             occ_thresh=occ_thresh,
             free_thresh=-2.0,
-            min_free_count=2,
-            grid_resolution=self.grid_resolution_m,
+            min_free_count=min_free_count,
+            grid_res=self.grid_resolution_m,
             shift_x=self.shift_x,
             shift_y=self.shift_y
         )
