@@ -1503,23 +1503,23 @@ class OGM:
         # Extract pose
         x, y, heading = pose
 
-        status, counter = update_map_numba(
-            self.log_odds_map,
-            measurements_np,
-            x,
-            y,
-            heading,
-            self.shift_x,
-            self.shift_y,
-            self.grid_resolution_m,
-            self.min_sensor_range,
-            self.max_sensor_range,
-            self.log_odds_decreasing_probability,
-            self.log_odds_increasing_probability,
-            self.min_log_odds,
-            self.max_log_odds,
+        # status, counter = update_map_numba(
+        #     self.log_odds_map,
+        #     measurements_np,
+        #     x,
+        #     y,
+        #     heading,
+        #     self.shift_x,
+        #     self.shift_y,
+        #     self.grid_resolution_m,
+        #     self.min_sensor_range,
+        #     self.max_sensor_range,
+        #     self.log_odds_decreasing_probability,
+        #     self.log_odds_increasing_probability,
+        #     self.min_log_odds,
+        #     self.max_log_odds,
 
-        )
+        # )
 
         status, counter = update_map_numba_inf_free_space(
             log_odds_map=self.log_odds_map,

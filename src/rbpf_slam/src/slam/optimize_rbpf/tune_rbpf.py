@@ -388,7 +388,7 @@ from .result_writer import ResultWriter
     
     27.3 Beam range finder model 
     
-                          
+
 
 '''
 
@@ -403,10 +403,10 @@ from .result_writer import ResultWriter
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_params.json'
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -689,7 +689,7 @@ def main():
     playback_data = playback_conv.convert(raw_playback_data)
 
     # Init optimizer
-    scan_match_optimizer = build_optimizer()
+    rbpf_optimizer = build_optimizer()
 
     # Build result writer
     result_writer = ResultWriter()
@@ -702,7 +702,7 @@ def main():
     )
 
     # Run optimizer
-    ranked_runs = scan_match_optimizer.optimize(
+    ranked_runs = rbpf_optimizer.optimize(
         playback_data=playback_data,
         param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
         seeds=SEED_LIST,
@@ -710,7 +710,7 @@ def main():
 
 
     # Run optimizer without proposal pose (scan matcher pose is used instead)
-    # ranked_runs = scan_match_optimizer.optimize_without_proposal_pose(
+    # ranked_runs = rbpf_optimizer.optimize_without_proposal_pose(
     #     playback_data=playback_data,
     #     param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
     #     seeds=SEED_LIST,

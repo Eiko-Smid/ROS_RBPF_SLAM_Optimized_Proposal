@@ -108,6 +108,7 @@ class PlaybackRunnerScanMatching:
         steps = playback_data.step_data_list
         run_result = RunResultScanMatching(params=params)
 
+        # Ensure valid scan downsampling values for filter/proposal and map update.
         every_nth_scan_filter = max(1, int(params.every_nth_scan_filter))
         every_nth_scan_map = max(1, int(params.every_nth_scan_map))
 
@@ -116,22 +117,24 @@ class PlaybackRunnerScanMatching:
             f"(every_nth_scan_filter={every_nth_scan_filter}, every_nth_scan_map={every_nth_scan_map})"
         )
 
+        # Process playback data 
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
 
+            # Filter measruements for scan matching and map update
             measurements_filter = (
                 step.scan[::every_nth_scan_filter]
                 if every_nth_scan_filter > 1
                 else step.scan
             )
 
-            # For map update we want to use inf values for freeing space!
             measurements_map_update = (
                 step.scan[::every_nth_scan_map]
                 if every_nth_scan_map > 1
                 else step.scan
             )
 
+            # Filter inf values (only for filter, cause for map update we need inf information)
             measurements_filter = [
                 (r, b) for r, b in measurements_filter if np.isfinite(r) and not np.isnan(r)
             ]
@@ -139,6 +142,7 @@ class PlaybackRunnerScanMatching:
             #     (r, b) for r, b in measurements_map_update if np.isfinite(r) and not np.isnan(r)
             # ]
 
+            # Run  RBPF filter step with scan matching only
             rbpf.step_scan_match_only(
                 odom=(step.dl, step.dr),
                 measurements_filter=measurements_filter,
@@ -154,7 +158,7 @@ class PlaybackRunnerScanMatching:
             step_stop_reason = icp_info.get("stop_reason")
 
             # If scan matching failed before starting ICP, note that!
-            if scan_match_failed and scan_match_info.get("timing_correct_pose") is None:
+            if scan_match_failed and scan_match_info.get("time_duration_correct_pose") is None:
                 step_stop_reason = "scan matcher failed before icp"
 
             step_result = self.evaluator.evaluate_step(
@@ -173,14 +177,14 @@ class PlaybackRunnerScanMatching:
                 n_valid_measurements_filter=len(measurements_filter),
                 n_valid_measurements_map_update=len(measurements_map_update),
                 n_map_points_extracted=scan_match_info.get("map_points_count"),
-                t_ogm=rbpf_sc_only_info.get("timing_ogm_update"),
-                t_scan_matching=scan_match_info.get("timing_scan_matching"),
-                t_prediction=scan_match_info.get("timing_prediction"),
-                t_map_extraction=scan_match_info.get("timing_map_extraction"),
-                t_correct_pose=scan_match_info.get("timing_correct_pose"),
+                t_ogm=rbpf_sc_only_info.get("time_duration_ogm_update"),
+                t_scan_matching=scan_match_info.get("time_duration_scan_matching"),
+                t_prediction=scan_match_info.get("time_duration_prediction"),
+                t_map_extraction=scan_match_info.get("time_duration_map_extraction"),
+                t_correct_pose=scan_match_info.get("time_duration_correct_pose"),
                 scan_match_failed=scan_match_failed,
                 step_duration=step_duration,
-                timing_update_particle=rbpf_sc_only_info.get("timing_update_particle"),
+                t_update_particle=rbpf_sc_only_info.get("time_duration_update_particle"),
             )
             run_result.step_results.append(step_result)
 
@@ -191,6 +195,6 @@ class PlaybackRunnerScanMatching:
         )
 
         self._merge_summary_dict(run_result.summary, self._aggregate_icp_counters(rbpf))
-        self._merge_summary_dict(run_result.summary, rbpf.timing_summary_scan_match_only())
+        self._merge_summary_dict(run_result.summary, rbpf.time_summary_scan_match_only())
 
         return run_result

@@ -49,7 +49,7 @@ class RBPFOptimizer:
             print("No parameter combinations provided. Nothing to optimize.")
             return []
 
-        print(f"Starting RBPF optimization with {total_runs * len(seed_list)} runs...")
+        print(f"Starting RBPF optimization with {total_runs * len(seed_list)} run(s)...")
         ranked_runs: List[RankedRun] = []
 
         start_time = time.time()
@@ -72,11 +72,14 @@ class RBPFOptimizer:
                     )
                 )
 
-        elapsed_s = time.time() - start_time
+        # Measure ending time and print info
+        optm_duration_s = time.time() - start_time
         n_runs = total_runs * len(seed_list)
-        print(f"Finished RBPF optimization: {n_runs}/{n_runs} runs in {elapsed_s:.2f}s")
-
+        print(f"Finished RBPF optimization: {n_runs}/{n_runs} runs in {optm_duration_s:.2f}s")
+        
+        # Sort runs by score (ascending order)
         ranked_runs.sort(key=lambda x: x.score)
+        
         return ranked_runs
     
 
@@ -123,10 +126,12 @@ class RBPFOptimizer:
                     )
                 )
 
-        elapsed_s = time.time() - start_time
+        # Measure ending time and print info
+        optm_duration_s = time.time() - start_time
         n_runs = total_runs * len(seed_list)
-        print(f"Finished RBPF optimization: {n_runs}/{n_runs} runs in {elapsed_s:.2f}s")
+        print(f"Finished RBPF optimization: {n_runs}/{n_runs} runs in {optm_duration_s:.2f}s")
 
+        # Sort runs by score (ascending order)
         ranked_runs.sort(key=lambda x: x.score)
         return ranked_runs
 

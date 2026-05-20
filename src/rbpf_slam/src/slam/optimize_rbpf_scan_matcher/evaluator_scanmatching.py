@@ -167,7 +167,7 @@ class ScanMatchingEvaluator:
         t_correct_pose: Optional[float],
         scan_match_failed: bool,
         step_duration: Optional[float],
-        timing_update_particle: Optional[float],
+        t_update_particle: Optional[float],
     ) -> StepResultScanMatching:
         # Converts the given poses to a Pose2D tuple format
         true_pose_t = self._to_pose_tuple(true_pose)
@@ -256,7 +256,7 @@ class ScanMatchingEvaluator:
             t_map_extraction=float(t_map_extraction) if t_map_extraction is not None else None,
             t_correct_pose=float(t_correct_pose) if t_correct_pose is not None else None,
             step_duration=float(step_duration) if step_duration is not None else None,
-            timing_update_particle=float(timing_update_particle) if timing_update_particle is not None else None,
+            timing_update_particle=float(t_update_particle) if t_update_particle is not None else None,
         )
 
     def summarize_run(self, step_results: List[StepResultScanMatching], params: ExperimentParams) -> RunSummaryScanMatching:

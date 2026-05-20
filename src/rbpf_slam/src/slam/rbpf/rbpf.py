@@ -308,7 +308,7 @@ class RBPF:
         }
 
 
-    def timing_summary_scan_match_only(self) -> dict:
+    def time_summary_scan_match_only(self) -> dict:
         """
         Returns end-of-run timing means for scan-matching-only blocks.
         """
@@ -456,6 +456,7 @@ class RBPF:
             # Fallback to Measurement model with map points
             if trained_nn_tree is not None:
                 # Compute particle weight
+                # TODO: Always use the same measruement model here that u use in proposal computation
                 p_weight = measurement_model.likelihood(
                     pose=new_pose,
                     measurements=measurements_proposal,
@@ -696,6 +697,7 @@ class RBPF:
 
         dl, dr = odom
 
+        # Update pose by scan matcher
         t_scan_match_start = time.perf_counter()
         corr_pose, pred_pose = particle.scan_matcher.update_pose(
             old_pose=particle.pose,
@@ -713,7 +715,7 @@ class RBPF:
         if corr_pose is None:
             scan_match_failed = True
 
-        # Keep map growth in scan-only mode even when scan matching fails.
+        # Extend map if necessary
         t_map_ext_start = time.perf_counter()
         extension_needed = True
 
@@ -724,6 +726,7 @@ class RBPF:
         self._timing_stats_scan_match_only["map_extension_sum_s"] += t_map_ext_s
         self._timing_stats_scan_match_only["map_extension_count"] += 1
 
+        # Update ogm
         t_map_update_start = time.perf_counter()
         particle.scan_matcher.ogm.update_map(
             measurements=measurements_map_update,
