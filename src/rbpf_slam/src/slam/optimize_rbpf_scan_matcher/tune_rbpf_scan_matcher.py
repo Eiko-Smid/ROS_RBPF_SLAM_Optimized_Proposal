@@ -42,13 +42,13 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 # SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_trace_steps.csv"
 # PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1_2_params.json"
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_steps_trace.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_params.json"
 
 CSV_FLOAT_DECIMALS = 5
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None
+N_PLAYBACK_STEPS = 8
 N_OPTIMIZATION_REPEATS = 1
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
@@ -82,11 +82,29 @@ def _compute_wheel_separation() -> float:
 
 def _grid_axes() -> Dict[str, List[Union[float, int]]]:
     return {
+        # Playback sampling
         "every_nth_beam_filter": [4],
         "every_nth_beam_map": [2],
+
+        # OccupancyParams (OGM)
+        "increasing_probability": [0.7],
+        "decreasing_probability": [0.30],
+        "min_log_odds": [-5.0],
+        "max_log_odds": [5.0],
+
+        # ScanMatcherParams
+        "occ_thres": [1.2],
+        "delta_r": [0.6],
+
+        # ICPParams
+        "max_n_points": [400],
+        "neighbors_pca": [10],
+        "max_iterations": [5],
         "max_correspondence_distance": [0.6],
+        "min_corresp": [15],
         "max_translation_jump": [0.8],
         "max_rotation_jump_deg": [120.0],
+        "max_acceptable_mean_error": [0.15],
     }
 
 
@@ -124,12 +142,40 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
     wheel_separation = _compute_wheel_separation()
 
     for repeat_idx in range(1, n_repeats + 1):
-        for every_nth_filter, every_nth_map, max_corr_dist, max_jump_trans, max_jump_rot_deg in itertools.product(
+        for (
+            every_nth_filter,
+            every_nth_map,
+            increasing_probability,
+            decreasing_probability,
+            min_log_odds,
+            max_log_odds,
+            occ_thres,
+            delta_r,
+            max_n_points,
+            neighbors_pca,
+            max_iterations,
+            max_corr_dist,
+            min_corresp,
+            max_jump_trans,
+            max_jump_rot_deg,
+            max_acceptable_mean_error,
+        ) in itertools.product(
             axes["every_nth_beam_filter"],
             axes["every_nth_beam_map"],
+            axes["increasing_probability"],
+            axes["decreasing_probability"],
+            axes["min_log_odds"],
+            axes["max_log_odds"],
+            axes["occ_thres"],
+            axes["delta_r"],
+            axes["max_n_points"],
+            axes["neighbors_pca"],
+            axes["max_iterations"],
             axes["max_correspondence_distance"],
+            axes["min_corresp"],
             axes["max_translation_jump"],
             axes["max_rotation_jump_deg"],
+            axes["max_acceptable_mean_error"],
         ):
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
@@ -138,12 +184,12 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                     # Min distance of the robot to the border of the map. If robot is closer than this to the border, the map will be extended.                   
                     min_distance_to_border=10.0,
                     # Cell is increased by the log Odds of this value when beam ends in this cell
-                    increasing_probability=0.7,
+                    increasing_probability=increasing_probability,
                     # All cells a beam passed will decreased by the log Odds of this value  
-                    decreasing_probability=0.30,
+                    decreasing_probability=decreasing_probability,
                     # Max and Min possible log odds value a cell can have. 
-                    min_log_odds=-5.0,
-                    max_log_odds=5.0,
+                    min_log_odds=min_log_odds,
+                    max_log_odds=max_log_odds,
                 ),
                 sensor_params=SensorParams(
                     min_sensor_range=0.1,
@@ -155,29 +201,29 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                     grid_resolution_m=0.1,
                 ),
                 icp_params=ICPParams(
-                    max_n_points=400,
+                    max_n_points=max_n_points,
                     max_correspondence_distance=max_corr_dist,
-                    neighbors_pca=10,
-                    max_iterations=5,
+                    neighbors_pca=neighbors_pca,
+                    max_iterations=max_iterations,
                     epsilon_rel=1e-3,
                     no_improvement_limit=3,
                     min_error=5e-4,
                     min_dtrans=1e-3,
                     min_drot=1e-2,
                     min_points=20,
-                    min_corresp=15,
+                    min_corresp=min_corresp,
                     min_hessian_rank=3,
                     max_hessian_condition=1e8,
                     max_translation_jump=max_jump_trans,
                     max_rotation_jump=np.deg2rad(max_jump_rot_deg),
-                    max_acceptable_mean_error=0.15,
+                    max_acceptable_mean_error=max_acceptable_mean_error,
                 ),
                 robot_params=RobotParams(
                     wheel_separation=wheel_separation,
                 ),
                 scan_matcher_params=ScanMatcherParams(
-                    occ_thres=1.2,
-                    delta_r=0.6,
+                    occ_thres=occ_thres,
+                    delta_r=delta_r,
                 ),
                 particle_params=ParticleParams(
                     n_particles=1,
@@ -247,7 +293,7 @@ def main() -> None:
         seeds=SEED_LIST,
     )
 
-    writer.write_ranked_runs_csv(
+    writer.write_summary_runs_csv(
         path=SCAN_MATCHING_RESULT_PATH,
         ranked_runs=ranked_runs,
         override=OVERRIDE_EXISTING_RESULTS,

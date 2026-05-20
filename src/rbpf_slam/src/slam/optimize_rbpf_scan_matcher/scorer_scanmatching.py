@@ -18,8 +18,8 @@ class ScanMatchingScorer:
         Computes a score for scan-matching-only runs.
         Lower is better.
         """
-        mean_corr_trans_error = float(summary.mean_corr_trans_error)
-        mean_corr_rot_error_rad = float(summary.mean_corr_rot_error)
+        mean_corr_trans_error = float(summary.mean_corr_trans_err)
+        mean_corr_rot_error_rad = float(summary.mean_corr_rot_err)
         mean_corr_rot_error_deg = math.degrees(mean_corr_rot_error_rad)
         final_drift_trans = float(summary.final_drift_trans)
         mean_icp_iterations = float(summary.mean_icp_iterations)

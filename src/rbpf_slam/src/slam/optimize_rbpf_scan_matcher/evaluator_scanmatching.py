@@ -3,10 +3,13 @@ from typing import Any, List, Optional, Tuple
 
 import math
 import numpy as np
+import pandas as pd
 
 from ..optimize_rbpf.playback_defs import ExperimentParams
 
 Pose2D = Tuple[float, float, float]
+
+ROLLING_WINDOW = 20
 
 
 @dataclass
@@ -16,35 +19,45 @@ class StepResultScanMatching:
     '''
     step_idx: int
     t: float
+    
     true_pose: Pose2D
     pred_pose: Optional[Pose2D]
     corr_pose: Optional[Pose2D]
-    # est_pose: Optional[Pose2D]
+    
     scan_match_failed: bool
-    translation_error: Optional[float]
-    rotation_error: Optional[float]
-    pred_translation_error: Optional[float]
-    corr_translation_error: Optional[float]
-    pred_rotation_error: Optional[float]
-    corr_rotation_error: Optional[float]
+    
+    trans_err: Optional[float]
+    rot_err: Optional[float]
+    
+    pred_trans_err: Optional[float]
+    pred_rot_err: Optional[float]
+
+    corr_trans_err: Optional[float]
+    corr_rot_err: Optional[float]
+    
     icp_best_trans_param: Optional[float]
     icp_best_rot_abs_rad: Optional[float]
     pred_to_corr_trans_err: Optional[float]
     pred_to_corr_rot_err: Optional[float]
+    
     icp_iterations: Optional[int]
     icp_mean_error: Optional[float]
+    
     n_correspondences: Optional[int]
     use_transformation: Optional[bool]
     stop_reason: Optional[str]
+    
     n_measurements_total: Optional[int]
     n_valid_measurements_filter: Optional[int]
     n_valid_measurements_map_update: Optional[int]
     n_map_points_extracted: Optional[int]
+    
     t_ogm: Optional[float]
     t_scan_matching: Optional[float]
     t_prediction: Optional[float]
     t_map_extraction: Optional[float]
     t_correct_pose: Optional[float]
+    
     step_duration: Optional[float]
     timing_update_particle: Optional[float]
 
@@ -63,30 +76,49 @@ class RunResultScanMatching:
 class RunSummaryScanMatching:
     n_steps: int
     n_particles: int
+
     scan_match_failed_count: int
     icp_success_rate: float
     scan_match_success_rate: float
-    mean_pred_trans_error: float
-    mean_pred_rot_error: float
-    mean_corr_trans_error: float
-    mean_corr_rot_error: float
-    rmse_pred_trans_error: float
-    rmse_pred_rot_error: float
-    rmse_corr_trans_error: float
-    rmse_corr_rot_error: float
-    rmse_corr_trans_error: float
-    final_drift_trans: float
-    final_drift_rot: float
     mean_icp_iterations: float
-    mean_icp_error: float
+    mean_icp_err: float
     mean_best_trans_norm: float
     max_best_trans_norm: float
     mean_best_rot_abs: float
     max_best_rot_abs: float
-    mean_translation_error: float
-    mean_rotation_error: float
-    rmse_translation_error: float
-    rmse_rotation_error: float
+    
+    mean_pred_trans_err: float
+    mean_pred_rot_err: float
+    rmse_pred_trans_err: float
+    rmse_pred_rot_err: float    
+    max_pred_trans_err: float
+    max_pred_rot_err: float
+    
+    mean_corr_trans_err: float
+    mean_corr_rot_err: float
+    rmse_corr_trans_err: float
+    rmse_corr_rot_err: float
+    max_corr_trans_err: float
+    max_corr_rot_err: float
+    perc_95_corr_trans_err: float
+    perc_95_corr_rot_err: float
+    max_rolling_rmse_corr_trans_error: float
+    max_rolling_rmse_corr_rot_error: float
+    corr_worse_rate_trans: float
+    corr_worse_rate_rot: float
+    mean_corr_trans_improvm: float
+    mean_corr_rot_improvm: float
+    
+    final_drift_trans: float
+    final_drift_rot: float
+        
+    # mean_trans_err: float
+    # mean_rot_err: float
+    # rmse_trans_err: float
+    # rmse_rot_err: float
+    # max_trans_err: float
+    # max_rot_err: float
+
     mean_step_duration: float
     mean_timing_sm_update_particle_s: float
     mean_timing_sm_scan_match_update_pose_s: float = 0.0
@@ -96,6 +128,7 @@ class RunSummaryScanMatching:
     timing_sm_scan_match_update_pose_count: int = 0
     timing_sm_map_extension_count: int = 0
     timing_sm_map_update_count: int = 0
+    
     count_too_few_points: int = 0
     count_too_few_corresp: int = 0
     infinite_h_or_g: int = 0
@@ -227,12 +260,12 @@ class ScanMatchingEvaluator:
             corr_pose=corr_pose_t,
             # est_pose=est_pose_t,
             scan_match_failed=bool(scan_match_failed),
-            translation_error=trans_err,
-            rotation_error=rot_err,
-            pred_translation_error=pred_trans_err,
-            corr_translation_error=corr_trans_err,
-            pred_rotation_error=pred_rot_err,
-            corr_rotation_error=corr_rot_err,
+            trans_err=trans_err,
+            rot_err=rot_err,
+            pred_trans_err=pred_trans_err,
+            corr_trans_err=corr_trans_err,
+            pred_rot_err=pred_rot_err,
+            corr_rot_err=corr_rot_err,
             icp_best_trans_param=best_trans_norm,
             icp_best_rot_abs_rad=best_rot_abs,
             pred_to_corr_trans_err=pred_to_corr_trans_err,
@@ -259,13 +292,14 @@ class ScanMatchingEvaluator:
             timing_update_particle=float(t_update_particle) if t_update_particle is not None else None,
         )
 
+
     def summarize_run(self, step_results: List[StepResultScanMatching], params: ExperimentParams) -> RunSummaryScanMatching:
-        trans_err = [s.translation_error for s in step_results if s.translation_error is not None]
-        rot_err = [s.rotation_error for s in step_results if s.rotation_error is not None]
-        pred_trans_err = [s.pred_translation_error for s in step_results if s.pred_translation_error is not None]
-        pred_rot_err = [s.pred_rotation_error for s in step_results if s.pred_rotation_error is not None]
-        corr_trans_err = [s.corr_translation_error for s in step_results if s.corr_translation_error is not None]
-        corr_rot_err = [s.corr_rotation_error for s in step_results if s.corr_rotation_error is not None]
+        trans_err = [s.trans_err for s in step_results if s.trans_err is not None]
+        rot_err = [s.rot_err for s in step_results if s.rot_err is not None]
+        pred_trans_err = [s.pred_trans_err for s in step_results if s.pred_trans_err is not None]
+        pred_rot_err = [s.pred_rot_err for s in step_results if s.pred_rot_err is not None]
+        corr_trans_err = [s.corr_trans_err for s in step_results if s.corr_trans_err is not None]
+        corr_rot_err = [s.corr_rot_err for s in step_results if s.corr_rot_err is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
         update_particle_timings = [
             s.timing_update_particle for s in step_results if s.timing_update_particle is not None
@@ -325,32 +359,85 @@ class ScanMatchingEvaluator:
             float(np.max(successful_best_rot_abs)) if successful_best_rot_abs else float("inf")
         )
 
+        # Compute max rolling mean of corr pose
+        corr_trans_err_squared_ser = pd.Series(corr_trans_err **2).dropna()
+        corr_rot_err_squared_ser = pd.Series(corr_rot_err **2).dropna()
+
+        rolling_rmse_corr_trans  = corr_trans_err_squared_ser.rolling(window=ROLLING_WINDOW).mean().apply(np.sqrt)
+        rolling_rmse_corr_rot = corr_rot_err_squared_ser.rolling(window=ROLLING_WINDOW).mean().apply(np.sqrt)
+
+        max_rolling_rmse_corr_trans_error = float(rolling_rmse_corr_trans.max()) if not rolling_rmse_corr_trans.empty else float("inf")
+        max_rolling_rmse_corr_rot_error = float(rolling_rmse_corr_rot.max()) if not rolling_rmse_corr_rot.empty else float("inf")   
+
+        # Compute scan match fail rate
+        corr_worse_rate_trans = np.mean(corr_trans_err > pred_trans_err)
+        corr_worse_rate_rot = np.mean(corr_rot_err > pred_rot_err)  
+
+        # Compute sm improvement value
+        mean_corr_trans_improvm = float(np.mean(pred_trans_err - corr_trans_err)) 
+        mean_corr_rot_improvm = float(np.mean(pred_rot_err - corr_rot_err))
+
         return RunSummaryScanMatching(
+            # General information
             n_steps=n_steps,
             n_particles=int(params.particle_params.n_particles),
+
+            # ICP metrics            
             scan_match_failed_count=scan_match_failed_count,
             icp_success_rate=icp_success_rate,
             scan_match_success_rate=scan_match_success_rate,
-            mean_pred_trans_error=float(np.mean(pred_trans_err)) if pred_trans_err else float("inf"),
-            mean_pred_rot_error=float(np.mean(pred_rot_err)) if pred_rot_err else float("inf"),
-            mean_corr_trans_error=float(np.mean(corr_trans_err)) if corr_trans_err else float("inf"),
-            mean_corr_rot_error=float(np.mean(corr_rot_err)) if corr_rot_err else float("inf"),
-            rmse_pred_trans_error=float(np.sqrt(np.mean(np.square(pred_trans_err)))) if pred_trans_err else float("inf"),
-            rmse_pred_rot_error=float(np.sqrt(np.mean(np.square(pred_rot_err)))) if pred_rot_err else float("inf"),
-            rmse_corr_trans_error=float(np.sqrt(np.mean(np.square(corr_trans_err)))) if corr_trans_err else float("inf"),
-            rmse_corr_rot_error=float(np.sqrt(np.mean(np.square(corr_rot_err)))) if corr_rot_err else float("inf"),
-            final_drift_trans=final_drift_trans,
-            final_drift_rot=final_drift_rot,
             mean_icp_iterations=mean_icp_iterations,
-            mean_icp_error=mean_icp_error,
+            mean_icp_err=mean_icp_error,
             mean_best_trans_norm=mean_best_trans_norm,
             max_best_trans_norm=max_best_trans_norm,
             mean_best_rot_abs=mean_best_rot_abs,
             max_best_rot_abs=max_best_rot_abs,
-            mean_translation_error=float(np.mean(trans_err)) if trans_err else float("inf"),
-            mean_rotation_error=float(np.mean(rot_err)) if rot_err else float("inf"),
-            rmse_translation_error=float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),
-            rmse_rotation_error=float(np.sqrt(np.mean(np.square(rot_err)))) if rot_err else float("inf"),
+
+            # Pose err metrics
+            # Pose err metrics for predicted pose    
+            mean_pred_trans_err=float(np.mean(pred_trans_err)) if pred_trans_err else float("inf"),
+            mean_pred_rot_err=float(np.mean(pred_rot_err)) if pred_rot_err else float("inf"),
+            rmse_pred_trans_err=float(np.sqrt(np.mean(np.square(pred_trans_err)))) if pred_trans_err else float("inf"),
+            rmse_pred_rot_err=float(np.sqrt(np.mean(np.square(pred_rot_err)))) if pred_rot_err else float("inf"),
+            max_pred_trans_err=float(np.max(pred_trans_err)) if pred_trans_err else float("inf"), 
+            max_pred_rot_err=float(np.max(pred_rot_err)) if pred_rot_err else float("inf"),
+
+            # Pose err metrics for corrected pose
+            mean_corr_trans_err=float(np.mean(corr_trans_err)) if corr_trans_err else float("inf"),
+            mean_corr_rot_err=float(np.mean(corr_rot_err)) if corr_rot_err else float("inf"),            
+            rmse_corr_trans_err=float(np.sqrt(np.mean(np.square(corr_trans_err)))) if corr_trans_err else float("inf"),
+            rmse_corr_rot_err=float(np.sqrt(np.mean(np.square(corr_rot_err)))) if corr_rot_err else float("inf"),
+            max_corr_trans_err=float(np.max(corr_trans_err)) if corr_trans_err else float("inf"),
+            max_corr_rot_err=float(np.max(corr_rot_err)) if corr_rot_err else float("inf"),
+            perc_95_corr_trans_err=float(np.percentile(corr_trans_err, 95)) if corr_trans_err else float("inf"),
+            perc_95_corr_rot_err=float(np.percentile(corr_rot_err, 95)) if corr_rot_err else float("inf"),
+            
+            # Rolling rmse 
+            max_rolling_rmse_corr_trans_error=max_rolling_rmse_corr_trans_error,
+            max_rolling_rmse_corr_rot_error=max_rolling_rmse_corr_rot_error,
+            
+            # Scan match improvement metrics
+            corr_worse_rate_trans=corr_worse_rate_trans,
+            corr_worse_rate_rot=corr_worse_rate_rot,
+            mean_corr_trans_improvm=mean_corr_trans_improvm,
+            mean_corr_rot_improvm=mean_corr_rot_improvm,
+
+            # Pose err metrics for filter pose
+            # Currently trans_err == corr_trans_err
+            # mean_trans_err=float(np.mean(trans_err)) if trans_err else float("inf"),
+            # mean_rot_err=float(np.mean(rot_err)) if rot_err else float("inf"),
+            # rmse_trans_err=float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),
+            # rmse_rot_err=float(np.sqrt(np.mean(np.square(rot_err)))) if rot_err else float("inf"),
+            # max_trans_err=float(np.max(trans_err)) if trans_err else float("inf"),
+            # max_rot_err=float(np.max(rot_err)) if rot_err else float("inf"),
+            # perc_95_trans_err=float(np.percentile(trans_err, 95)) if trans_err else float("inf"),
+            # perc_95_rot_err=float(np.percentile(rot_err, 95)) if rot_err else float("inf"),
+
+            # Drift vals
+            final_drift_trans=final_drift_trans,
+            final_drift_rot=final_drift_rot,
+
+            # Timing metrics
             mean_step_duration=float(np.mean(step_durations)) if step_durations else 0.0,
             mean_timing_sm_update_particle_s=float(np.mean(update_particle_timings)) if update_particle_timings else 0.0,
         )

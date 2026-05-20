@@ -600,7 +600,7 @@ def update_map_numba_inf_free_space(
 
 @njit
 def extract_map_numba(
-    log_map,
+    log_odds_map,
     i_pose,
     j_pose,
     r_cells,
@@ -612,7 +612,7 @@ def extract_map_numba(
     shift_x,
     shift_y
 ):
-    n_rows, n_cols = log_map.shape
+    n_rows, n_cols = log_odds_map.shape
 
     # Define maximum number of points that can be extracted and pre-allocate array for points
     max_points = (r_cells * 2 + 1) * (r_cells * 2 + 1)
@@ -638,8 +638,8 @@ def extract_map_numba(
             if i < 1 or i >= n_rows-1 or j < 1 or j >= n_cols-1:
                 continue
             
-            # Check if cell is occupied 
-            if log_map[i, j] < occ_thresh:
+            # Check if cell is free -> skip
+            if log_odds_map[i, j] < occ_thresh:
                 continue
 
             # Check if cell belongs to surface
@@ -650,7 +650,7 @@ def extract_map_numba(
                     if ni == i and nj == j:
                         continue
                     # Count number of free cells around map point
-                    if log_map[ni, nj] < free_thresh:
+                    if log_odds_map[ni, nj] < free_thresh:
                         free_count += 1
             
             # Cell belongs to surface when number of free cells >= min_free_count 
@@ -1705,28 +1705,42 @@ class OGM:
             An array of shape (N, 2) containing the (x, y) coordinates of the valid points in the map for scan matching.
         '''
         r_cells = int(np.ceil((radius + delta_r) / self.grid_resolution_m))
-        r_cells_sq = r_cells * r_cells
+        r_cells_sq = r_cells ** 2
 
         i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
 
         # n_cells_great_thres = np.sum(self.log_odds_map > occ_thresh)
         # print("\nNumber of cells above threshold: ", n_cells_great_thres)
 
+        # map_points = extract_map_numba(
+        #     self.log_odds_map,
+        #     i_pose,
+        #     j_pose,
+        #     r_cells,
+        #     r_cells_sq,
+        #     occ_thresh,
+        #     -2.0,
+        #     2,
+        #     self.grid_resolution_m,
+        #     self.shift_x,
+        #     self.shift_y
+        # )
+
         map_points = extract_map_numba(
-            self.log_odds_map,
-            i_pose,
-            j_pose,
-            r_cells,
-            r_cells_sq,
-            occ_thresh,
-            -2.0,
-            2,
-            self.grid_resolution_m,
-            self.shift_x,
-            self.shift_y
+            log_odds_map=self.log_odds_map,
+            i_pose=i_pose,
+            j_pose=j_pose,
+            r_cells=r_cells,
+            r_cells_sq=r_cells_sq,
+            occ_thresh=occ_thresh,
+            free_thresh=-2.0,
+            min_free_count=2,
+            grid_resolution=self.grid_resolution_m,
+            shift_x=self.shift_x,
+            shift_y=self.shift_y
         )
 
-        # Filter inf and nan values from pre allocated map points
+        # Filter inf and nan values from pre allocated map points -> Only keep actual map points
         map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
         
         return map_points

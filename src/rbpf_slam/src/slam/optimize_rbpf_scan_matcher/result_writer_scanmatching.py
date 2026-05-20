@@ -29,132 +29,6 @@ class ResultWriterScanMatching:
 
 
     @staticmethod
-    def write_ranked_runs_csv(
-        path: str,
-        ranked_runs: List[RankedRunScanMatching],
-        override: bool = False,
-        float_decimals: int = 4,
-    ) -> None:
-        file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
-
-        if file_exists and not override:
-            print("\nScan-matching summary has not been saved because file exists and override=False.")
-            return
-
-        with open(path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "rank",
-                    "seed",
-                    "score",
-                    # "tag",
-                    "every_nth_beam_filter",
-                    "every_nth_beam_map",
-                    
-                    "scan_match_failed_count",                    
-                    "icp_failed_count",
-                    "icp_success_rate",
-
-                    "mean_icp_iterations",
-                    "count_too_few_points",
-                    "count_too_few_corresp",
-                    "infinite_h_or_g",
-                    "ill_cond_H",
-                    "infinite_dtransform",
-                    "infinite_mean_err",
-                    "best_transf_too_large",
-                    "best_mean_err_too_large",
-
-                    "mean_icp_error",
-                    "mean_best_trans_norm",
-                    "max_best_trans_norm",
-                    "mean_best_rot_abs_deg",
-                    "max_best_rot_abs_deg",
-                    
-                    "mean_pred_trans_error",
-                    "mean_pred_rot_error_deg",
-                    "mean_corr_trans_error",
-                    "mean_corr_rot_error_deg",
-                    "rmse_pred_trans_error",
-                    "rmse_pred_rot_error_deg",
-                    "rmse_corr_trans_error",
-                    "rmse_corr_rot_error_deg",
-                    "final_drift_trans",   
-                    "final_drift_rot_deg",                 
-
-                    "mean_timing_sm_update_particle_ms",
-                    "mean_timing_sm_scan_match_update_pose_ms",
-                    "mean_timing_sm_map_extension_ms",
-                    "mean_timing_sm_map_update_ms",
-                    "mean_step_duration_ms",
-                    
-                    "n_steps",
-                ]
-            )
-
-            for rank, run in enumerate(ranked_runs, start=1):
-                summary = run.summary
-                row = [
-                    rank,
-                    run.seed,
-                    run.score,
-                    # run.params.tag,
-                    run.params.every_nth_scan_filter,
-                    run.params.every_nth_scan_map,
-                    
-                    summary.scan_match_failed_count,                    
-                    summary.icp_failed_count,
-                    summary.icp_success_rate,
-
-                    summary.mean_icp_iterations,
-                    summary.count_too_few_points,
-                    summary.count_too_few_corresp,
-                    summary.infinite_h_or_g,
-                    summary.ill_cond_H,
-                    summary.infinite_dtransform,
-                    summary.infinite_mean_err,
-                    summary.best_transf_too_large,
-                    summary.best_mean_err_too_large,
-
-                    summary.mean_icp_error,
-                    summary.mean_best_trans_norm,
-                    summary.max_best_trans_norm,
-                    math.degrees(summary.mean_best_rot_abs) if summary.mean_best_rot_abs is not None else None,
-                    math.degrees(summary.max_best_rot_abs) if summary.max_best_rot_abs is not None else None,
-
-                    summary.mean_pred_trans_error,
-                    math.degrees(summary.mean_pred_rot_error) if summary.mean_pred_rot_error is not None else None,
-                    summary.mean_corr_trans_error,
-                    math.degrees(summary.mean_corr_rot_error) if summary.mean_corr_rot_error is not None else None,
-                    summary.rmse_pred_trans_error,
-                    math.degrees(summary.rmse_pred_rot_error) if summary.rmse_pred_rot_error is not None else None,
-                    summary.rmse_corr_trans_error,
-                    math.degrees(summary.rmse_corr_rot_error) if summary.rmse_corr_rot_error is not None else None,
-                    summary.final_drift_trans,
-                    math.degrees(summary.final_drift_rot) if summary.final_drift_rot is not None else None,
-
-                    (summary.mean_timing_sm_update_particle_s or 0.0) * S_TO_MS,
-                    (summary.mean_timing_sm_scan_match_update_pose_s or 0.0) * S_TO_MS,
-                    (summary.mean_timing_sm_map_extension_s or 0.0) * S_TO_MS,
-                    (summary.mean_timing_sm_map_update_s or 0.0) * S_TO_MS,
-                    (summary.mean_step_duration or 0.0) * S_TO_MS,
-                    
-                    summary.n_steps,
-                   
-                ]
-
-                writer.writerow(
-                    [
-                        ResultWriterScanMatching._format_csv_value(value, float_decimals=float_decimals)
-                        for value in row
-                    ]
-                )
-
-        print(f"\nScan-matching summary has been saved to:\n{path}")
-
-
-    @staticmethod
     def write_ranked_step_traces_csv(
         output_path: str,
         ranked_runs: List[RankedRunScanMatching],
@@ -190,7 +64,7 @@ class ResultWriterScanMatching:
 
                     "icp_best_trans_param",
                     "icp_best_rot_abs_deg",
-                    "icp_mean_error",
+                    "icp_mean_err",
 
                     "true_x",
                     "true_y",
@@ -202,10 +76,10 @@ class ResultWriterScanMatching:
                     "corr_y",
                     "corr_theta_deg",
 
-                    "pred_trans_error",
-                    "corr_trans_error",
-                    "pred_rot_error_deg",
-                    "corr_rot_error_deg",
+                    "pred_trans_err",
+                    "corr_trans_err",
+                    "pred_rot_err_deg",
+                    "corr_rot_err_deg",
 
                     "pred_to_corr_trans_err",
                     "pred_to_corr_rot_err_deg",                    
@@ -255,10 +129,10 @@ class ResultWriterScanMatching:
                         corr_y,
                         math.degrees(corr_theta) if corr_theta is not None else None,
 
-                        step.pred_translation_error,
-                        step.corr_translation_error,
-                        math.degrees(step.pred_rotation_error) if step.pred_rotation_error is not None else None,
-                        math.degrees(step.corr_rotation_error) if step.corr_rotation_error is not None else None,
+                        step.pred_trans_err,
+                        step.corr_trans_err,
+                        math.degrees(step.pred_rot_err) if step.pred_rot_err is not None else None,
+                        math.degrees(step.corr_rot_err) if step.corr_rot_err is not None else None,
 
                         step.pred_to_corr_trans_err,
                         math.degrees(step.pred_to_corr_rot_err) if step.pred_to_corr_rot_err is not None else None,                        
@@ -278,3 +152,156 @@ class ResultWriterScanMatching:
                     )
 
         print(f"\nScan-matching step trace has been saved to:\n{output_path}")
+
+
+    @staticmethod
+    def write_summary_runs_csv(
+        path: str,
+        ranked_runs: List[RankedRunScanMatching],
+        override: bool = False,
+        float_decimals: int = 4,
+    ) -> None:
+        file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
+
+        if file_exists and not override:
+            print("\nScan-matching summary has not been saved because file exists and override=False.")
+            return
+
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "rank",
+                    "seed",
+                    "score",
+                    # "tag",
+                    "every_nth_beam_filter",
+                    "every_nth_beam_map",
+                    
+                    "scan_match_failed_count",                    
+                    "icp_failed_count",
+                    "icp_success_rate",
+
+                    # ICP error metrics
+                    "mean_icp_iterations",
+                    "count_too_few_points",
+                    "count_too_few_corresp",
+                    "infinite_h_or_g",
+                    "ill_cond_H",
+                    "infinite_dtransform",
+                    "infinite_mean_err",
+                    "best_transf_too_large",
+                    "best_mean_err_too_large",
+
+
+                    "mean_icp_err",
+                    "mean_best_trans_norm",
+                    "max_best_trans_norm",
+                    "mean_best_rot_abs_deg",
+                    "max_best_rot_abs_deg",
+                    
+                    # predicted pose error metrics
+                    "mean_pred_trans_err",
+                    "mean_pred_rot_err_deg",
+                    "rmse_pred_trans_err",
+                    "rmse_pred_rot_err_deg",
+
+                    # CCorrected pose error metrics
+                    "mean_corr_trans_err",
+                    "mean_corr_rot_err_deg",                    
+                    "rmse_corr_trans_err",
+                    "rmse_corr_rot_err_deg",
+                    "perc_95_corr_trans_err",
+                    "perc_95_corr_rot_err",
+                    
+                    # Rolling rmse
+                    "max_rolling_rmse_corr_trans_error",
+                    "max_rolling_rmse_corr_rot_error",
+                    "corr_worse_rate_trans",
+                    "corr_worse_rate_rot",
+                    # Scan match improvement metrics
+                    "mean_corr_trans_improvm",
+                    "mean_corr_rot_improvm_deg",
+
+                    "final_drift_trans",   
+                    "final_drift_rot_deg",                 
+
+                    "mean_timing_sm_update_particle_ms",
+                    "mean_timing_sm_scan_match_update_pose_ms",
+                    "mean_timing_sm_map_extension_ms",
+                    "mean_timing_sm_map_update_ms",
+                    "mean_step_duration_ms",
+                    
+                    "n_steps",
+                ]
+            )
+
+            for rank, run in enumerate(ranked_runs, start=1):
+                summary = run.summary
+                row = [
+                    rank,
+                    run.seed,
+                    run.score,
+                    # run.params.tag,
+                    run.params.every_nth_scan_filter,
+                    run.params.every_nth_scan_map,
+                    
+                    summary.scan_match_failed_count,                    
+                    summary.icp_failed_count,
+                    summary.icp_success_rate,
+
+                    summary.mean_icp_iterations,
+                    summary.count_too_few_points,
+                    summary.count_too_few_corresp,
+                    summary.infinite_h_or_g,
+                    summary.ill_cond_H,
+                    summary.infinite_dtransform,
+                    summary.infinite_mean_err,
+                    summary.best_transf_too_large,
+                    summary.best_mean_err_too_large,
+
+                    summary.mean_icp_err,
+                    summary.mean_best_trans_norm,
+                    summary.max_best_trans_norm,
+                    math.degrees(summary.mean_best_rot_abs) if summary.mean_best_rot_abs is not None else None,
+                    math.degrees(summary.max_best_rot_abs) if summary.max_best_rot_abs is not None else None,
+
+                    summary.mean_pred_trans_err,
+                    math.degrees(summary.mean_pred_rot_err) if summary.mean_pred_rot_err is not None else None,
+                    summary.rmse_pred_trans_err,
+                    math.degrees(summary.rmse_pred_rot_err) if summary.rmse_pred_rot_err is not None else None,
+                                        
+                    summary.mean_corr_trans_err,
+                    math.degrees(summary.mean_corr_rot_err) if summary.mean_corr_rot_err is not None else None,                                        
+                    summary.rmse_corr_trans_err,
+                    math.degrees(summary.rmse_corr_rot_err) if summary.rmse_corr_rot_err is not None else None,
+                    summary.perc_95_corr_trans_err,
+                    math.degrees(summary.perc_95_corr_rot_err) if summary.perc_95_corr_rot_err is not None else None,
+                    summary.max_rolling_rmse_corr_trans_error,
+                    math.degrees(summary.max_rolling_rmse_corr_rot_error) if summary.max_rolling_rmse_corr_rot_error is not None else None,
+                    summary.corr_worse_rate_trans,  
+                    summary.corr_worse_rate_rot,    
+                    summary.mean_corr_trans_improvm,
+                    math.degrees(summary.mean_corr_rot_improvm) if summary.mean_corr_rot_improvm is not None else None,
+                    
+                    summary.final_drift_trans,
+                    math.degrees(summary.final_drift_rot) if summary.final_drift_rot is not None else None,
+
+                    (summary.mean_timing_sm_update_particle_s or 0.0) * S_TO_MS,
+                    (summary.mean_timing_sm_scan_match_update_pose_s or 0.0) * S_TO_MS,
+                    (summary.mean_timing_sm_map_extension_s or 0.0) * S_TO_MS,
+                    (summary.mean_timing_sm_map_update_s or 0.0) * S_TO_MS,
+                    (summary.mean_step_duration or 0.0) * S_TO_MS,
+                    
+                    summary.n_steps,
+                   
+                ]
+
+                writer.writerow(
+                    [
+                        ResultWriterScanMatching._format_csv_value(value, float_decimals=float_decimals)
+                        for value in row
+                    ]
+                )
+
+        print(f"\nScan-matching summary has been saved to:\n{path}")
