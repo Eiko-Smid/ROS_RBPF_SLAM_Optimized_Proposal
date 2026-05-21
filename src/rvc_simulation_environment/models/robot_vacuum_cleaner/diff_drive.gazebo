@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro" />
+  <!-- <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro" /> -->
 
     
     <!-- TODO: Add same update rates over parameter setting and define all parameters in config -->
@@ -68,7 +68,7 @@
                 <noise>
                     <type>${noise_type}</type>
                     <mean>${noise_mean}</mean>
-                    <stddv>${noise_stddv}</stddv>
+                    <stddev>${noise_stddv}</stddev>
                 </noise>
             </ray>
             <plugin name="gazebo_ros_head_hokuyo_controller" filename="libgazebo_ros_laser.so">

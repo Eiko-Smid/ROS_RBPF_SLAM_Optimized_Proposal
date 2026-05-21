@@ -43,7 +43,7 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 
     2.2 over turtlebot map
 
-        2.2.2 Same run over 4 different seeds
+        
 
 '''
 
@@ -57,9 +57,9 @@ PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/
 
 CSV_FLOAT_DECIMALS = 5
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 30
+N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
-SEED_LIST = [22, 23, 24, 56]
+SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
@@ -89,6 +89,35 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
+# def _grid_axes() -> Dict[str, List[Union[float, int]]]:
+#     return {
+#         # Playback sampling
+#         "every_nth_beam_filter": [4],
+#         "every_nth_beam_map": [2],
+
+#         # OccupancyParams (OGM)
+#         "increasing_probability": [0.7, 0.85],
+#         "decreasing_probability": [0.30, 0.15],
+#         "min_log_odds": [-5.0],
+#         "max_log_odds": [5.0],
+
+#         # ScanMatcherParams
+#         "occ_thres": [0.8, 1.6],
+#         "delta_r": [0.4, 0.6],
+#         "surface_radius_m": [0.1, 0.2],
+#         "min_free_ratio": [0.25, 0.4],
+
+#         # ICPParams
+#         "max_n_points": [400],
+#         "neighbors_pca": [10],
+#         "max_iterations": [5],
+#         "max_correspondence_distance": [0.6],
+#         "min_corresp": [15],
+#         "max_translation_jump": [0.8],
+#         "max_rotation_jump_deg": [80.0, 120.0],
+#         "max_acceptable_mean_error": [0.15],
+#     }
+
 def _grid_axes() -> Dict[str, List[Union[float, int]]]:
     return {
         # Playback sampling
@@ -96,16 +125,16 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "every_nth_beam_map": [2],
 
         # OccupancyParams (OGM)
-        "increasing_probability": [0.7, 0.85],
-        "decreasing_probability": [0.30, 0.15],
+        "increasing_probability": [0.85],
+        "decreasing_probability": [0.15],
         "min_log_odds": [-5.0],
         "max_log_odds": [5.0],
 
         # ScanMatcherParams
-        "occ_thres": [0.8, 1.6],
-        "delta_r": [0.4, 0.6],
-        "surface_radius_m": [0.1, 0.2],
-        "min_free_ratio": [0.25, 0.4],
+        "occ_thres": [1.6],
+        "delta_r": [0.6],
+        "surface_radius_m": [0.2],
+        "min_free_ratio": [0.4],
 
         # ICPParams
         "max_n_points": [400],
@@ -114,10 +143,9 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "max_correspondence_distance": [0.6],
         "min_corresp": [15],
         "max_translation_jump": [0.8],
-        "max_rotation_jump_deg": [80.0, 120.0],
+        "max_rotation_jump_deg": [120.0],
         "max_acceptable_mean_error": [0.15],
     }
-
 
 def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
     file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)

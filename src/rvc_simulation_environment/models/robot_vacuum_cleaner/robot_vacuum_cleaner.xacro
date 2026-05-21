@@ -3,16 +3,19 @@
 <!--Choose a name space and start xacro-->
 <robot name="differential_drive_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+    <xacro:arg name="laser_range_resolution" default="0.01"/>
+    <xacro:arg name="laser_noise_type" default="gaussian"/>
+    <xacro:arg name="laser_noise_mean" default="0.0"/>
+    <xacro:arg name="laser_noise_stddv" default="0.01"/>
+
     <!--Including all xacro files that are needed to describe the robot model-->
-    <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/diff_drive.gazebo"/>
+    <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro"/>
     <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/materials.xacro"/>
     <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/macros.xacro"/>
-    <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro"/>
-
+    <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/diff_drive.gazebo"/>
     
 <!--____________________________________________________________________________________________________________________________________________________________________-->
 <!--Define Chassis______________________________________________________________________________________________________________________________________________________-->
-
 
     <!--Create a dummy link as a base link-->
     <link name= "base_link">

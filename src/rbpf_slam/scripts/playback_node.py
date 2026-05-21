@@ -70,21 +70,25 @@ except ModuleNotFoundError:
 from rbpf_slam.msg import WheelEncoder
 from rbpf_slam.msg import PoseErr2D
 
+
+TAG = "In this run we also record if we don't move!"
+MAP_NAME = "cafe"
 NODE_NAME = "playback_node"
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 
 
-def build_metadata(exp_params):
+def build_metadata(exp_params, motion_error_factor, turn_error_factor, robot_start_pose):
     return {
         # "map_resolution": exp_params.map_param.grid_resolution_m,
         # "map_width": exp_params.map_param.map_width,
         # "map_height": exp_params.map_param.map_height,
-        "map": "turtlebot3_world",
+        "map": MAP_NAME,
+        "robot_start_pose": robot_start_pose,
         "sensor_range_max": exp_params.sensor_params.max_sensor_range,
         "sensor_range_min": exp_params.sensor_params.min_sensor_range,
         "wheel_separation": exp_params.robot_params.wheel_separation,
-        "wheel_encoder_sim_motion_error_factor": 0.1,
-        "wheel_encoder_sim_turn_error_factor": 0.15,
+        "wheel_encoder_sim_motion_error_factor": motion_error_factor,
+        "wheel_encoder_sim_turn_error_factor": turn_error_factor,
         "n_particles": exp_params.particle_params.n_particles,
         "comment": exp_params.tag,
     }
@@ -111,6 +115,7 @@ class ROSParams:
     odom_tf_frame = "odom_link"
     base_tf_frame = "base_link"
     laser_tf_frame = "laser_scanner_link"
+
 
 
 def define_exp_parameter() -> ExperimentParams:
@@ -178,7 +183,7 @@ def define_exp_parameter() -> ExperimentParams:
                 proposal_sigma_xy=0.1,
                 proposal_sigma_theta=0.05,
                 proposal_n_samples=10,
-                tag=("First rbpf node run"),
+                tag=(TAG),
             )
 
     return exp_param
@@ -191,7 +196,15 @@ class RECORDParams:
 
 
 class ROSPlaybackNode:
-    def __init__(self, ros_params: ROSParams, record_params: RECORDParams, exp_param: ExperimentParams):
+    def __init__(
+            self,
+            ros_params: ROSParams,
+            record_params: RECORDParams,
+            exp_param: ExperimentParams,
+            motion_error_factor: float,
+            turn_error_factor: float,
+            robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    ):
         # Store members
         self.record_params = record_params  
         self.ros_params = ros_params  
@@ -199,7 +212,7 @@ class ROSPlaybackNode:
         self.time_jumps = 0.0    
 
         # Build metadata
-        metadata = build_metadata(exp_param)
+        metadata = build_metadata(exp_param, motion_error_factor, turn_error_factor, robot_start_pose)
 
         # Init recorder 
         self.recorder = PlaybackRecorder(
@@ -313,9 +326,8 @@ class ROSPlaybackNode:
                 if(
                     self.link_state_message is not None and
                     self.link_state_idx is not None and
-                    self.laser_scan is not None and
-                    (self.dl > min_dist or
-                    self.dr > min_dist)
+                    self.laser_scan is not None 
+                    # and(self.dl > min_dist or self.dr > min_dist)
                 ):                    
 
                     # Extract data and reset data
@@ -361,6 +373,31 @@ class ROSPlaybackNode:
 
 
 def main():
+    # Init Node
+    rospy.init_node(NODE_NAME)
+
+    # Get param from ros param server
+    # Get motion errors params
+    motion_error_factor = rospy.get_param(
+        "/wheel_encoder_simulation_node/wheel_encoder_motion_error_factor"
+    )
+
+    motion_turn_factor = rospy.get_param(
+        "/wheel_encoder_simulation_node/wheel_encoder_turn_error_factor"
+    )
+
+    # Get robot spawn pose
+    spawn_x = rospy.get_param("/spawn_x")
+    spawn_y = rospy.get_param("/spawn_y")
+    spawn_yaw = rospy.get_param("/spawn_yaw")
+
+    robot_start_pose = (spawn_x, spawn_y, spawn_yaw)
+
+    print(f"Node {NODE_NAME} started with parameters:")
+    print(f"Motion error factor: {motion_error_factor}")
+    print(f"Turn error factor: {motion_turn_factor}")
+    print(f"Robot start pose: {robot_start_pose}")
+
     # Parameters
     exp_param = define_exp_parameter()
     ros_params = ROSParams()
@@ -371,10 +408,11 @@ def main():
         ros_params=ros_params,
         record_params=rec_params,
         exp_param=exp_param,
+        motion_error_factor=motion_error_factor,
+        turn_error_factor=motion_turn_factor,
+        robot_start_pose=robot_start_pose
     )
 
-    # Init Node
-    rospy.init_node(NODE_NAME)
 
     # Run node
     playback_node.exe()
