@@ -5,7 +5,7 @@
 # debugpy.wait_for_client()
 # print("Debugger attached")
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import rospy
 import threading
@@ -71,27 +71,11 @@ from rbpf_slam.msg import WheelEncoder
 from rbpf_slam.msg import PoseErr2D
 
 
-TAG = "In this run we also record if we don't move!"
+TAG = "In this run we also record if we don't move! Zero stddev in lidar measurements"
 MAP_NAME = "cafe"
 NODE_NAME = "playback_node"
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 
-
-def build_metadata(exp_params, motion_error_factor, turn_error_factor, robot_start_pose):
-    return {
-        # "map_resolution": exp_params.map_param.grid_resolution_m,
-        # "map_width": exp_params.map_param.map_width,
-        # "map_height": exp_params.map_param.map_height,
-        "map": MAP_NAME,
-        "robot_start_pose": robot_start_pose,
-        "sensor_range_max": exp_params.sensor_params.max_sensor_range,
-        "sensor_range_min": exp_params.sensor_params.min_sensor_range,
-        "wheel_separation": exp_params.robot_params.wheel_separation,
-        "wheel_encoder_sim_motion_error_factor": motion_error_factor,
-        "wheel_encoder_sim_turn_error_factor": turn_error_factor,
-        "n_particles": exp_params.particle_params.n_particles,
-        "comment": exp_params.tag,
-    }
 
 
 @dataclass
@@ -115,6 +99,16 @@ class ROSParams:
     odom_tf_frame = "odom_link"
     base_tf_frame = "base_link"
     laser_tf_frame = "laser_scanner_link"
+
+    robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    motion_error_factor: Optional[float] = None
+    turn_error_factor: Optional[float] = None
+
+    laser_range_resolution: Optional[float] = None
+    laser_noise_type: Optional[str] = None
+    laser_noise_mean: Optional[float] = None
+    laser_noise_stddv: Optional[float] = None
 
 
 
@@ -195,15 +189,38 @@ class RECORDParams:
     output_dir: str = PLAYBACK_DIR
 
 
+
+def build_metadata(exp_params: ExperimentParams, ros_params: ROSParams):
+    return {
+        # "map_resolution": exp_params.map_param.grid_resolution_m,
+        # "map_width": exp_params.map_param.map_width,
+        # "map_height": exp_params.map_param.map_height,
+        "map": MAP_NAME,
+        
+        "robot_start_pose": ros_params.robot_start_pose,
+        
+        "sensor_range_max": exp_params.sensor_params.max_sensor_range,
+        "sensor_range_min": exp_params.sensor_params.min_sensor_range,
+        "laser_range_resolution": ros_params.laser_range_resolution,
+        "laser_noise_type": ros_params.laser_noise_type,
+        "laser_noise_mean": ros_params.laser_noise_mean,
+        "laser_noise_stddv": ros_params.laser_noise_stddv,
+        
+        "wheel_separation": exp_params.robot_params.wheel_separation,
+        "wheel_encoder_sim_motion_error_factor": ros_params.motion_error_factor,
+        "wheel_encoder_sim_turn_error_factor": ros_params.turn_error_factor,
+        
+        "n_particles": exp_params.particle_params.n_particles,
+        "comment": exp_params.tag,
+    }
+
+
 class ROSPlaybackNode:
     def __init__(
             self,
             ros_params: ROSParams,
             record_params: RECORDParams,
             exp_param: ExperimentParams,
-            motion_error_factor: float,
-            turn_error_factor: float,
-            robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     ):
         # Store members
         self.record_params = record_params  
@@ -212,7 +229,7 @@ class ROSPlaybackNode:
         self.time_jumps = 0.0    
 
         # Build metadata
-        metadata = build_metadata(exp_param, motion_error_factor, turn_error_factor, robot_start_pose)
+        metadata = build_metadata(exp_params=exp_param, ros_params=ros_params)
 
         # Init recorder 
         self.recorder = PlaybackRecorder(
@@ -377,13 +394,14 @@ def main():
     rospy.init_node(NODE_NAME)
 
     # Get param from ros param server
+    ros_params = ROSParams()
     # Get motion errors params
     motion_error_factor = rospy.get_param(
-        "/wheel_encoder_simulation_node/wheel_encoder_motion_error_factor"
+        "/motion_error_factor"
     )
 
     motion_turn_factor = rospy.get_param(
-        "/wheel_encoder_simulation_node/wheel_encoder_turn_error_factor"
+        "/turn_error_factor"
     )
 
     # Get robot spawn pose
@@ -393,26 +411,43 @@ def main():
 
     robot_start_pose = (spawn_x, spawn_y, spawn_yaw)
 
+    # Get laser noise params
+    laser_range_resolution = rospy.get_param("/laser_range_resolution")
+    laser_noise_type = rospy.get_param("/laser_noise_type")
+    laser_noise_mean = rospy.get_param("/laser_noise_mean")
+    laser_noise_stddv = rospy.get_param("/laser_noise_stddv")
+
     print(f"Node {NODE_NAME} started with parameters:")
     print(f"Motion error factor: {motion_error_factor}")
     print(f"Turn error factor: {motion_turn_factor}")
     print(f"Robot start pose: {robot_start_pose}")
+    print("Robot start pose: x={:.2f}, y={:.2f}, yaw={:.2f}".format(*robot_start_pose))
+    print(f"Laser range resolution: {laser_range_resolution}")
+    print(f"Laser noise type: {laser_noise_type}")
+    print(f"Laser noise mean: {laser_noise_mean}")
+    print(f"Laser noise stddv: {laser_noise_stddv}")
 
     # Parameters
     exp_param = define_exp_parameter()
-    ros_params = ROSParams()
     rec_params = RECORDParams()
+
+    # Set ros params
+    ros_params.robot_start_pose = robot_start_pose
+    ros_params.motion_error_factor = motion_error_factor
+    ros_params.turn_error_factor = motion_turn_factor
+
+    ros_params.laser_range_resolution = laser_range_resolution
+    ros_params.laser_noise_type = laser_noise_type
+    ros_params.laser_noise_mean = laser_noise_mean
+    ros_params.laser_noise_stddv = laser_noise_stddv
+
 
     # Init class
     playback_node = ROSPlaybackNode(
         ros_params=ros_params,
         record_params=rec_params,
         exp_param=exp_param,
-        motion_error_factor=motion_error_factor,
-        turn_error_factor=motion_turn_factor,
-        robot_start_pose=robot_start_pose
     )
-
 
     # Run node
     playback_node.exe()

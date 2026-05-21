@@ -8,6 +8,32 @@
     <arg name="spawn_pitch" default="0.0"/>
     <arg name="spawn_yaw" default="0.0"/>
 
+    <!--Motion uncertainty parameters-->
+    <arg name="motion_error_factor" default="0.1"/>
+    <arg name="turn_error_factor" default="0.15"/>
+
+    <!--Laser Scanner parameters-->
+    <arg name="laser_range_resolution" default="0.01"/>
+    <arg name="laser_noise_type" default="gaussian"/>
+    <arg name="laser_noise_mean" default="0.0"/>
+    <arg name="laser_noise_stddv" default="0.00"/>
+
+    <!--Pass the parameters to ros parameter server-->
+    <param name="spawn_x" value="$(arg spawn_x)"/>
+    <param name="spawn_y" value="$(arg spawn_y)"/>
+    <param name="spawn_z" value="$(arg spawn_z)"/>
+    <param name="spawn_roll" value="$(arg spawn_roll)"/>
+    <param name="spawn_pitch" value="$(arg spawn_pitch)"/>
+    <param name="spawn_yaw" value="$(arg spawn_yaw)"/>
+
+    <param name="motion_error_factor" value="$(arg motion_error_factor)"/>
+    <param name="turn_error_factor" value="$(arg turn_error_factor)"/>
+
+    <param name="laser_range_resolution" value="$(arg laser_range_resolution)"/>
+    <param name="laser_noise_type" value="$(arg laser_noise_type)"/>
+    <param name="laser_noise_mean" value="$(arg laser_noise_mean)"/>
+    <param name="laser_noise_stddv" value="$(arg laser_noise_stddv)"/>
+
     <!--Launch the robot model and the world.-->
     <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch">
         <arg name="paused" value="$(arg paused)"/>
@@ -17,6 +43,11 @@
         <arg name="spawn_roll" value="$(arg spawn_roll)"/>
         <arg name="spawn_pitch" value="$(arg spawn_pitch)"/>
         <arg name="spawn_yaw" value="$(arg spawn_yaw)"/>
+
+        <arg name="laser_range_resolution" value="$(arg laser_range_resolution)"/>
+        <arg name="laser_noise_type" value="$(arg laser_noise_type)"/>
+        <arg name="laser_noise_mean" value="$(arg laser_noise_mean)"/>
+        <arg name="laser_noise_stddv" value="$(arg laser_noise_stddv)"/>
     </include>
 
     <!--Generate static transform between map and odom -->
@@ -32,8 +63,8 @@
             name="wheel_encoder_simulation_node" 
             type="wheel_encoder_simulation.py" 
             output="screen">
-            <param name="wheel_encoder_motion_error_factor" value="0.1"/>
-            <param name="wheel_encoder_turn_error_factor" value="0.15"/>
+            <param name="wheel_encoder_motion_error_factor" value="$(arg motion_error_factor)"/>
+            <param name="wheel_encoder_turn_error_factor" value="$(arg turn_error_factor)"/>
     </node>
     
     <!--Launch the occupancy grid mapping algorithm (with known pose).-->

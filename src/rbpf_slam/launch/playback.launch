@@ -26,6 +26,14 @@
     <param name="spawn_pitch" value="$(arg spawn_pitch)"/>
     <param name="spawn_yaw" value="$(arg spawn_yaw)"/>
 
+    <param name="motion_error_factor" value="$(arg motion_error_factor)"/>
+    <param name="turn_error_factor" value="$(arg turn_error_factor)"/>
+
+    <param name="laser_range_resolution" value="$(arg laser_range_resolution)"/>
+    <param name="laser_noise_type" value="$(arg laser_noise_type)"/>
+    <param name="laser_noise_mean" value="$(arg laser_noise_mean)"/>
+    <param name="laser_noise_stddv" value="$(arg laser_noise_stddv)"/>
+
     <!--Launch the robot model and the world.-->
     <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch">
         <arg name="paused" value="$(arg paused)"/>
