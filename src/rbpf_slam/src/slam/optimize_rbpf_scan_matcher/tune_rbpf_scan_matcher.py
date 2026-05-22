@@ -54,19 +54,28 @@ from .result_writer_scanmatching import ResultWriterScanMatching
     3.1 Cafe map (1779375646)
     
         3.1.1 First run on cafe map with zero stddev in scan measurements
+            Results:
+                - Solid results
+
+        3.1.2 Run on cafe map with added noise in scan ranges
 
         
     3.2 turtle bot 3 map (1779363559)
 
         3.2.1 First run on turtle bot map with zero stddev in scan measurements
+            Results:
+                - Solid results
 
+        3.2.2 Run on turtle bot map with added noise in scan ranges
     
+
+                
 '''
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_1_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_1_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_1_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_2_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_2_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_2_params.json"
 
 # SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary.csv"
 # SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
@@ -78,6 +87,9 @@ N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
 # SEED_LIST = [22, 23, 56]
 SEED_LIST = [22]
+
+# Define sttdev [m] to add noise to the playback measurement. This is only possible if the playback data doesnt include noise in the measurements.
+MEASUREMENT_STDDEV = 0.03
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
 PLAYBACK_SUFFIX = "1779363559"
@@ -183,6 +195,7 @@ def write_parameter_overview(
     payload = {
         "playback_dir": PLAYBACK_DIR,
         "playback_suffix": PLAYBACK_SUFFIX,
+        "measurement_stddev": MEASUREMENT_STDDEV,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
         "seed_list": SEED_LIST,
@@ -263,6 +276,13 @@ def generate_param_grid(
             min_corresp = int(min_corresp)
 
             increasing_probability, decreasing_probability = occupancy_prob_pair
+
+            # Define max sensor range 
+            max_sensor_range = 10.0
+            if MEASUREMENT_STDDEV is not None:
+                max_sensor_range += MEASUREMENT_STDDEV
+            
+
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
                     # All cells are initalized with this probability when map is initialized. 
@@ -279,7 +299,7 @@ def generate_param_grid(
                 ),
                 sensor_params=SensorParams(
                     min_sensor_range=0.1,
-                    max_sensor_range=10.0,
+                    max_sensor_range=max_sensor_range
                 ),
                 map_param=MapParameter(
                     map_width=10.0,
@@ -335,6 +355,7 @@ def generate_param_grid(
                 proposal_sigma_xy=1.0,
                 proposal_sigma_theta=1.0,
                 proposal_n_samples=1,
+                measurement_noise_stddev=MEASUREMENT_STDDEV,
                 tag=(
                     f"nf{every_nth_filter}_nm{every_nth_map}_"
                     f"ip{increasing_probability}_dp{decreasing_probability}_"
@@ -374,7 +395,10 @@ def main() -> None:
     print(f"Using start pose for tuning: {start_pose}")
 
     playback_conv = PlaybackConverter()
-    playback_data = playback_conv.convert(raw_playback_data)
+    playback_data = playback_conv.convert(
+        raw_playback_data,
+        measurement_stddev=MEASUREMENT_STDDEV,
+    )
 
     optimizer = build_optimizer()
     writer = ResultWriterScanMatching()

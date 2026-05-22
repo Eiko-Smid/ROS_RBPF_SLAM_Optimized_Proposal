@@ -121,6 +121,7 @@ class PlaybackRunnerScanMatching:
         # Process playback data 
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
+            step_duration = None
 
             # Filter measruements for scan matching and map update
             measurements_filter = (

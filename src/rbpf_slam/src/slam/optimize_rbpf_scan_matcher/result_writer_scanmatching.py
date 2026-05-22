@@ -215,6 +215,7 @@ class ResultWriterScanMatching:
                 [
                     "rank",
                     "seed",
+                    "measurement_stddev",
                     "score",
                     "tag",
 
@@ -308,6 +309,7 @@ class ResultWriterScanMatching:
                 row = [
                     rank,
                     run.seed,
+                    run.params.measurement_noise_stddev,
                     run.score,
                     run_tag,
 
