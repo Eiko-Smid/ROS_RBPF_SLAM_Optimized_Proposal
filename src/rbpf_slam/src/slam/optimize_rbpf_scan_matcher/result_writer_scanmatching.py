@@ -108,6 +108,9 @@ class ResultWriterScanMatching:
                     "true_x",
                     "true_y",
                     "true_theta_deg",
+                    "raw_odom_x",
+                    "raw_odom_y",
+                    "raw_odom_theta_deg",
                     "pred_x",
                     "pred_y",
                     "pred_theta_deg",
@@ -139,6 +142,9 @@ class ResultWriterScanMatching:
                 run_tag = ResultWriterScanMatching._build_tag_from_params(run.params)
                 for step in run.step_results:
                     true_x, true_y, true_theta = step.true_pose if step.true_pose is not None else (None, None, None)
+                    raw_odom_x, raw_odom_y, raw_odom_theta = (
+                        step.raw_odom_pose if step.raw_odom_pose is not None else (None, None, None)
+                    )
                     pred_x, pred_y, pred_theta = step.pred_pose if step.pred_pose is not None else (None, None, None)
                     corr_x, corr_y, corr_theta = step.corr_pose if step.corr_pose is not None else (None, None, None)
 
@@ -167,6 +173,9 @@ class ResultWriterScanMatching:
                         ResultWriterScanMatching._optional_value(true_x),
                         ResultWriterScanMatching._optional_value(true_y),
                         ResultWriterScanMatching._optional_deg(true_theta),
+                        ResultWriterScanMatching._optional_value(raw_odom_x),
+                        ResultWriterScanMatching._optional_value(raw_odom_y),
+                        ResultWriterScanMatching._optional_deg(raw_odom_theta),
                         ResultWriterScanMatching._optional_value(pred_x),
                         ResultWriterScanMatching._optional_value(pred_y),
                         ResultWriterScanMatching._optional_deg(pred_theta),
@@ -272,29 +281,33 @@ class ResultWriterScanMatching:
                     "mean_best_rot_abs_deg",
                     "max_best_rot_abs_deg",
                     
-                    # predicted pose error metrics
-                    # Raw odometry baseline is placed right before predicted errors.
+                    # Translational errors of raw odom, pred and corrected pose
                     "mean_raw_odom_trans_err",
                     "mean_pred_trans_err",
+                    "mean_corr_trans_err",
+                    "rmse_raw_odom_trans_err",
+                    "rmse_pred_trans_err",
+                    "rmse_corr_trans_err",
+
+                    # Rotational errors of raw  odom, pred and corrected pose
                     "mean_raw_odom_rot_err_deg",
                     "mean_pred_rot_err_deg",
-                    "rmse_pred_trans_err",
-                    "rmse_pred_rot_err_deg",
-
-                    # CCorrected pose error metrics
-                    "mean_corr_trans_err",
-                    "mean_corr_rot_err_deg",                    
-                    "rmse_corr_trans_err",
+                    "mean_corr_rot_err_deg",                         
+                    "rmse_raw_odom_rot_err_deg",
+                    "rmse_pred_rot_err_deg",                                   
                     "rmse_corr_rot_err_deg",
+
+                    # Percentil
                     "perc_95_corr_trans_err",
                     "perc_95_corr_rot_err",
                     
                     # Rolling rmse
                     "max_rolling_rmse_corr_trans_error",
                     "max_rolling_rmse_corr_rot_error",
+                    
+                    # RMSE rolling mean and improvement statistics
                     "corr_worse_rate_trans",
-                    "corr_worse_rate_rot",
-                    # Scan match improvement metrics
+                    "corr_worse_rate_rot",                    
                     "mean_corr_trans_improvm",
                     "mean_corr_rot_improvm_deg",
 
@@ -370,19 +383,27 @@ class ResultWriterScanMatching:
                     ResultWriterScanMatching._optional_deg(summary.mean_best_rot_abs),
                     ResultWriterScanMatching._optional_deg(summary.max_best_rot_abs),
 
+                    # Translational errors of raw odom, pred and corrected pose
                     summary.mean_raw_odom_trans_err,
                     summary.mean_pred_trans_err,
+                    summary.mean_corr_trans_err,
+                    summary.rmse_raw_odom_trans_err,
+                    summary.rmse_pred_trans_err,
+                    summary.rmse_corr_trans_err,
+
+                    # Rotational errors of raw  odom, pred and corrected pose
                     ResultWriterScanMatching._optional_deg(summary.mean_raw_odom_rot_err),
                     ResultWriterScanMatching._optional_deg(summary.mean_pred_rot_err),
-                    summary.rmse_pred_trans_err,
-                    ResultWriterScanMatching._optional_deg(summary.rmse_pred_rot_err),
-                                        
-                    summary.mean_corr_trans_err,
-                    ResultWriterScanMatching._optional_deg(summary.mean_corr_rot_err),
-                    summary.rmse_corr_trans_err,
+                    ResultWriterScanMatching._optional_deg(summary.mean_corr_rot_err),                    
+                    ResultWriterScanMatching._optional_deg(summary.rmse_raw_odom_rot_err),
+                    ResultWriterScanMatching._optional_deg(summary.rmse_pred_rot_err),                    
                     ResultWriterScanMatching._optional_deg(summary.rmse_corr_rot_err),
+                    
+                    # Percentil
                     summary.perc_95_corr_trans_err,
                     ResultWriterScanMatching._optional_deg(summary.perc_95_corr_rot_err),
+
+                    # RMSE rolling mean and improvement statistics
                     summary.max_rolling_rmse_corr_trans_error,
                     ResultWriterScanMatching._optional_deg(summary.max_rolling_rmse_corr_rot_error),
                     summary.corr_worse_rate_trans,  

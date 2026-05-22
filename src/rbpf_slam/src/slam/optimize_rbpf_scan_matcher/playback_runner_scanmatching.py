@@ -214,7 +214,12 @@ class PlaybackRunnerScanMatching:
             rbpf_sc_only_info = rbpf.get_step_info_scan_match_only()
             icp_info = rbpf.particles[0].scan_matcher.icp.get_info()
             scan_match_info = rbpf.particles[0].scan_matcher.get_info()
-            scan_match_failed = bool(rbpf_sc_only_info.get("scan_match_failed", False))
+            mode = rbpf_sc_only_info.get("mode")
+            is_initialization_step = (mode == "initialization")
+
+            scan_match_failed = (
+                None if is_initialization_step else bool(rbpf_sc_only_info.get("scan_match_failed", False))
+            )
             step_stop_reason = icp_info.get("stop_reason")
 
             # If scan matching failed before starting ICP, note that!
@@ -242,7 +247,9 @@ class PlaybackRunnerScanMatching:
                 n_measurements_total=len(step.scan),
                 n_valid_measurements_filter=len(measurements_filter),
                 n_valid_measurements_map_update=len(measurements_map_update),
-                n_map_points_extracted=scan_match_info.get("map_points_count"),
+                n_map_points_extracted=(
+                    None if is_initialization_step else scan_match_info.get("map_points_count")
+                ),
                 t_ogm=rbpf_sc_only_info.get("timing_ogm_update"),
                 t_scan_matching=scan_match_info.get("time_duration_scan_matching"),
                 t_prediction=scan_match_info.get("time_duration_prediction"),

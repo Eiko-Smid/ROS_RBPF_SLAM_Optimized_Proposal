@@ -59,6 +59,8 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 
         3.1.2 Run on cafe map with added noise in scan ranges
 
+            
+
         
     3.2 turtle bot 3 map (1779363559)
 
@@ -68,14 +70,13 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 
         3.2.2 Run on turtle bot map with added noise in scan ranges
     
-
                 
 '''
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_2_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_2_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_2_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_2_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_2_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_2_params.json"
 
 # SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary.csv"
 # SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
@@ -94,7 +95,8 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
-PLAYBACK_SUFFIX = "1779363559"
+# PLAYBACK_SUFFIX = "1779363559"        # turtlebot 3 map
+PLAYBACK_SUFFIX = "1779375646"          # Cafe map
 
 
 def _to_jsonable(value: Any) -> Any:

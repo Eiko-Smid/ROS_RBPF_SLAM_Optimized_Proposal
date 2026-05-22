@@ -74,7 +74,13 @@ class ScanMatchingScorer:
         corr_worse_rate_rot = float(summary.corr_worse_rate_rot)
 
         final_drift_trans = float(summary.final_drift_trans)
-        final_drift_rot_deg = math.degrees(float(summary.final_drift_rot))    
+        final_drift_rot_deg = math.degrees(float(summary.final_drift_rot))  
+
+        allowed_fail_rate_icp = 0.03   
+        icp_failure_term = (
+            1.0 * scan_match_failed_rate
+            + 8.0 * max(0.0, scan_match_failed_rate - allowed_fail_rate_icp)
+        )
 
         return (
             # Overall trajectory quality
@@ -94,11 +100,11 @@ class ScanMatchingScorer:
             + rolling_rot_term
 
             # Reliability
-            + 0.4 * scan_match_failed_rate
+            + icp_failure_term
 
             # Did scan matching improve the prediction?
-            + 0.2 * corr_worse_rate_trans
-            + 0.1 * corr_worse_rate_rot
+            + 0.1 * corr_worse_rate_trans
+            + 0.05 * corr_worse_rate_rot
 
             # Weak tie-breaker
             + 0.1 * final_drift_trans / 0.2
