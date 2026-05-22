@@ -870,7 +870,7 @@ class RBPF:
                     "scan_match_failed": False,
                     # "particle_pose": self.particles[0].pose,
                     "particle_map": self.particles[0].scan_matcher.ogm.return_log_odds_map(),
-                    # "timing_update_particle": t_init_process_s,
+                    "timing_update_particle": None,
                     "timing_ogm_update": getattr(self, "_last_timing_sm_map_update_s", None),
                 }
 

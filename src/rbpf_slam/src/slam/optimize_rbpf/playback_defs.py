@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Optional
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -51,3 +51,4 @@ class ExperimentParams:
     gaussian_sigma: float = 0.05
     proposal_alpha: float = 0.5
     proposal_beta: float = 2.0
+    measurement_noise_stddev: Optional[float] = None

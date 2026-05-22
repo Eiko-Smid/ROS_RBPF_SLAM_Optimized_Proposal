@@ -415,6 +415,12 @@ N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each p
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
 
+# Define sttdev [m] to add noise to the playback measurements.
+# Set to None to disable noise injection.
+MEASUREMENT_STDDEV = None
+MIN_SENSOR_RANGE = 0.1
+MAX_SENSOR_RANGE = 10.0 
+
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 PLAYBACK_SUFFIX = "1777891056"        # Cafe map
 # PLAYBACK_SUFFIX = "1777901198"          # Turtlebot map
@@ -490,7 +496,7 @@ def _grid_axes() -> dict:
     }
 
 
-def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
+def write_parameter_overview(path: str, n_repeats: int, start_pose, override: bool = False) -> None:
     file_exists = ResultWriter.create_path_and_check_if_file_exists(path=path)
 
     if file_exists and not override:
@@ -498,14 +504,16 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         return
 
     axes = _grid_axes()
-    example_params = next(generate_param_grid(n_repeats=1), None)
+    example_params = next(generate_param_grid(start_pose=start_pose, n_repeats=1), None)
 
     payload = {
         "playback_dir": PLAYBACK_DIR,
         "playback_suffix": PLAYBACK_SUFFIX,
+        "measurement_stddev": MEASUREMENT_STDDEV,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
         "seed_list": SEED_LIST,
+        "start_pose": start_pose,
         "grid_axes": axes,
         "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
     }
@@ -516,7 +524,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
     print(f"\nParameter overview has been saved to:\n{path}")
 
 
-def generate_param_grid(n_repeats: int = 1):
+def generate_param_grid(start_pose, n_repeats: int = 1):
     '''
     Defined the parameter grid for the RBPF SLAM optimization. This is a generator that yields ExperimentParams for
     each combination of parameters in the grid.
@@ -546,7 +554,6 @@ def generate_param_grid(n_repeats: int = 1):
 
     # Compute wheel separation
     wheel_separation = _compute_wheel_separation()
-
 
     for repeat_idx in range(1, n_repeats + 1):
         for (
@@ -597,8 +604,8 @@ def generate_param_grid(n_repeats: int = 1):
                     max_log_odds=5.0,
                 ),
                 sensor_params=SensorParams(
-                    min_sensor_range=0.1,
-                    max_sensor_range=10.0,
+                    min_sensor_range=MIN_SENSOR_RANGE,
+                    max_sensor_range=MAX_SENSOR_RANGE,
                 ),
                 map_param=MapParameter(
                     map_width=10.0,
@@ -634,7 +641,7 @@ def generate_param_grid(n_repeats: int = 1):
                 ),
                 particle_params=ParticleParams(
                     n_particles=n_part,
-                    start_pose=(0.0, 0.0, 0.0),
+                    start_pose=start_pose,
                 ),
                 motion_model_params=MotionModelParams(
                     sigma_x=sigma_xy_m,
@@ -657,6 +664,7 @@ def generate_param_grid(n_repeats: int = 1):
                 gaussian_sigma=0.05,
                 proposal_alpha=alpha,
                 proposal_beta=beta,
+                measurement_noise_stddev=MEASUREMENT_STDDEV,
                 tag=(
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
@@ -694,11 +702,21 @@ def main():
         file_suffix=PLAYBACK_SUFFIX,
         filedir=PLAYBACK_DIR,
         n_steps=N_PLAYBACK_STEPS,
+        ensure_start_pose=True,
+        prompt_for_missing_start_pose=True,
     )
+
+    start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+    print(f"Using start pose for tuning: {start_pose}")
 
     # Convert playback data
     playback_conv = PlaybackConverter()
-    playback_data = playback_conv.convert(raw_playback_data)
+    playback_data = playback_conv.convert(
+        raw_playback_data,
+        measurement_stddev=MEASUREMENT_STDDEV,
+        min_sensor_range=MIN_SENSOR_RANGE,
+        max_sensor_range=MAX_SENSOR_RANGE,
+    )
 
     # Init optimizer
     rbpf_optimizer = build_optimizer()
@@ -710,13 +728,14 @@ def main():
     write_parameter_overview(
         path=PARAMETER_OVERVIEW_PATH,
         n_repeats=N_OPTIMIZATION_REPEATS,
+        start_pose=start_pose,
         override=OVERRIDE_EXISTING_RESULTS,
     )
 
     # Run optimizer
     ranked_runs = rbpf_optimizer.optimize(
         playback_data=playback_data,
-        param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
+        param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
         seeds=SEED_LIST,
     )
 
@@ -724,7 +743,7 @@ def main():
     # Run optimizer without proposal pose (scan matcher pose is used instead)
     # ranked_runs = rbpf_optimizer.optimize_without_proposal_pose(
     #     playback_data=playback_data,
-    #     param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
+    #     param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
     #     seeds=SEED_LIST,
     # )
 

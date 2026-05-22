@@ -11,6 +11,10 @@ from .optimizer import RankedRun
 
 class ResultWriter:
 	@staticmethod
+	def _optional_ms(value_s):
+		return value_s * 1000.0 if value_s is not None else None
+
+	@staticmethod
 	def _pose_to_csv_value(pose):
 		if pose is None:
 			return ""
@@ -225,7 +229,7 @@ class ResultWriter:
 						step.corr_y_theta,
 						
 						# Step information
-						(step.step_duration or 0.0) * 1000.0,
+						ResultWriter._optional_ms(step.step_duration),
 					]
 
 					writer.writerow(
@@ -369,7 +373,8 @@ class ResultWriter:
 					"score",
 					
 					# Parameters
-					"seed",					
+					"seed",
+					"measurement_stddev",					
 					"every_nth_beam_filter",
 					"every_nth_beam_map",
 					"n_particles",
@@ -493,7 +498,8 @@ class ResultWriter:
 					run.score,
 					
 					# Parameters
-					run.seed,					
+					run.seed,
+					run.params.measurement_noise_stddev,					
 					run.params.every_nth_scan_filter,
 					run.params.every_nth_scan_map,
 					run.params.particle_params.n_particles,
@@ -605,7 +611,7 @@ class ResultWriter:
 					
 					# Step information
 					summary.get("n_steps"),
-					(summary.get("mean_step_duration", 0.0) or 0.0) * 1000.0,
+					ResultWriter._optional_ms(summary.get("mean_step_duration")),
 				]
 
 				writer.writerow(

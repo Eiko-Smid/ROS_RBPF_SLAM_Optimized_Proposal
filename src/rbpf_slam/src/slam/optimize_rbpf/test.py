@@ -76,12 +76,15 @@ def rank_model_probs():
 
 
 def test():
-    wrong_problem = -1.95
-    print(floor(wrong_problem))
+    MEASUREMENT_STDDEV = 0.03
+    max_sensor_range=10.0 + MEASUREMENT_STDDEV 
 
+    print(max_sensor_range)
 
-    val = 2.05
-    print(floor(val))
+    MEASUREMENT_STDDEV = None
+    max_sensor_range=10.0 + MEASUREMENT_STDDEV 
+    print(max_sensor_range)
+
 
 
 def main():

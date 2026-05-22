@@ -691,7 +691,7 @@ class RBPFEvaluator:
             "mean_particle_weight_min": float(np.mean(particle_weight_min_values)) if particle_weight_min_values else 0.0,
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
             "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
-            "mean_step_duration": float(np.mean(step_durations)) if step_durations else 0.0,            
+            "mean_step_duration": float(np.mean(step_durations)) if step_durations else float("nan"),
             
             "mean_pose_err_mu_true": float(np.mean(pose_err_mu_true_values)) if pose_err_mu_true_values else float("nan"),
             "mean_min_xj_pose_err_true": float(np.mean(min_xj_pose_err_true_values)) if min_xj_pose_err_true_values else float("nan"),

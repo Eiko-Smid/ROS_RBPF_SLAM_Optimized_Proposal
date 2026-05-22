@@ -77,6 +77,7 @@ class PlaybackRunner:
 
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
+            step_duration = None
 
             # Subsample and clean measurements
             measurements_proposal = (
@@ -222,6 +223,7 @@ class PlaybackRunner:
 
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
+            step_duration = None
 
             # Subsample and clean measurements
             measurements_proposal = (
