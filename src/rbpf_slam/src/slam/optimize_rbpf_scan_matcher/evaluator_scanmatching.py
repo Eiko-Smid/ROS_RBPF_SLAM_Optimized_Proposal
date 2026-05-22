@@ -334,11 +334,9 @@ class ScanMatchingEvaluator:
 
         
         icp_iterations_per_step = [
-            float(s.icp_iterations) if s.icp_iterations is not None else 0.0
-            for s in step_results
+            float(s.icp_iterations) for s in step_results if s.icp_iterations is not None
         ]
-        mean_icp_iterations = float(np.sum(icp_iterations_per_step) / (n_steps - scan_match_failed_count)) if n_steps > 0 else 0.0
-        # mean_icp_iterations = float(np.mean(icp_iterations_per_step)) if n_steps > 0 else 0.0
+        mean_icp_iterations = float(np.mean(icp_iterations_per_step)) if icp_iterations_per_step else float("nan")
 
         successful_steps = [s for s in step_results if s.use_transformation is True]
         successful_icp_errors = [s.icp_mean_error for s in successful_steps if s.icp_mean_error is not None]
@@ -443,6 +441,6 @@ class ScanMatchingEvaluator:
             final_drift_rot=final_drift_rot,
 
             # Timing metrics
-            mean_step_duration=float(np.mean(step_durations)) if step_durations else 0.0,
-            mean_timing_sm_update_particle_s=float(np.mean(update_particle_timings)) if update_particle_timings else 0.0,
+            mean_step_duration=float(np.mean(step_durations)) if step_durations else float("nan"),
+            mean_timing_sm_update_particle_s=float(np.mean(update_particle_timings)) if update_particle_timings else float("nan"),
         )

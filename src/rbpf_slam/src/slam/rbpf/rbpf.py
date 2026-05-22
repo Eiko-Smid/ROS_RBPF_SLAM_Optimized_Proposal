@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
+from enum import Enum
 import time
 
 import numpy as np
@@ -123,6 +124,16 @@ class RBPFFactory():
         )
 
 
+class InitStatus(Enum):
+    WAITING = "waiting for initialization"
+    INITIALIZING = "Initialization in progress"
+    SUCCESS = "Init successful"
+    FAILED_ODOM_THRESHOLD = (
+        "Init failed/skipped because dl or dr exceeded the odometry threshold. "
+        "Initialization will never be executed again."
+    )
+
+
 
 class RBPF:
     def __init__(
@@ -140,6 +151,18 @@ class RBPF:
         self.proposal = proposal
         self.resampler = resampler
         self.particles = particles
+
+        # Initialization
+        # Number of initial data steps that were already consumed by init_process().
+        # Starts at 0 because no initialization scan has been processed yet.
+        self.init_counter = 0
+        self.init_status = InitStatus.WAITING
+        self.init_count_threshold = 4
+
+        # If abs(dl) or abs(dr) exceeds this value before initialization finished,
+        # initialization is skipped forever and scan-match-only mode starts directly.
+        self.odom_threshold = 0.005
+        self.init_failure_reason = None
         
         # Define neff threshold for resampling
         if neff_threshold is not None:
@@ -170,6 +193,8 @@ class RBPF:
             "map_update_count": 0,
         }
         self._timing_stats_scan_match_only = {
+            "t_init_process_sum_s": 0.0,
+            "t_init_process_count": 0,
             "update_particle_sum_s": 0.0,
             "update_particle_count": 0,
             "scan_match_update_pose_sum_s": 0.0,
@@ -341,7 +366,52 @@ class RBPF:
         if count <= 0:
             return None
         return float(sum_value) / float(count)
+
     
+    def _init_odom_threshold_exceeded(self, odom: Tuple[float, float]) -> bool:
+        """
+        Returns True if initialization must be skipped because the robot already moved
+        too much according to wheel odometry.
+        """
+        dl, dr = odom
+        return abs(dl) > self.odom_threshold or abs(dr) > self.odom_threshold
+
+
+    
+    def init_process(
+            self,
+            particle: Particle,
+            measurements_map_update: List[Tuple[float, float]],
+    ) -> Particle:        
+        # Extend map if necessary
+        t_map_ext_start = time.perf_counter()
+        extension_needed = True
+        while extension_needed:
+            extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(particle.pose)
+        t_map_ext_s = time.perf_counter() - t_map_ext_start
+        self._timing_stats_scan_match_only["map_extension_sum_s"] += t_map_ext_s
+        self._timing_stats_scan_match_only["map_extension_count"] += 1
+
+        # Update map at the current unchanged particle pose.
+        # Important: initialization does NOT run scan matching and does NOT move the pose.
+        t_map_update_start = time.perf_counter()
+        particle.scan_matcher.ogm.update_map(
+            measurements=measurements_map_update,
+            pose=particle.pose,
+        )
+        t_map_update_s = time.perf_counter() - t_map_update_start
+        self._timing_stats_scan_match_only["map_update_sum_s"] += t_map_update_s
+        self._timing_stats_scan_match_only["map_update_count"] += 1
+        self._last_timing_sm_map_update_s = t_map_update_s
+
+        new_particle = Particle(
+            pose=particle.pose,
+            weight=particle.weight,
+            scan_matcher=particle.scan_matcher
+        )
+
+        return new_particle
+
 
     def update_particle(
         self,
@@ -758,24 +828,78 @@ class RBPF:
         This mode skips proposal and measurement model updates and is intended for
         focused scan matcher diagnostics.
         """
-       
+        # Increase step counter
         self._step_counter += 1
         step_idx = self._step_counter
 
+        # Initialization process
+        if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
+            if self._init_odom_threshold_exceeded(odom):
+                dl, dr = odom
+                self.init_status = InitStatus.FAILED_ODOM_THRESHOLD
+                self.init_failure_reason = (
+                    f"Initialization skipped at step {step_idx}: "
+                    f"abs(dl)={abs(dl):.6f}, abs(dr)={abs(dr):.6f}, "
+                    f"threshold={self.odom_threshold:.6f}"
+                )
+            elif self.init_counter < self.init_count_threshold:
+                self.init_status = InitStatus.INITIALIZING
+
+                t_init_process = time.perf_counter()
+                self.particles[0] = self.init_process(
+                    particle=self.particles[0],
+                    measurements_map_update=measurements_map_update,
+                )
+                t_init_process_s = time.perf_counter() - t_init_process
+                self._timing_stats_scan_match_only["t_init_process_sum_s"] += t_init_process_s
+                self._timing_stats_scan_match_only["t_init_process_count"] += 1
+
+                self.init_counter += 1
+
+                if self.init_counter >= self.init_count_threshold:
+                    self.init_status = InitStatus.SUCCESS
+
+                self._last_step_info_scan_match_only = {
+                    "step": step_idx,
+                    "mode": "initialization",
+                    "init_status": self.init_status.value,
+                    "init_counter": self.init_counter,
+                    "init_count_threshold": self.init_count_threshold,
+                    "odom_threshold": self.odom_threshold,
+                    "init_failure_reason": self.init_failure_reason,
+                    "scan_match_failed": False,
+                    # "particle_pose": self.particles[0].pose,
+                    "particle_map": self.particles[0].scan_matcher.ogm.return_log_odds_map(),
+                    # "timing_update_particle": t_init_process_s,
+                    "timing_ogm_update": getattr(self, "_last_timing_sm_map_update_s", None),
+                }
+
+                # Keep compatibility for callers still using get_step_info().
+                self._last_step_info = dict(self._last_step_info_scan_match_only)
+
+                return 1.0, self.particles[0].pose
+                    
+
         # Update particle based on scan matcher
-        t_update_particle_start = time.perf_counter()
+        t_start_particle_update = time.perf_counter()
         self.particles[0], scan_match_failed = self.update_particle_scan_match_only(
             particle=self.particles[0],
             odom=odom,
             measurements_filter=measurements_filter,
             measurements_map_update=measurements_map_update,
         )
-        t_update_particle_s = time.perf_counter() - t_update_particle_start
+        t_update_particle_s = time.perf_counter() - t_start_particle_update
         self._timing_stats_scan_match_only["update_particle_sum_s"] += t_update_particle_s
         self._timing_stats_scan_match_only["update_particle_count"] += 1
     
         self._last_step_info_scan_match_only = {
             "step": step_idx,
+            "mode": "scan_match_only",
+            "init_status": self.init_status.value,
+            "init_counter": self.init_counter,
+            "init_count_threshold": self.init_count_threshold,
+            "odom_threshold": self.odom_threshold,
+            "init_failure_reason": self.init_failure_reason,
             "scan_match_failed": scan_match_failed,            
             "particle_pose": self.particles[0].pose,
             "particle_map": self.particles[0].scan_matcher.ogm.return_log_odds_map(),
@@ -785,6 +909,8 @@ class RBPF:
 
         # Keep compatibility for callers still using get_step_info().
         self._last_step_info = dict(self._last_step_info_scan_match_only)
+
+        return 1.0, self.particles[0].pose
 
     
     def update_particle_without_proposal_pose(

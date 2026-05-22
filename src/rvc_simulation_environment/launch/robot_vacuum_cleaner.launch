@@ -22,24 +22,24 @@
   
   
   <!-- Load cafe world environment -->
-  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+  <!-- <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" 		value="$(find rvc_simulation_environment)/worlds/robot_vacuum_cleaner.world"/>
     <arg name="paused" 			value="$(arg paused)"/>
     <arg name="use_sim_time"   	value="$(arg use_sim_time)"/>
     <arg name="gui" 			value="$(arg gui)"/>
     <arg name="headless" 		value="$(arg headless)"/>
     <arg name="debug" 			value="$(arg debug)"/>
-  </include>
+  </include> -->
 
   <!-- Load turtlebot world environment -->
-  <!-- <include file="$(find gazebo_ros)/launch/empty_world.launch">
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <arg name="world_name" 		value="$(find rvc_simulation_environment)/worlds/turtle_map.world"/>
     <arg name="paused" 			value="$(arg paused)"/>
     <arg name="use_sim_time"   	value="$(arg use_sim_time)"/>
     <arg name="gui" 			value="$(arg gui)"/>
     <arg name="headless" 		value="$(arg headless)"/>
     <arg name="debug" 			value="$(arg debug)"/>
-  </include> -->
+  </include>
 
 
   <!-- This command builds the urdf files from the xacro files by calling the launch file -->

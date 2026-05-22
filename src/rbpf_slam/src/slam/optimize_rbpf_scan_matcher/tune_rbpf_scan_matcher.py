@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 
+# import debugpy
+# debugpy.listen(("localhost", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
+
 import itertools
 import json
 import numpy as np
 from dataclasses import asdict, is_dataclass
-from typing import Any, Dict, Iterator, List, Union
+from typing import Any, Dict, Iterator, List, Tuple, Union
 
 from ..infrastructure.playback_loader import PlaybackLoader
 from ..infrastructure.playback_converter import PlaybackConverter
@@ -43,27 +48,39 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 
     2.2 over turtlebot map
 
-        
+    
+3. After intial shift fix and after adding initalization pahse for algorithm
 
+    3.1 Cafe map (1779375646)
+    
+        3.1.1 First run on cafe map with zero stddev in scan measurements
+
+        
+    3.2 turtle bot 3 map (1779363559)
+
+        3.2.1 First run on turtle bot map with zero stddev in scan measurements
+
+    
 '''
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1777901198_2_2_2_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1777901198_2_2_2_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1777901198_2_2_2_params.json"
 
-# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_summary.csv"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_1_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_1_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_1_params.json"
+
+# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary.csv"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
 
 CSV_FLOAT_DECIMALS = 5
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
-SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22]
+# SEED_LIST = [22, 23, 56]
+SEED_LIST = [22]
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
-PLAYBACK_SUFFIX = "1777901198"
+PLAYBACK_SUFFIX = "1779363559"
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -89,6 +106,35 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
+def _grid_axes() -> Dict[str, List[Union[float, int]]]:
+    return {
+        # Playback sampling
+        "every_nth_beam_filter": [4],
+        "every_nth_beam_map": [2],
+
+        # OccupancyParams (OGM)
+        "increasing_probability": [0.7, 0.85],
+        "decreasing_probability": [0.30, 0.15],
+        "min_log_odds": [-5.0],
+        "max_log_odds": [5.0],
+
+        # ScanMatcherParams
+        "occ_thres": [0.8, 1.2, 1.6],
+        "delta_r": [0.3, 0.5, 0.7],
+        "surface_radius_m": [0.1, 0.2],
+        "min_free_ratio": [0.25, 0.4],
+
+        # ICPParams
+        "max_n_points": [400],
+        "neighbors_pca": [10],
+        "max_iterations": [5],
+        "max_correspondence_distance": [0.35, 0.6],
+        "min_corresp": [15],
+        "max_translation_jump": [0.3, 0.6],
+        "max_rotation_jump_deg": [45.0],
+        "max_acceptable_mean_error": [0.15],
+    }
+
 # def _grid_axes() -> Dict[str, List[Union[float, int]]]:
 #     return {
 #         # Playback sampling
@@ -96,16 +142,16 @@ def _compute_wheel_separation() -> float:
 #         "every_nth_beam_map": [2],
 
 #         # OccupancyParams (OGM)
-#         "increasing_probability": [0.7, 0.85],
-#         "decreasing_probability": [0.30, 0.15],
+#         "increasing_probability": [0.85],
+#         "decreasing_probability": [0.15],
 #         "min_log_odds": [-5.0],
 #         "max_log_odds": [5.0],
 
 #         # ScanMatcherParams
-#         "occ_thres": [0.8, 1.6],
-#         "delta_r": [0.4, 0.6],
-#         "surface_radius_m": [0.1, 0.2],
-#         "min_free_ratio": [0.25, 0.4],
+#         "occ_thres": [1.6],
+#         "delta_r": [0.6],
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.4],
 
 #         # ICPParams
 #         "max_n_points": [400],
@@ -114,40 +160,17 @@ def _compute_wheel_separation() -> float:
 #         "max_correspondence_distance": [0.6],
 #         "min_corresp": [15],
 #         "max_translation_jump": [0.8],
-#         "max_rotation_jump_deg": [80.0, 120.0],
+#         "max_rotation_jump_deg": [120.0],
 #         "max_acceptable_mean_error": [0.15],
 #     }
 
-def _grid_axes() -> Dict[str, List[Union[float, int]]]:
-    return {
-        # Playback sampling
-        "every_nth_beam_filter": [4],
-        "every_nth_beam_map": [2],
 
-        # OccupancyParams (OGM)
-        "increasing_probability": [0.85],
-        "decreasing_probability": [0.15],
-        "min_log_odds": [-5.0],
-        "max_log_odds": [5.0],
-
-        # ScanMatcherParams
-        "occ_thres": [1.6],
-        "delta_r": [0.6],
-        "surface_radius_m": [0.2],
-        "min_free_ratio": [0.4],
-
-        # ICPParams
-        "max_n_points": [400],
-        "neighbors_pca": [10],
-        "max_iterations": [5],
-        "max_correspondence_distance": [0.6],
-        "min_corresp": [15],
-        "max_translation_jump": [0.8],
-        "max_rotation_jump_deg": [120.0],
-        "max_acceptable_mean_error": [0.15],
-    }
-
-def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
+def write_parameter_overview(
+    path: str,
+    n_repeats: int,
+    start_pose: Tuple[float, float, float],
+    override: bool = False,
+) -> None:
     file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
 
     if file_exists and not override:
@@ -155,7 +178,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         return
 
     axes = _grid_axes()
-    example_params = next(generate_param_grid(n_repeats=1), None)
+    example_params = next(generate_param_grid(start_pose=start_pose, n_repeats=1), None)
 
     payload = {
         "playback_dir": PLAYBACK_DIR,
@@ -163,6 +186,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
         "seed_list": SEED_LIST,
+        "start_pose": start_pose,
         "grid_axes": axes,
         "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
     }
@@ -173,7 +197,10 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
     print(f"\nParameter overview has been saved to:\n{path}")
 
 
-def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
+def generate_param_grid(
+    start_pose: Tuple[float, float, float],
+    n_repeats: int = 1,
+) -> Iterator[ExperimentParams]:
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
 
@@ -227,6 +254,14 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
             axes["max_rotation_jump_deg"],
             axes["max_acceptable_mean_error"],
         ):
+            # Enforce integer-valued hyperparameters even if grid entries were provided as floats.
+            every_nth_filter = int(every_nth_filter)
+            every_nth_map = int(every_nth_map)
+            max_n_points = int(max_n_points)
+            neighbors_pca = int(neighbors_pca)
+            max_iterations = int(max_iterations)
+            min_corresp = int(min_corresp)
+
             increasing_probability, decreasing_probability = occupancy_prob_pair
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
@@ -280,7 +315,7 @@ def generate_param_grid(n_repeats: int = 1) -> Iterator[ExperimentParams]:
                 ),
                 particle_params=ParticleParams(
                     n_particles=1,
-                    start_pose=(0.0, 0.0, 0.0),
+                    start_pose=start_pose,
                 ),
                 # Unused in scan-matching-only mode but required by ExperimentParams.
                 motion_model_params=MotionModelParams(
@@ -331,7 +366,12 @@ def main() -> None:
         file_suffix=PLAYBACK_SUFFIX,
         filedir=PLAYBACK_DIR,
         n_steps=N_PLAYBACK_STEPS,
+        ensure_start_pose=True,
+        prompt_for_missing_start_pose=True,
     )
+
+    start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+    print(f"Using start pose for tuning: {start_pose}")
 
     playback_conv = PlaybackConverter()
     playback_data = playback_conv.convert(raw_playback_data)
@@ -343,12 +383,13 @@ def main() -> None:
     write_parameter_overview(
         path=PARAMETER_OVERVIEW_PATH,
         n_repeats=N_OPTIMIZATION_REPEATS,
+        start_pose=start_pose,
         override=OVERRIDE_EXISTING_RESULTS,
     )
 
     ranked_runs = optimizer.optimize(
         playback_data=playback_data,
-        param_grid=generate_param_grid(n_repeats=N_OPTIMIZATION_REPEATS),
+        param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
         seeds=SEED_LIST,
     )
 

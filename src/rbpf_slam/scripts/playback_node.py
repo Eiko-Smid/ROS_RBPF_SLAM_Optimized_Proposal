@@ -71,8 +71,8 @@ from rbpf_slam.msg import WheelEncoder
 from rbpf_slam.msg import PoseErr2D
 
 
-TAG = "In this run we also record if we don't move! Zero stddev in lidar measurements"
-MAP_NAME = "cafe"
+TAG = "In this run we also record if we don't move! meas sttdev of 0.01."
+MAP_NAME = "turtle_bot3_map"
 NODE_NAME = "playback_node"
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 

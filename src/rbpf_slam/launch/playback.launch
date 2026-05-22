@@ -1,6 +1,16 @@
 <launch>
     <!--Define useful parameters-->
     <arg name="paused" default="true"/>
+
+    <!--Robot spawn pose for cafe map-->
+    <!-- <arg name="spawn_x" default="0.0"/>
+    <arg name="spawn_y" default="0.0"/>
+    <arg name="spawn_z" default="0.18"/>
+    <arg name="spawn_roll" default="0.0"/>
+    <arg name="spawn_pitch" default="0.0"/>
+    <arg name="spawn_yaw" default="0.0"/> -->
+
+    <!--Robot spawn pose for turtle_bot3_map-->
     <arg name="spawn_x" default="0.0"/>
     <arg name="spawn_y" default="0.3"/>
     <arg name="spawn_z" default="0.0"/>
@@ -16,7 +26,7 @@
     <arg name="laser_range_resolution" default="0.01"/>
     <arg name="laser_noise_type" default="gaussian"/>
     <arg name="laser_noise_mean" default="0.0"/>
-    <arg name="laser_noise_stddv" default="0.00"/>
+    <arg name="laser_noise_stddv" default="0.01"/>
 
     <!--Pass the parameters to ros parameter server-->
     <param name="spawn_x" value="$(arg spawn_x)"/>

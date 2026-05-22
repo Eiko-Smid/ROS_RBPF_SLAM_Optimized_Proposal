@@ -11,6 +11,26 @@ S_TO_MS = 1000.0
 
 class ResultWriterScanMatching:
     @staticmethod
+    def _nan() -> float:
+        return float("nan")
+
+
+    @staticmethod
+    def _optional_value(value: Any) -> Any:
+        return value if value is not None else ResultWriterScanMatching._nan()
+
+
+    @staticmethod
+    def _optional_deg(value_rad: Any) -> float:
+        return math.degrees(value_rad) if value_rad is not None else ResultWriterScanMatching._nan()
+
+
+    @staticmethod
+    def _optional_ms(value_s: Any) -> float:
+        return value_s * S_TO_MS if value_s is not None else ResultWriterScanMatching._nan()
+
+
+    @staticmethod
     def _format_csv_value(value: Any, float_decimals: int) -> Any:
         if isinstance(value, bool):
             return value
@@ -126,44 +146,44 @@ class ResultWriterScanMatching:
                         step.step_idx,
                         step.t,
 
-                        step.scan_match_failed,
-                        step.icp_iterations if step.icp_iterations is not None else "None",
-                        step.n_correspondences if step.n_correspondences is not None else "None",
-                        step.use_transformation if step.use_transformation is not None else "None",
-                        step.stop_reason,
+                        ResultWriterScanMatching._optional_value(step.scan_match_failed),
+                        ResultWriterScanMatching._optional_value(step.icp_iterations),
+                        ResultWriterScanMatching._optional_value(step.n_correspondences),
+                        ResultWriterScanMatching._optional_value(step.use_transformation),
+                        ResultWriterScanMatching._optional_value(step.stop_reason),
                         
                         step.n_measurements_total,
                         step.n_valid_measurements_filter,
                         step.n_valid_measurements_map_update,
-                        step.n_map_points_extracted if step.n_map_points_extracted is not None else "None",
+                        ResultWriterScanMatching._optional_value(step.n_map_points_extracted),
                         
-                        step.icp_best_trans_param if step.icp_best_trans_param is not None else "None",
-                        math.degrees(step.icp_best_rot_abs_rad) if step.icp_best_rot_abs_rad is not None else "None",
-                        step.icp_mean_error if step.icp_mean_error is not None else "None",
+                        ResultWriterScanMatching._optional_value(step.icp_best_trans_param),
+                        ResultWriterScanMatching._optional_deg(step.icp_best_rot_abs_rad),
+                        ResultWriterScanMatching._optional_value(step.icp_mean_error),
 
-                        true_x,
-                        true_y,
-                        math.degrees(true_theta) if true_theta is not None else None,
-                        pred_x,
-                        pred_y,
-                        math.degrees(pred_theta) if pred_theta is not None else None,
-                        corr_x,
-                        corr_y,
-                        math.degrees(corr_theta) if corr_theta is not None else None,
+                        ResultWriterScanMatching._optional_value(true_x),
+                        ResultWriterScanMatching._optional_value(true_y),
+                        ResultWriterScanMatching._optional_deg(true_theta),
+                        ResultWriterScanMatching._optional_value(pred_x),
+                        ResultWriterScanMatching._optional_value(pred_y),
+                        ResultWriterScanMatching._optional_deg(pred_theta),
+                        ResultWriterScanMatching._optional_value(corr_x),
+                        ResultWriterScanMatching._optional_value(corr_y),
+                        ResultWriterScanMatching._optional_deg(corr_theta),
 
-                        step.pred_trans_err,
-                        step.corr_trans_err,
-                        math.degrees(step.pred_rot_err) if step.pred_rot_err is not None else None,
-                        math.degrees(step.corr_rot_err) if step.corr_rot_err is not None else None,
+                        ResultWriterScanMatching._optional_value(step.pred_trans_err),
+                        ResultWriterScanMatching._optional_value(step.corr_trans_err),
+                        ResultWriterScanMatching._optional_deg(step.pred_rot_err),
+                        ResultWriterScanMatching._optional_deg(step.corr_rot_err),
 
-                        step.pred_to_corr_trans_err,
-                        math.degrees(step.pred_to_corr_rot_err) if step.pred_to_corr_rot_err is not None else None,                        
+                        ResultWriterScanMatching._optional_value(step.pred_to_corr_trans_err),
+                        ResultWriterScanMatching._optional_deg(step.pred_to_corr_rot_err),
                         
-                        step.t_ogm * S_TO_MS if step.t_ogm is not None else 0.0,
-                        step.t_scan_matching * S_TO_MS if step.t_scan_matching is not None else 0.0,
-                        step.t_prediction * S_TO_MS if step.t_prediction is not None else 0.0,
-                        step.t_map_extraction * S_TO_MS if step.t_map_extraction is not None else 0.0,
-                        step.t_correct_pose * S_TO_MS if step.t_correct_pose is not None else 0.0,
+                        ResultWriterScanMatching._optional_ms(step.t_ogm),
+                        ResultWriterScanMatching._optional_ms(step.t_scan_matching),
+                        ResultWriterScanMatching._optional_ms(step.t_prediction),
+                        ResultWriterScanMatching._optional_ms(step.t_map_extraction),
+                        ResultWriterScanMatching._optional_ms(step.t_correct_pose),
                     ]
 
                     writer.writerow(
@@ -334,35 +354,35 @@ class ResultWriterScanMatching:
                     summary.mean_icp_err,
                     summary.mean_best_trans_norm,
                     summary.max_best_trans_norm,
-                    math.degrees(summary.mean_best_rot_abs) if summary.mean_best_rot_abs is not None else None,
-                    math.degrees(summary.max_best_rot_abs) if summary.max_best_rot_abs is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.mean_best_rot_abs),
+                    ResultWriterScanMatching._optional_deg(summary.max_best_rot_abs),
 
                     summary.mean_pred_trans_err,
-                    math.degrees(summary.mean_pred_rot_err) if summary.mean_pred_rot_err is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.mean_pred_rot_err),
                     summary.rmse_pred_trans_err,
-                    math.degrees(summary.rmse_pred_rot_err) if summary.rmse_pred_rot_err is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.rmse_pred_rot_err),
                                         
                     summary.mean_corr_trans_err,
-                    math.degrees(summary.mean_corr_rot_err) if summary.mean_corr_rot_err is not None else None,                                        
+                    ResultWriterScanMatching._optional_deg(summary.mean_corr_rot_err),
                     summary.rmse_corr_trans_err,
-                    math.degrees(summary.rmse_corr_rot_err) if summary.rmse_corr_rot_err is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.rmse_corr_rot_err),
                     summary.perc_95_corr_trans_err,
-                    math.degrees(summary.perc_95_corr_rot_err) if summary.perc_95_corr_rot_err is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.perc_95_corr_rot_err),
                     summary.max_rolling_rmse_corr_trans_error,
-                    math.degrees(summary.max_rolling_rmse_corr_rot_error) if summary.max_rolling_rmse_corr_rot_error is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.max_rolling_rmse_corr_rot_error),
                     summary.corr_worse_rate_trans,  
                     summary.corr_worse_rate_rot,    
                     summary.mean_corr_trans_improvm,
-                    math.degrees(summary.mean_corr_rot_improvm) if summary.mean_corr_rot_improvm is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.mean_corr_rot_improvm),
                     
                     summary.final_drift_trans,
-                    math.degrees(summary.final_drift_rot) if summary.final_drift_rot is not None else None,
+                    ResultWriterScanMatching._optional_deg(summary.final_drift_rot),
 
-                    (summary.mean_timing_sm_update_particle_s or 0.0) * S_TO_MS,
-                    (summary.mean_timing_sm_scan_match_update_pose_s or 0.0) * S_TO_MS,
-                    (summary.mean_timing_sm_map_extension_s or 0.0) * S_TO_MS,
-                    (summary.mean_timing_sm_map_update_s or 0.0) * S_TO_MS,
-                    (summary.mean_step_duration or 0.0) * S_TO_MS,
+                    ResultWriterScanMatching._optional_ms(summary.mean_timing_sm_update_particle_s),
+                    ResultWriterScanMatching._optional_ms(summary.mean_timing_sm_scan_match_update_pose_s),
+                    ResultWriterScanMatching._optional_ms(summary.mean_timing_sm_map_extension_s),
+                    ResultWriterScanMatching._optional_ms(summary.mean_timing_sm_map_update_s),
+                    ResultWriterScanMatching._optional_ms(summary.mean_step_duration),
                     
                     summary.n_steps,
                    
