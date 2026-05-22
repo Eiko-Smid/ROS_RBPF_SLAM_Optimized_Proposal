@@ -21,6 +21,7 @@ class StepResultScanMatching:
     t: float
     
     true_pose: Pose2D
+    raw_odom_pose: Optional[Pose2D]
     pred_pose: Optional[Pose2D]
     corr_pose: Optional[Pose2D]
     
@@ -31,6 +32,8 @@ class StepResultScanMatching:
     
     pred_trans_err: Optional[float]
     pred_rot_err: Optional[float]
+    raw_odom_trans_err: Optional[float]
+    raw_odom_rot_err: Optional[float]
 
     corr_trans_err: Optional[float]
     corr_rot_err: Optional[float]
@@ -89,6 +92,8 @@ class RunSummaryScanMatching:
     
     mean_pred_trans_err: float
     mean_pred_rot_err: float
+    mean_raw_odom_trans_err: float
+    mean_raw_odom_rot_err: float
     rmse_pred_trans_err: float
     rmse_pred_rot_err: float    
     max_pred_trans_err: float
@@ -111,6 +116,8 @@ class RunSummaryScanMatching:
     
     final_drift_trans: float
     final_drift_rot: float
+    final_raw_odom_drift_trans: float
+    final_raw_odom_drift_rot: float
         
     # mean_trans_err: float
     # mean_rot_err: float
@@ -181,6 +188,7 @@ class ScanMatchingEvaluator:
         step_idx: int,
         t: float,
         true_pose: Any,
+        raw_odom_pose: Any,
         pred_pose: Any,
         corr_pose: Any,
         best_transformation: Any,
@@ -204,6 +212,7 @@ class ScanMatchingEvaluator:
     ) -> StepResultScanMatching:
         # Converts the given poses to a Pose2D tuple format
         true_pose_t = self._to_pose_tuple(true_pose)
+        raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
         pred_pose_t = self._to_pose_tuple(pred_pose)
         corr_pose_t = self._to_pose_tuple(corr_pose)
         # est_pose_t = corr_pose_t
@@ -215,10 +224,17 @@ class ScanMatchingEvaluator:
         corr_trans_err = None
         pred_rot_err = None
         corr_rot_err = None
+        raw_odom_trans_err = None
+        raw_odom_rot_err = None
         best_trans_norm = None
         best_rot_abs = None
         pred_to_corr_trans_err = None
         pred_to_corr_rot_err = None
+
+        # Baseline odometry-only error against ground truth.
+        if raw_odom_pose_t is not None and true_pose_t is not None:
+            raw_odom_trans_err = self.translation_error(raw_odom_pose_t, true_pose_t)
+            raw_odom_rot_err = abs(self.angle_diff(raw_odom_pose_t[2], true_pose_t[2]))
 
         # Computes the translation and rotation errors between the predicted and corrected pose
         if pred_pose_t is not None and true_pose_t is not None:
@@ -256,6 +272,7 @@ class ScanMatchingEvaluator:
             step_idx=int(step_idx),
             t=float(t),
             true_pose=true_pose_t,
+            raw_odom_pose=raw_odom_pose_t,
             pred_pose=pred_pose_t,
             corr_pose=corr_pose_t,
             # est_pose=est_pose_t,
@@ -266,6 +283,8 @@ class ScanMatchingEvaluator:
             corr_trans_err=corr_trans_err,
             pred_rot_err=pred_rot_err,
             corr_rot_err=corr_rot_err,
+            raw_odom_trans_err=raw_odom_trans_err,
+            raw_odom_rot_err=raw_odom_rot_err,
             icp_best_trans_param=best_trans_norm,
             icp_best_rot_abs_rad=best_rot_abs,
             pred_to_corr_trans_err=pred_to_corr_trans_err,
@@ -298,6 +317,8 @@ class ScanMatchingEvaluator:
         rot_err = [s.rot_err for s in step_results if s.rot_err is not None]
         pred_trans_err = [s.pred_trans_err for s in step_results if s.pred_trans_err is not None]
         pred_rot_err = [s.pred_rot_err for s in step_results if s.pred_rot_err is not None]
+        raw_odom_trans_err = [s.raw_odom_trans_err for s in step_results if s.raw_odom_trans_err is not None]
+        raw_odom_rot_err = [s.raw_odom_rot_err for s in step_results if s.raw_odom_rot_err is not None]
         corr_trans_err = [s.corr_trans_err for s in step_results if s.corr_trans_err is not None]
         corr_rot_err = [s.corr_rot_err for s in step_results if s.corr_rot_err is not None]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
@@ -307,11 +328,17 @@ class ScanMatchingEvaluator:
 
         final_drift_trans = float("inf")
         final_drift_rot = float("inf")
+        final_raw_odom_drift_trans = float("inf")
+        final_raw_odom_drift_rot = float("inf")
         if step_results:
             last_step = step_results[-1]
             if last_step.corr_pose is not None and last_step.true_pose is not None:
                 final_drift_trans = self.translation_error(last_step.corr_pose, last_step.true_pose)
                 final_drift_rot = self.angle_diff(last_step.corr_pose[2], last_step.true_pose[2])
+            # Final-step baseline drift from raw odometry only.
+            if last_step.raw_odom_pose is not None and last_step.true_pose is not None:
+                final_raw_odom_drift_trans = self.translation_error(last_step.raw_odom_pose, last_step.true_pose)
+                final_raw_odom_drift_rot = self.angle_diff(last_step.raw_odom_pose[2], last_step.true_pose[2])
 
 
         use_transformation_vals = [
@@ -400,6 +427,8 @@ class ScanMatchingEvaluator:
             # Pose err metrics for predicted pose    
             mean_pred_trans_err=float(np.mean(pred_trans_err)) if pred_trans_err else float("inf"),
             mean_pred_rot_err=float(np.mean(pred_rot_err)) if pred_rot_err else float("inf"),
+            mean_raw_odom_trans_err=float(np.mean(raw_odom_trans_err)) if raw_odom_trans_err else float("nan"),
+            mean_raw_odom_rot_err=float(np.mean(raw_odom_rot_err)) if raw_odom_rot_err else float("nan"),
             rmse_pred_trans_err=float(np.sqrt(np.mean(np.square(pred_trans_err)))) if pred_trans_err else float("inf"),
             rmse_pred_rot_err=float(np.sqrt(np.mean(np.square(pred_rot_err)))) if pred_rot_err else float("inf"),
             max_pred_trans_err=float(np.max(pred_trans_err)) if pred_trans_err else float("inf"), 
@@ -439,6 +468,8 @@ class ScanMatchingEvaluator:
             # Drift vals
             final_drift_trans=final_drift_trans,
             final_drift_rot=final_drift_rot,
+            final_raw_odom_drift_trans=final_raw_odom_drift_trans,
+            final_raw_odom_drift_rot=final_raw_odom_drift_rot,
 
             # Timing metrics
             mean_step_duration=float(np.mean(step_durations)) if step_durations else float("nan"),

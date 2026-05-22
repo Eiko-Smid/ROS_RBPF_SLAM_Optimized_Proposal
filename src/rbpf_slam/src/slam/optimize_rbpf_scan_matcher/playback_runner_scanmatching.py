@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -9,6 +9,33 @@ from .evaluator_scanmatching import RunResultScanMatching, ScanMatchingEvaluator
 from ..optimize_rbpf.playback_defs import ExperimentParams, PlaybackData
 from ..rbpf.rbpf import RBPFFactory
 from ..rbpf.scan_match_factory import ScanMatchFactory
+
+
+Pose2D = Tuple[float, float, float]
+
+
+class RawOdometryPoseEstimator:
+    """
+    Estimates the pose of a DDMR robot based on the robot's last pose, the odometry control values 
+    (dl, dr), and the robot's wheel separation. 
+
+    """
+
+    def __init__(self, predict_pose_fn, start_pose: Pose2D):
+        # Keep estimator generic by injecting the propagation function.
+        self._predict_pose = predict_pose_fn
+        self._start_pose = (float(start_pose[0]), float(start_pose[1]), float(start_pose[2]))
+
+    def estimate(self, steps: List[Any]) -> List[Pose2D]:
+        """Propagate pose once over all playback steps and return one pose per step."""
+        pose = self._start_pose
+        odom_poses: List[Pose2D] = []
+
+        for step in steps:
+            pose = self._predict_pose(pose=pose, dl=step.dl, dr=step.dr)
+            odom_poses.append((float(pose[0]), float(pose[1]), float(pose[2])))
+
+        return odom_poses
 
 
 class PlaybackRunnerScanMatching:
@@ -19,6 +46,23 @@ class PlaybackRunnerScanMatching:
     def __init__(self, factory: RBPFFactory, evaluator: ScanMatchingEvaluator):
         self.factory = factory
         self.evaluator = evaluator
+        self._raw_odom_cache_key: Optional[Tuple[int, Optional[float], Optional[float]]] = None
+        self._raw_odom_poses_cache: Optional[List[Pose2D]] = None
+
+
+    @staticmethod
+    def _build_playback_cache_key(playback_data: PlaybackData) -> Tuple[int, Optional[float], Optional[float]]:
+        """
+        Build a lightweight cache key for raw-odometry baseline reuse.
+
+        Raw odometry is independent of tuning parameters, so this allows us to
+        compute it once per playback and reuse it for every parameter set.
+        """
+        steps = playback_data.step_data_list
+        n_steps = len(steps)
+        if n_steps == 0:
+            return (0, None, None)
+        return (n_steps, float(steps[0].t), float(steps[-1].t))
 
 
     @staticmethod
@@ -109,6 +153,17 @@ class PlaybackRunnerScanMatching:
         steps = playback_data.step_data_list
         run_result = RunResultScanMatching(params=params)
 
+        # Compute raw-odometry baseline once per playback and reuse it across
+        # optimization runs to avoid repeated deterministic work.
+        cache_key = self._build_playback_cache_key(playback_data)
+        if self._raw_odom_poses_cache is None or self._raw_odom_cache_key != cache_key:
+            raw_odom_estimator = RawOdometryPoseEstimator(
+                predict_pose_fn=rbpf.particles[0].scan_matcher.predict_pose,
+                start_pose=params.particle_params.start_pose,
+            )
+            self._raw_odom_poses_cache = raw_odom_estimator.estimate(steps)
+            self._raw_odom_cache_key = cache_key
+
         # Ensure valid scan downsampling values for filter/proposal and map update.
         every_nth_scan_filter = max(1, int(params.every_nth_scan_filter))
         every_nth_scan_map = max(1, int(params.every_nth_scan_map))
@@ -170,6 +225,12 @@ class PlaybackRunnerScanMatching:
                 step_idx=rbpf_sc_only_info.get("step") if rbpf_sc_only_info.get("step") is not None else step_idx,
                 t=step.t,
                 true_pose=step.true_pose,
+                # Inject baseline pose for direct comparison against scan matcher outputs.
+                raw_odom_pose=(
+                    self._raw_odom_poses_cache[step_idx]
+                    if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
+                    else None
+                ),
                 pred_pose=scan_match_info.get("pred_pose"),
                 corr_pose=rbpf_sc_only_info.get("particle_pose"),
                 best_transformation=icp_info.get("best_transformation"),

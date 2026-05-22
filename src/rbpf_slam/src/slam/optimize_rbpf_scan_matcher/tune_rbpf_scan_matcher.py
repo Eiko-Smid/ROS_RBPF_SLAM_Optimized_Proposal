@@ -90,6 +90,8 @@ SEED_LIST = [22]
 
 # Define sttdev [m] to add noise to the playback measurement. This is only possible if the playback data doesnt include noise in the measurements.
 MEASUREMENT_STDDEV = 0.03
+MIN_SENSOR_RANGE = 0.1
+MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
 PLAYBACK_SUFFIX = "1779363559"
@@ -277,11 +279,6 @@ def generate_param_grid(
 
             increasing_probability, decreasing_probability = occupancy_prob_pair
 
-            # Define max sensor range 
-            max_sensor_range = 10.0
-            if MEASUREMENT_STDDEV is not None:
-                max_sensor_range += MEASUREMENT_STDDEV
-            
 
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
@@ -298,8 +295,8 @@ def generate_param_grid(
                     max_log_odds=max_log_odds,
                 ),
                 sensor_params=SensorParams(
-                    min_sensor_range=0.1,
-                    max_sensor_range=max_sensor_range
+                    min_sensor_range=MIN_SENSOR_RANGE,
+                    max_sensor_range=MAX_SENSOR_RANGE,
                 ),
                 map_param=MapParameter(
                     map_width=10.0,
@@ -398,6 +395,8 @@ def main() -> None:
     playback_data = playback_conv.convert(
         raw_playback_data,
         measurement_stddev=MEASUREMENT_STDDEV,
+        min_range=MIN_SENSOR_RANGE,
+        max_range=MAX_SENSOR_RANGE,
     )
 
     optimizer = build_optimizer()

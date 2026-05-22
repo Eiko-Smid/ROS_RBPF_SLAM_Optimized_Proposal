@@ -115,8 +115,11 @@ class ResultWriterScanMatching:
                     "corr_y",
                     "corr_theta_deg",
 
+                    # Baseline errors from raw odometry-only pose propagation.
+                    "raw_odom_trans_err",
                     "pred_trans_err",
                     "corr_trans_err",
+                    "raw_odom_rot_err_deg",
                     "pred_rot_err_deg",
                     "corr_rot_err_deg",
 
@@ -171,8 +174,10 @@ class ResultWriterScanMatching:
                         ResultWriterScanMatching._optional_value(corr_y),
                         ResultWriterScanMatching._optional_deg(corr_theta),
 
+                        ResultWriterScanMatching._optional_value(step.raw_odom_trans_err),
                         ResultWriterScanMatching._optional_value(step.pred_trans_err),
                         ResultWriterScanMatching._optional_value(step.corr_trans_err),
+                        ResultWriterScanMatching._optional_deg(step.raw_odom_rot_err),
                         ResultWriterScanMatching._optional_deg(step.pred_rot_err),
                         ResultWriterScanMatching._optional_deg(step.corr_rot_err),
 
@@ -268,7 +273,10 @@ class ResultWriterScanMatching:
                     "max_best_rot_abs_deg",
                     
                     # predicted pose error metrics
+                    # Raw odometry baseline is placed right before predicted errors.
+                    "mean_raw_odom_trans_err",
                     "mean_pred_trans_err",
+                    "mean_raw_odom_rot_err_deg",
                     "mean_pred_rot_err_deg",
                     "rmse_pred_trans_err",
                     "rmse_pred_rot_err_deg",
@@ -290,8 +298,11 @@ class ResultWriterScanMatching:
                     "mean_corr_trans_improvm",
                     "mean_corr_rot_improvm_deg",
 
-                    "final_drift_trans",   
-                    "final_drift_rot_deg",                 
+                    # Raw odometry drift baseline before scan-matching drift.
+                    "final_raw_odom_drift_trans",
+                    "final_raw_odom_drift_rot_deg",
+                    "final_drift_trans",
+                    "final_drift_rot_deg",
 
                     "mean_timing_sm_update_particle_ms",
                     "mean_timing_sm_scan_match_update_pose_ms",
@@ -359,7 +370,9 @@ class ResultWriterScanMatching:
                     ResultWriterScanMatching._optional_deg(summary.mean_best_rot_abs),
                     ResultWriterScanMatching._optional_deg(summary.max_best_rot_abs),
 
+                    summary.mean_raw_odom_trans_err,
                     summary.mean_pred_trans_err,
+                    ResultWriterScanMatching._optional_deg(summary.mean_raw_odom_rot_err),
                     ResultWriterScanMatching._optional_deg(summary.mean_pred_rot_err),
                     summary.rmse_pred_trans_err,
                     ResultWriterScanMatching._optional_deg(summary.rmse_pred_rot_err),
@@ -377,6 +390,8 @@ class ResultWriterScanMatching:
                     summary.mean_corr_trans_improvm,
                     ResultWriterScanMatching._optional_deg(summary.mean_corr_rot_improvm),
                     
+                    summary.final_raw_odom_drift_trans,
+                    ResultWriterScanMatching._optional_deg(summary.final_raw_odom_drift_rot),
                     summary.final_drift_trans,
                     ResultWriterScanMatching._optional_deg(summary.final_drift_rot),
 
