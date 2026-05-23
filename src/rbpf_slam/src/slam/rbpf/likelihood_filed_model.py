@@ -166,6 +166,11 @@ class LikelihoodFiledModel(MeasurementModel):
         scan_matcher: ScanMatcher,
         neighbor: NearestNeighbors,
     ) -> np.ndarray:
+        '''
+        Classic NN based computation of measurement likelihood. We use the NN from the scan matcher and compute the
+        likelihood for every given pose based on the distance between the measurement endpoints and the nearest neighbor
+        in the map points. 
+        '''
 
         n_poses = poses.shape[0]
 

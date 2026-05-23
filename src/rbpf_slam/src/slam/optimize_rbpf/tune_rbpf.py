@@ -390,6 +390,30 @@ from .result_writer import ResultWriter
     
 
 
+28. After map shift problem solved
+
+    - Before we had the followignn rpbolems
+        ○ We only recorded data when the robot actually drives
+		○ So the first playback stp was not at position (0, 0, 0)
+		○ It was the position after we drove
+		○ Then we also have no map values available
+		○ In the secodn step we had occupied cells and perfomed scan matching
+		○ But here we already had an offset in our map and our map didnt aligned with the real map from teh beginning on
+		○ We carried that offset from tehbeginning on
+		○ Because the inital created map was already in the wrong frame, our whole apporach failes
+
+        • In the tutle bot map there was another error on top of that
+        • We started directly with am translational error of 0.30331 because we spawned the robot at pose (0, 0.3, 0.0) but assumed the pose actually is (0.0, 0.0, 0.0)
+        • Thats why the error was that big right away
+        • At the end our drift almost exactly matched that value
+        • This meaans we were never really off we simply had an offset from beginning on
+    
+
+    - Now we also tuned the scan mtacher on both maps with different seeds to find stable params. 
+    - Here we will use these prams and test if we are now able to shift the proposal towards the xj with the min err
+      to the true pose.
+
+    
 '''
 
 
@@ -403,10 +427,10 @@ from .result_writer import ResultWriter
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_params.json'
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -415,9 +439,14 @@ N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each p
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
 
+# Controls ONLY measurement-noise seeding behavior in optimizer:
+# - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
+# - False: do not seed measurement noise (fresh random noise every run).
+USE_SEED_LIST_FOR_MEASUREMENT_NOISE = True
+
 # Define sttdev [m] to add noise to the playback measurements.
 # Set to None to disable noise injection.
-MEASUREMENT_STDDEV = None
+MEASUREMENT_STDDEV = 0.03
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
@@ -491,7 +520,7 @@ def _grid_axes() -> dict:
         "proposal_beta": [1.0],
 
         # ScanMatcherParams (map extraction)
-        "surface_radius_m": [0.1],
+        "surface_radius_m": [0.2],
         "min_free_ratio": [0.25],
     }
 
@@ -510,6 +539,7 @@ def write_parameter_overview(path: str, n_repeats: int, start_pose, override: bo
         "playback_dir": PLAYBACK_DIR,
         "playback_suffix": PLAYBACK_SUFFIX,
         "measurement_stddev": MEASUREMENT_STDDEV,
+        "use_seed_list_for_measurement_noise": USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
         "seed_list": SEED_LIST,
@@ -598,8 +628,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 occupancy_params=OccupancyParams(
                     prior_probability=0.5,
                     min_distance_to_border=10.0,
-                    increasing_probability=0.7,
-                    decreasing_probability=0.30,
+                    increasing_probability=0.85,
+                    decreasing_probability=0.15,
                     min_log_odds=-5.0,
                     max_log_odds=5.0,
                 ),
@@ -626,8 +656,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     min_corresp=15,
                     min_hessian_rank=3,
                     max_hessian_condition=1e8,
-                    max_translation_jump=0.8,
-                    max_rotation_jump=np.deg2rad(120.0),
+                    max_translation_jump=0.3,
+                    max_rotation_jump=np.deg2rad(45.0),
                     max_acceptable_mean_error=0.15,
                 ),
                 robot_params=RobotParams(
@@ -635,7 +665,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 ),
                 scan_matcher_params=ScanMatcherParams(
                     occ_thres=1.2,
-                    delta_r=0.6,
+                    delta_r=0.4,
                     surface_radius_m=surface_r,
                     min_free_ratio=min_free,
                 ),
@@ -711,11 +741,13 @@ def main():
 
     # Convert playback data
     playback_conv = PlaybackConverter()
+
+    # Keep scans clean here. Measurement noise is injected per seed in the optimizer.
     playback_data = playback_conv.convert(
         raw_playback_data,
-        measurement_stddev=MEASUREMENT_STDDEV,
-        min_sensor_range=MIN_SENSOR_RANGE,
-        max_sensor_range=MAX_SENSOR_RANGE,
+        measurement_stddev=None,
+        min_range=MIN_SENSOR_RANGE,
+        max_range=MAX_SENSOR_RANGE,
     )
 
     # Init optimizer
@@ -737,6 +769,7 @@ def main():
         playback_data=playback_data,
         param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
         seeds=SEED_LIST,
+        use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
     )
 
 
@@ -745,6 +778,7 @@ def main():
     #     playback_data=playback_data,
     #     param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
     #     seeds=SEED_LIST,
+    #     use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
     # )
 
 
@@ -765,12 +799,13 @@ def main():
     )
 
     # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
-    result_writer.write_proposal_weights_csv(
-        output_path=PROPOSAL_WEIGHTS_PATH,
-        ranked_runs=ranked_runs,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
+    # TODO: Add proposal weights again
+    # result_writer.write_proposal_weights_csv(
+    #     output_path=PROPOSAL_WEIGHTS_PATH,
+    #     ranked_runs=ranked_runs,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    # )
 
     print("Test success")
     

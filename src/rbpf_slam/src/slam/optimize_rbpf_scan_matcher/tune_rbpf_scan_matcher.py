@@ -57,9 +57,16 @@ from .result_writer_scanmatching import ResultWriterScanMatching
             Results:
                 - Solid results
 
-        3.1.2 Run on cafe map with added noise in scan ranges
+        3.1.2 Run on cafe map with added noise in scan ranges (accidently without measurement seed)
 
+        
+        3.1.3 Run on cafe map with added noise in scan ranges with measurement seed
+
+            - Quiet good results but a little bit more worse then the corresponding turtle bot 3 results.
+            - We did smaller turns here but scan matcher weakness is not turn as it seems its more translation.
+            - Also this map might not have that much featueres than the turtle bot map has. 
             
+        3.1.4 Run on cafe map with on small grid with different seeds -> find stable params
 
         
     3.2 turtle bot 3 map (1779363559)
@@ -68,26 +75,34 @@ from .result_writer_scanmatching import ResultWriterScanMatching
             Results:
                 - Solid results
 
-        3.2.2 Run on turtle bot map with added noise in scan ranges
-    
-                
+        3.2.2 Run on turtle bot map with added noise in scan ranges (accidently without measurement seed)
+
+        
+        3.2.3 Run on turtle bot map with added noise in scan ranges with measurement seed
+        
+        3.2.4 Run on turtle bot map with on small grid with different seeds -> find stable params
 '''
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_2_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_2_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_2_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_4_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_4_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_4_params.json"
 
-# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary.csv"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
+# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_summary.csv"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_params.json"
 
 CSV_FLOAT_DECIMALS = 5
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22]
+
+# Controls ONLY measurement-noise seeding behavior in optimizer:
+# - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
+# - False: do not seed measurement noise (fresh random noise every run).
+USE_SEED_LIST_FOR_MEASUREMENT_NOISE = True
 
 # Define sttdev [m] to add noise to the playback measurement. This is only possible if the playback data doesnt include noise in the measurements.
 MEASUREMENT_STDDEV = 0.03
@@ -95,8 +110,8 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
-# PLAYBACK_SUFFIX = "1779363559"        # turtlebot 3 map
-PLAYBACK_SUFFIX = "1779375646"          # Cafe map
+PLAYBACK_SUFFIX = "1779363559"        # turtlebot 3 map
+# PLAYBACK_SUFFIX = "1779375646"          # Cafe map    
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -135,16 +150,16 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "max_log_odds": [5.0],
 
         # ScanMatcherParams
-        "occ_thres": [0.8, 1.2, 1.6],
-        "delta_r": [0.3, 0.5, 0.7],
-        "surface_radius_m": [0.1, 0.2],
-        "min_free_ratio": [0.25, 0.4],
+        "occ_thres": [1.0, 1.2, 1.6],
+        "delta_r": [0.4, 0.5, 0.6],
+        "surface_radius_m": [0.2],
+        "min_free_ratio": [0.25],
 
         # ICPParams
         "max_n_points": [400],
         "neighbors_pca": [10],
         "max_iterations": [5],
-        "max_correspondence_distance": [0.35, 0.6],
+        "max_correspondence_distance": [0.45, 0.6],
         "min_corresp": [15],
         "max_translation_jump": [0.3, 0.6],
         "max_rotation_jump_deg": [45.0],
@@ -158,16 +173,16 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
 #         "every_nth_beam_map": [2],
 
 #         # OccupancyParams (OGM)
-#         "increasing_probability": [0.85],
-#         "decreasing_probability": [0.15],
+#         "increasing_probability": [0.7],
+#         "decreasing_probability": [0.3],
 #         "min_log_odds": [-5.0],
 #         "max_log_odds": [5.0],
 
 #         # ScanMatcherParams
-#         "occ_thres": [1.6],
-#         "delta_r": [0.6],
+#         "occ_thres": [0.8],
+#         "delta_r": [0.5],
 #         "surface_radius_m": [0.2],
-#         "min_free_ratio": [0.4],
+#         "min_free_ratio": [0.25],
 
 #         # ICPParams
 #         "max_n_points": [400],
@@ -175,8 +190,8 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
 #         "max_iterations": [5],
 #         "max_correspondence_distance": [0.6],
 #         "min_corresp": [15],
-#         "max_translation_jump": [0.8],
-#         "max_rotation_jump_deg": [120.0],
+#         "max_translation_jump": [0.3],
+#         "max_rotation_jump_deg": [45.0],
 #         "max_acceptable_mean_error": [0.15],
 #     }
 
@@ -394,9 +409,11 @@ def main() -> None:
     print(f"Using start pose for tuning: {start_pose}")
 
     playback_conv = PlaybackConverter()
+    
+    # Keep scans clean here. Measurement noise is injected per seed in the optimizer.
     playback_data = playback_conv.convert(
         raw_playback_data,
-        measurement_stddev=MEASUREMENT_STDDEV,
+        measurement_stddev=None,
         min_range=MIN_SENSOR_RANGE,
         max_range=MAX_SENSOR_RANGE,
     )
@@ -416,6 +433,7 @@ def main() -> None:
         playback_data=playback_data,
         param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
         seeds=SEED_LIST,
+        use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
     )
 
     writer.write_summary_runs_csv(
@@ -425,6 +443,7 @@ def main() -> None:
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 
+    
     writer.write_ranked_step_traces_csv(
         output_path=SCAN_MATCHING_STEP_TRACE_PATH,
         ranked_runs=ranked_runs,

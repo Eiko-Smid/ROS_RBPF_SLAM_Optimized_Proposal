@@ -627,6 +627,76 @@ class RBPF:
         self._step_counter += 1
         step_idx = self._step_counter
 
+        # Initialization process (same state machine as scan-match-only mode).
+        if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
+            if self._init_odom_threshold_exceeded(odom):
+                dl, dr = odom
+                self.init_status = InitStatus.FAILED_ODOM_THRESHOLD
+                self.init_failure_reason = (
+                    f"Initialization skipped at step {step_idx}: "
+                    f"abs(dl)={abs(dl):.6f}, abs(dr)={abs(dr):.6f}, "
+                    f"threshold={self.odom_threshold:.6f}"
+                )
+            elif self.init_counter < self.init_count_threshold:
+                self.init_status = InitStatus.INITIALIZING
+
+                t_init_process = time.perf_counter()
+                for i, p in enumerate(self.particles):
+                    self.particles[i] = self.init_process(
+                        particle=p,
+                        measurements_map_update=measurements_map_update,
+                    )
+                t_init_process_s = time.perf_counter() - t_init_process
+                self._timing_stats_scan_match_only["t_init_process_sum_s"] += t_init_process_s
+                self._timing_stats_scan_match_only["t_init_process_count"] += 1
+
+                self.init_counter += 1
+
+                if self.init_counter >= self.init_count_threshold:
+                    self.init_status = InitStatus.SUCCESS
+
+                # Keep step outputs structurally compatible during initialization
+                # without generating pose metrics in map-only init mode.
+                weights = np.array([p.weight for p in self.particles])
+                norm = np.sum(weights)
+                if norm == 0:
+                    norm_weights = np.ones(len(weights)) / len(weights)
+                else:
+                    norm_weights = weights / norm
+
+                for i in range(len(self.particles)):
+                    self.particles[i].weight = norm_weights[i]
+
+                neff = float(self.resampler.compute_neff(norm_weights))
+
+                self._last_step_info = {
+                    "step": step_idx,
+                    "mode": "initialization",
+                    "init_status": self.init_status.value,
+                    "init_counter": self.init_counter,
+                    "init_count_threshold": self.init_count_threshold,
+                    "odom_threshold": self.odom_threshold,
+                    "init_failure_reason": self.init_failure_reason,
+                    "neff": neff,
+                    "true_pose": None,
+                    "scan_match_failed_any": None,
+                    "scan_match_fallback_failed_any": None,
+                    "best_particle_idx": None,
+                    "best_particle_pose": None,
+                    "best_particle_map": None,
+                    "weighted_mean_pose": None,
+                    "particle_weight_min": None,
+                    "particle_weight_max": None,
+                    "particle_weight_mean": None,
+                    "timing_update_particles_s": None,
+                    "timing_normalize_neff_s": None,
+                    "timing_metrics_s": None,
+                    "timing_resampling_s": None,
+                    "proposal_metrics": None,
+                }
+
+                return neff, self.particles[0].pose
+
         # Process each particle
         # t_update_start = time.perf_counter()
         for i, p in enumerate(self.particles):

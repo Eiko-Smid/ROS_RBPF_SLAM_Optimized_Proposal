@@ -65,7 +65,14 @@ class PlaybackConverter:
 
 
     @staticmethod
-    def add_measurement_noise(ranges, stddev: float, min_range: float = 0.1, max_range: float = 10.0):
+    def add_measurement_noise(
+        ranges,
+        stddev: float,
+        min_range: float = 0.1,
+        max_range: float = 10.0,
+        seed: Optional[int] = None,
+        rng: Optional[np.random.Generator] = None,
+    ):
         '''
         Gets the measurement ranges and the desired standard deviation and add random normal noise with that stddev 
         to the measurement ranges. Only add noise to finite values. Clips the ranges to the given min/max values.
@@ -74,10 +81,17 @@ class PlaybackConverter:
         noisy_ranges = np.array(ranges, dtype=np.float32, copy=True)
         finite_mask = np.isfinite(noisy_ranges)
 
+        # Prefer provided RNG for deterministic per-run noise generation.
+        # If no RNG is provided, optionally create a seeded local generator.
+        local_rng = rng if rng is not None else (np.random.default_rng(seed) if seed is not None else None)
+
         # Add noise to finite values
         if np.any(finite_mask):
             # Add noise
-            noise = np.random.normal(loc=0.0, scale=stddev, size=int(np.sum(finite_mask)))
+            if local_rng is not None:
+                noise = local_rng.normal(loc=0.0, scale=stddev, size=int(np.sum(finite_mask)))
+            else:
+                noise = np.random.normal(loc=0.0, scale=stddev, size=int(np.sum(finite_mask)))
             noisy_ranges[finite_mask] = noisy_ranges[finite_mask] + noise
 
             # Clip distances to min and max distance

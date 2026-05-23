@@ -8,7 +8,8 @@ from tqdm import tqdm
 
 from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
-from .playback_defs import ExperimentParams
+from .playback_defs import ExperimentParams, PlaybackData, StepData
+from ..infrastructure.playback_converter import PlaybackConverter
 
 
 @dataclass
@@ -29,11 +30,57 @@ class RBPFOptimizer:
         self.runner = runner
         self.scorer = scorer
 
+    @staticmethod
+    def _apply_measurement_noise_per_seed(
+        playback_data: PlaybackData,
+        measurement_stddev: Optional[float],
+        measurement_noise_seed: Optional[int],
+        min_range: float,
+        max_range: float,
+    ) -> PlaybackData:
+        """
+        Recreate playback scans with deterministic noise for the given measurement seed.
+        The source playback_data must contain clean (non-noised) scans.
+        """
+        if measurement_stddev is None:
+            return playback_data
+
+        # Keep measurement-noise RNG isolated from global numpy seeding.
+        rng = np.random.default_rng(measurement_noise_seed)
+        noisy_steps: List[StepData] = []
+
+        for step in playback_data.step_data_list:
+            ranges = [r for r, _ in step.scan]
+            bearings = [b for _, b in step.scan]
+
+            noisy_ranges = PlaybackConverter.add_measurement_noise(
+                ranges=ranges,
+                stddev=measurement_stddev,
+                min_range=min_range,
+                max_range=max_range,
+                rng=rng,
+            )
+
+            noisy_scan = [(float(r), float(b)) for r, b in zip(noisy_ranges, bearings)]
+            noisy_steps.append(
+                StepData(
+                    t=step.t,
+                    dl=step.dl,
+                    dr=step.dr,
+                    scan=noisy_scan,
+                    true_pose=step.true_pose,
+                )
+            )
+
+        return PlaybackData(step_data_list=noisy_steps)
+
+
     def optimize(
         self,
-        playback_data,
+        playback_data: PlaybackData,
         param_grid: Iterable[ExperimentParams],
         seeds: Optional[Iterable[int]] = None,
+        use_seed_list_for_measurement_noise: bool = True,
     ) -> List[RankedRun]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
@@ -59,7 +106,21 @@ class RBPFOptimizer:
                 if run_seed is not None:
                     np.random.seed(run_seed)
 
-                run_result = self.runner.run(playback_data, params)
+                # Decide whether to use the run seed for measurement noise or not
+                if use_seed_list_for_measurement_noise:
+                    measurement_noise_seed = run_seed
+                else:
+                    measurement_noise_seed = None
+
+                run_playback_data = self._apply_measurement_noise_per_seed(
+                    playback_data=playback_data,
+                    measurement_stddev=params.measurement_noise_stddev,
+                    measurement_noise_seed=measurement_noise_seed,
+                    min_range=params.sensor_params.min_sensor_range,
+                    max_range=params.sensor_params.max_sensor_range,
+                )
+
+                run_result = self.runner.run(run_playback_data, params)
                 score = self.scorer.score(run_result.summary)
 
                 ranked_runs.append(
@@ -85,9 +146,10 @@ class RBPFOptimizer:
 
     def optimize_without_proposal_pose(
         self,
-        playback_data,
+        playback_data: PlaybackData,
         param_grid: Iterable[ExperimentParams],
         seeds: Optional[Iterable[int]] = None,
+        use_seed_list_for_measurement_noise: bool = True,
     ) -> List[RankedRun]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
@@ -113,7 +175,21 @@ class RBPFOptimizer:
                 if run_seed is not None:
                     np.random.seed(run_seed)
 
-                run_result = self.runner.run_without_proposal_pose(playback_data, params)
+                # Decide whether to use the run seed for measurement noise or not
+                if use_seed_list_for_measurement_noise:
+                    measurement_noise_seed = run_seed
+                else:
+                    measurement_noise_seed = None
+
+                run_playback_data = self._apply_measurement_noise_per_seed(
+                    playback_data=playback_data,
+                    measurement_stddev=params.measurement_noise_stddev,
+                    measurement_noise_seed=measurement_noise_seed,
+                    min_range=params.sensor_params.min_sensor_range,
+                    max_range=params.sensor_params.max_sensor_range,
+                )
+
+                run_result = self.runner.run_without_proposal_pose(run_playback_data, params)
                 score = self.scorer.score(run_result.summary)
 
                 ranked_runs.append(
