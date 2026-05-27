@@ -23,6 +23,7 @@ class StepResult:
     step_idx: int
     t: float
     true_pose: Pose2D
+    raw_odom_pose: Optional[Pose2D]
     est_pose: Optional[Pose2D]
     best_particle_pose: Optional[Pose2D]
     neff: Optional[float]
@@ -30,6 +31,8 @@ class StepResult:
     scan_match_fallback_failed: Optional[bool] = None
     translation_error: Optional[float] = None
     rotation_error: Optional[float] = None
+    trans_err_raw_odom: Optional[float] = None
+    rot_err_raw_odom: Optional[float] = None
     translation_error_best_p: Optional[float] = None
     rotation_error_best_p: Optional[float] = None
     particle_weight_min: Optional[float] = None
@@ -195,7 +198,7 @@ class RBPFEvaluator:
 
     @staticmethod
     def rank_model_probs(pose_errors, weights):
-        # get idx fof max weights
+        # get idx of max weights
         max_weight_idx = np.argmax(weights)
 
         # Pseudo sort pose err from low to high
@@ -219,6 +222,7 @@ class RBPFEvaluator:
         step_idx: int,
         t: float,
         true_pose,
+        raw_odom_pose,
         est_pose,
         best_particle_pose,
         scan_match_failed: Optional[bool],
@@ -234,11 +238,14 @@ class RBPFEvaluator:
         Evaluates one RBPF step and returns per-step errors.
         """
         true_pose_t = self._to_pose_tuple(true_pose)
+        raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
         est_pose_t = self._to_pose_tuple(est_pose)
         best_particle_pose_t = self._to_pose_tuple(best_particle_pose)
 
         trans_err = None
         rot_err = None
+        trans_err_raw_odom = None
+        rot_err_raw_odom = None
         trans_err_best_p = None
         rot_err_best_p = None
         trans_err_mu_true = None
@@ -300,6 +307,10 @@ class RBPFEvaluator:
         xj_weight = None
         xj_motion = None
         xj_meas = None
+
+        if raw_odom_pose_t is not None:
+            trans_err_raw_odom = self.translation_error(raw_odom_pose_t, true_pose_t)
+            rot_err_raw_odom = abs(self.angle_diff(raw_odom_pose_t[2], true_pose_t[2]))
 
         if est_pose_t is not None:
             trans_err = self.translation_error(est_pose_t, true_pose_t)
@@ -532,6 +543,7 @@ class RBPFEvaluator:
             step_idx=step_idx,
             t=float(t),
             true_pose=true_pose_t,
+            raw_odom_pose=raw_odom_pose_t,
             est_pose=est_pose_t,
             best_particle_pose=best_particle_pose_t,
             neff=float(neff) if neff is not None else None,
@@ -539,6 +551,8 @@ class RBPFEvaluator:
             scan_match_fallback_failed=scan_match_fallback_failed,
             translation_error=trans_err,
             rotation_error=rot_err,
+            trans_err_raw_odom=trans_err_raw_odom,
+            rot_err_raw_odom=rot_err_raw_odom,
             translation_error_best_p=trans_err_best_p,
             rotation_error_best_p=rot_err_best_p,
             particle_weight_min=float(particle_weight_min) if particle_weight_min is not None else None,
@@ -609,6 +623,8 @@ class RBPFEvaluator:
         """
         trans_err = [s.translation_error for s in step_results if s.translation_error is not None]
         rot_err = [s.rotation_error for s in step_results if s.rotation_error is not None]
+        trans_err_raw_odom = [s.trans_err_raw_odom for s in step_results if s.trans_err_raw_odom is not None]
+        rot_err_raw_odom = [s.rot_err_raw_odom for s in step_results if s.rot_err_raw_odom is not None]
         trans_err_best_p = [s.translation_error_best_p for s in step_results if s.translation_error_best_p is not None]
         rot_err_best_p = [s.rotation_error_best_p for s in step_results if s.rotation_error_best_p is not None]
         scan_match_failed_count = sum(1 for s in step_results if s.scan_match_failed)
@@ -664,13 +680,21 @@ class RBPFEvaluator:
         log_meas_range_values = [s.log_meas_range for s in step_results if s.log_meas_range is not None]
         log_weight_range_values = [s.log_weight_range for s in step_results if s.log_weight_range is not None]
 
-        drift = float("inf")
-        drift_rotation_error = float("inf")
+        drift_trans_err = float("inf")
+        drift_rot_err = float("inf")
+        drift_trans_err_raw_odom = float("inf")
+        drift_rot_err_raw_odom = float("inf")
 
         for s in reversed(step_results):
             if s.est_pose is not None:
-                drift = self.translation_error(s.est_pose, s.true_pose)
-                drift_rotation_error = abs(self.angle_diff(s.est_pose[2], s.true_pose[2]))
+                drift_trans_err = self.translation_error(s.est_pose, s.true_pose)
+                drift_rot_err = abs(self.angle_diff(s.est_pose[2], s.true_pose[2]))
+                break
+
+        for s in reversed(step_results):
+            if s.raw_odom_pose is not None:
+                drift_trans_err_raw_odom = self.translation_error(s.raw_odom_pose, s.true_pose)
+                drift_rot_err_raw_odom = abs(self.angle_diff(s.raw_odom_pose[2], s.true_pose[2]))
                 break
 
         summary = {
@@ -681,12 +705,18 @@ class RBPFEvaluator:
             "mean_rotation_error": float(np.mean(rot_err)) if rot_err else float("inf"),
             "rmse_translation_error": float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),
             "rmse_rotation_error": float(np.sqrt(np.mean(np.square(rot_err)))) if rot_err else float("inf"),
+            "mean_translation_error_raw_odom": float(np.mean(trans_err_raw_odom)) if trans_err_raw_odom else float("inf"),
+            "mean_rotation_error_raw_odom": float(np.mean(rot_err_raw_odom)) if rot_err_raw_odom else float("inf"),
+            "rmse_translation_error_raw_odom": float(np.sqrt(np.mean(np.square(trans_err_raw_odom)))) if trans_err_raw_odom else float("inf"),
+            "rmse_rotation_error_raw_odom": float(np.sqrt(np.mean(np.square(rot_err_raw_odom)))) if rot_err_raw_odom else float("inf"),
             "mean_trans_err_best_p": float(np.mean(trans_err_best_p)) if trans_err_best_p else float("inf"),
             "mean_rot_err_best_p": float(np.mean(rot_err_best_p)) if rot_err_best_p else float("inf"),
             "rmse_trans_error_best_p": float(np.sqrt(np.mean(np.square(trans_err_best_p)))) if trans_err_best_p else float("inf"),
             "rmse_rot_error_best_p": float(np.sqrt(np.mean(np.square(rot_err_best_p)))) if rot_err_best_p else float("inf"),
-            "drift": drift,
-            "drift_rotation_error": drift_rotation_error,
+            "drift_trans_err": drift_trans_err,
+            "drift_rot_err": drift_rot_err,
+            "drift_trans_err_raw_odom": drift_trans_err_raw_odom,
+            "drift_rot_err_raw_odom": drift_rot_err_raw_odom,
             "mean_neff": float(np.mean(neff_values)) if neff_values else 0.0,
             "mean_particle_weight_min": float(np.mean(particle_weight_min_values)) if particle_weight_min_values else 0.0,
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,

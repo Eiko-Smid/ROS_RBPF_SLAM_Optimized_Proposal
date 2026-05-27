@@ -26,7 +26,7 @@ from ..rbpf.scan_match_factory import (
 
 from ..optimize_rbpf.playback_defs import ExperimentParams
 from .evaluator_scanmatching import ScanMatchingEvaluator
-from .playback_runner_scanmatching import PlaybackRunnerScanMatching
+from .playback_runner_scanmatching import PlaybackRunnerScanMatching, RawOdometryPropagator
 from .scorer_scanmatching import ScanMatchingScorer
 from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
@@ -81,18 +81,22 @@ from .result_writer_scanmatching import ResultWriterScanMatching
         3.2.3 Run on turtle bot map with added noise in scan ranges with measurement seed
         
         3.2.4 Run on turtle bot map with on small grid with different seeds -> find stable params
+
+        3.2.5 Final run with best union params
+
+
 '''
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_4_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_4_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_4_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_6_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_6_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_6_params.json"
 
 # SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_summary.csv"
 # SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_trace_steps.csv"
 # PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_params.json"
 
-CSV_FLOAT_DECIMALS = 5
+CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
@@ -144,14 +148,14 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "every_nth_beam_map": [2],
 
         # OccupancyParams (OGM)
-        "increasing_probability": [0.7, 0.85],
-        "decreasing_probability": [0.30, 0.15],
+        "increasing_probability": [0.85],
+        "decreasing_probability": [0.15],
         "min_log_odds": [-5.0],
         "max_log_odds": [5.0],
 
         # ScanMatcherParams
-        "occ_thres": [1.0, 1.2, 1.6],
-        "delta_r": [0.4, 0.5, 0.6],
+        "occ_thres": [1.2],
+        "delta_r": [0.4],
         "surface_radius_m": [0.2],
         "min_free_ratio": [0.25],
 
@@ -159,9 +163,9 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "max_n_points": [400],
         "neighbors_pca": [10],
         "max_iterations": [5],
-        "max_correspondence_distance": [0.45, 0.6],
+        "max_correspondence_distance": [0.6],
         "min_corresp": [15],
-        "max_translation_jump": [0.3, 0.6],
+        "max_translation_jump": [0.3],
         "max_rotation_jump_deg": [45.0],
         "max_acceptable_mean_error": [0.15],
     }
@@ -387,6 +391,7 @@ def build_optimizer() -> ScanMatchingOptimizer:
     runner = PlaybackRunnerScanMatching(
         factory=RBPFFactory(),
         evaluator=ScanMatchingEvaluator(),
+        raw_odom_propagator=RawOdometryPropagator(),
     )
 
     return ScanMatchingOptimizer(

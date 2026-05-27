@@ -275,14 +275,6 @@ class ProposalEstimator:
         norm = 0.0
         mu = np.zeros(3)
 
-        # Sample k new poses around scan matcher pose
-        # samples = self.sample_poses(
-        #     pose=scan_match_pose,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        # )
-
         samples, n_samples = self.sample_poses_deterministic(
             pose=scan_match_pose,
             sigma_xy=sigma_xy,

@@ -112,6 +112,7 @@ class RBPFOptimizer:
                 else:
                     measurement_noise_seed = None
 
+                # Apply measurement noise
                 run_playback_data = self._apply_measurement_noise_per_seed(
                     playback_data=playback_data,
                     measurement_stddev=params.measurement_noise_stddev,
@@ -120,9 +121,11 @@ class RBPFOptimizer:
                     max_range=params.sensor_params.max_sensor_range,
                 )
 
+                # Run the rbpf filter on one parameter set and compute the rating score 
                 run_result = self.runner.run(run_playback_data, params)
                 score = self.scorer.score(run_result.summary)
 
+                # Store run results
                 ranked_runs.append(
                     RankedRun(
                         params=params,

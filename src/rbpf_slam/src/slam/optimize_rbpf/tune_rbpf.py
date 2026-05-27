@@ -28,9 +28,9 @@ from ..rbpf.scan_match_factory import (
 )
 
 from .evaluator import RBPFEvaluator
-from .playback_runner import PlaybackRunner
+from .playback_runner import PlaybackRunner, RawOdometryPropagator
 from .scorer import RunScorer
-from .optimizer import ScanMatcherOptimizer
+from .optimizer import RBPFOptimizer
 from .result_writer import ResultWriter
 
 
@@ -413,24 +413,39 @@ from .result_writer import ResultWriter
     - Here we will use these prams and test if we are now able to shift the proposal towards the xj with the min err
       to the true pose.
 
-    
+        28.1 turtle map
+
+            28.1.1 First full run
+
+                Results:
+
+                    - Pose (trans, rot) errors almost identical to scan match only 
+                    - Unfortunately the problem that the proposal doesn't follow the true pose is still there
+                    - Since we are using the old measurement model we also don't shift the proposal towards the ebst xj
+                      U can easily see this from the metrics:
+                        - mean_log_motion_range = 0.428531
+                        - mean_log_meas_range = 0.200502 -> measurement model more flat than motion model
+                        - mean_corr_xjs_meas = 0.264045 -> Weak correlation between xj pose errr and measurement prob
+                    
+                TODOs:
+                    - We need a new parameter search over both maps and different seeds 
+                    - Then we need to compare the results and find best common params
+                    - Then we need to try this for the different measurement models 
+                    - If we are not able to improve we tzune icp for grid resolution of 0.05 instead of 0.1
+                    - IF this still doesnt imrpvoe proposal than we need to change measurement model (ogm with mean positions stored)
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_27_2_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_params.json'
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_steps.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777901198_optm_22_2_params.json'
-
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1777891056_optm_test_1_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_params.json'
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -451,9 +466,8 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
-PLAYBACK_SUFFIX = "1777891056"        # Cafe map
-# PLAYBACK_SUFFIX = "1777901198"          # Turtlebot map
-
+PLAYBACK_SUFFIX = "1779363559"          # turtlebot 3 map
+# PLAYBACK_SUFFIX = "1779375646"        # Cafe map   
 
 def _to_jsonable(value):
     if isinstance(value, np.ndarray):
@@ -526,6 +540,9 @@ def _grid_axes() -> dict:
 
 
 def write_parameter_overview(path: str, n_repeats: int, start_pose, override: bool = False) -> None:
+    '''
+    Write the experiment parameter overview to a JSON file for experiment reconstructability. 
+    '''
     file_exists = ResultWriter.create_path_and_check_if_file_exists(path=path)
 
     if file_exists and not override:
@@ -712,16 +729,17 @@ def build_optimizer():
     scan_match_playback_run = PlaybackRunner(
         factory=scan_match_fac,
         evaluator=scan_match_eval,
+        raw_odom_propagator=RawOdometryPropagator(),
     )
 
     # Init optimizer
     run_scorer = RunScorer()
-    scan_match_optimizer = ScanMatcherOptimizer(
+    rbpf_optimizer = RBPFOptimizer(
         runner=scan_match_playback_run,
         scorer=run_scorer,
     )
     
-    return scan_match_optimizer
+    return rbpf_optimizer
 
 
 

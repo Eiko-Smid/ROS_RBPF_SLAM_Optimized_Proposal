@@ -93,6 +93,8 @@ class ResultWriter:
 					# "rot_error_best_p_deg",
 
 					# Pose errors
+					"trans_error_raw_odom",
+					"rot_error_raw_odom_deg",
 					"trans_error",
 					"rot_error_deg",
 					# "particle_weight_min",
@@ -171,6 +173,8 @@ class ResultWriter:
 						# math.degrees(step.rotation_error_best_p) if step.rotation_error_best_p is not None else None,
 
 						# Pose errors
+						step.trans_err_raw_odom,
+						math.degrees(step.rot_err_raw_odom) if step.rot_err_raw_odom is not None else None,
 						step.translation_error,
 						math.degrees(step.rotation_error) if step.rotation_error is not None else None,
 						# step.particle_weight_min,
@@ -405,6 +409,11 @@ class ResultWriter:
 					"best_mean_err_too_large",
 
 					# trans and rot errros of end pose
+					"mean_trans_error_raw_odom",
+					"mean_rot_error_raw_odom_deg",
+					"rmse_trans_error_raw_odom",
+					"rmse_rot_error_raw_odom_deg",
+
 					"mean_trans_error",
 					"mean_rot_error_deg",
 					"rmse_trans_error",
@@ -413,7 +422,11 @@ class ResultWriter:
 					# "mean_rot_err_deg_best_p",
 					# "rmse_trans_error_best_p",
 					# "rmse_rot_error_deg_best_p",
-					"drift",
+					"drift_trans_err_raw_odom",
+					"drift_rot_err_raw_odom_deg",
+					"drift_trans_err",
+					"drift_rot_err_deg",
+					
 					
 					# "mean_neff",
 					# "mean_particle_weight_min",
@@ -530,15 +543,24 @@ class ResultWriter:
 					summary.get("best_mean_err_too_large", 0),
 
 					# trans and rot errors of end pose
+					summary.get("mean_translation_error_raw_odom"),
+					math.degrees(summary.get("mean_rotation_error_raw_odom")) if summary.get("mean_rotation_error_raw_odom") is not None else None,
+					summary.get("rmse_translation_error_raw_odom"),
+					math.degrees(summary.get("rmse_rotation_error_raw_odom")) if summary.get("rmse_rotation_error_raw_odom") is not None else None,
+					
 					summary.get("mean_translation_error"),
 					math.degrees(summary.get("mean_rotation_error")) if summary.get("mean_rotation_error") is not None else None,
 					summary.get("rmse_translation_error"),
 					math.degrees(summary.get("rmse_rotation_error")) if summary.get("rmse_rotation_error") is not None else None,
+					
 					# summary.get("mean_trans_err_best_p"),
 					# math.degrees(summary.get("mean_rot_err_best_p")) if summary.get("mean_rot_err_best_p") is not None else None,
 					# summary.get("rmse_trans_error_best_p"),
 					# math.degrees(summary.get("rmse_rot_error_best_p")) if summary.get("rmse_rot_error_best_p") is not None else None,
-					summary.get("drift"),
+					summary.get("drift_trans_err_raw_odom"),
+					summary.get("drift_rot_err_raw_odom"),
+					summary.get("drift_trans_err"),		
+					summary.get("drift_rot_err"),			
 					
 					# summary.get("mean_neff"),
 					# summary.get("mean_particle_weight_min"),

@@ -8,31 +8,23 @@ import numpy as np
 from .evaluator_scanmatching import RunResultScanMatching, ScanMatchingEvaluator
 from ..optimize_rbpf.playback_defs import ExperimentParams, PlaybackData
 from ..rbpf.rbpf import RBPFFactory
+from ..rbpf.motion_model import MotionModel
 from ..rbpf.scan_match_factory import ScanMatchFactory
 
 
 Pose2D = Tuple[float, float, float]
 
 
-class RawOdometryPoseEstimator:
-    """
-    Estimates the pose of a DDMR robot based on the robot's last pose, the odometry control values 
-    (dl, dr), and the robot's wheel separation. 
+class RawOdometryPropagator:
+    """Computes raw odometry poses using a fresh motion model per run."""
 
-    """
-
-    def __init__(self, predict_pose_fn, start_pose: Pose2D):
-        # Keep estimator generic by injecting the propagation function.
-        self._predict_pose = predict_pose_fn
-        self._start_pose = (float(start_pose[0]), float(start_pose[1]), float(start_pose[2]))
-
-    def estimate(self, steps: List[Any]) -> List[Pose2D]:
-        """Propagate pose once over all playback steps and return one pose per step."""
-        pose = self._start_pose
+    def estimate(self, steps: List[Any], start_pose: Pose2D, wheel_separation: float) -> List[Pose2D]:
+        pose = (float(start_pose[0]), float(start_pose[1]), float(start_pose[2]))
         odom_poses: List[Pose2D] = []
+        motion_model = MotionModel(wheel_separation=float(wheel_separation))
 
         for step in steps:
-            pose = self._predict_pose(pose=pose, dl=step.dl, dr=step.dr)
+            pose = motion_model.predict_pose(pose=pose, dl=step.dl, dr=step.dr)
             odom_poses.append((float(pose[0]), float(pose[1]), float(pose[2])))
 
         return odom_poses
@@ -43,26 +35,32 @@ class PlaybackRunnerScanMatching:
     Runs one scan-matching-only playback experiment for a single parameter set.
     """
 
-    def __init__(self, factory: RBPFFactory, evaluator: ScanMatchingEvaluator):
+    def __init__(self, factory: RBPFFactory, evaluator: ScanMatchingEvaluator, raw_odom_propagator: Optional[RawOdometryPropagator] = None):
         self.factory = factory
         self.evaluator = evaluator
-        self._raw_odom_cache_key: Optional[Tuple[int, Optional[float], Optional[float]]] = None
+        self.raw_odom_propagator = raw_odom_propagator or RawOdometryPropagator()
+        self._raw_odom_cache_key: Optional[Tuple[int, Optional[float], Optional[float], float, float, float, float]] = None
         self._raw_odom_poses_cache: Optional[List[Pose2D]] = None
 
 
     @staticmethod
-    def _build_playback_cache_key(playback_data: PlaybackData) -> Tuple[int, Optional[float], Optional[float]]:
+    def _build_raw_odom_cache_key(
+        playback_data: PlaybackData,
+        start_pose: Pose2D,
+        wheel_separation: float,
+    ) -> Tuple[int, Optional[float], Optional[float], float, float, float, float]:
         """
-        Build a lightweight cache key for raw-odometry baseline reuse.
+        Build a cache key for raw-odometry baseline reuse.
 
-        Raw odometry is independent of tuning parameters, so this allows us to
-        compute it once per playback and reuse it for every parameter set.
+        Raw odometry depends on playback, start pose, and wheel separation.
         """
         steps = playback_data.step_data_list
         n_steps = len(steps)
+        x0, y0, theta0 = float(start_pose[0]), float(start_pose[1]), float(start_pose[2])
+        wheel_sep = float(wheel_separation)
         if n_steps == 0:
-            return (0, None, None)
-        return (n_steps, float(steps[0].t), float(steps[-1].t))
+            return (0, None, None, x0, y0, theta0, wheel_sep)
+        return (n_steps, float(steps[0].t), float(steps[-1].t), x0, y0, theta0, wheel_sep)
 
 
     @staticmethod
@@ -153,15 +151,20 @@ class PlaybackRunnerScanMatching:
         steps = playback_data.step_data_list
         run_result = RunResultScanMatching(params=params)
 
-        # Compute raw-odometry baseline once per playback and reuse it across
-        # optimization runs to avoid repeated deterministic work.
-        cache_key = self._build_playback_cache_key(playback_data)
+        # Compute raw-odometry baseline once per unique input set and reuse it
+        # across optimization runs to avoid repeated deterministic work.
+        wheel_separation = float(params.robot_params.wheel_separation)
+        cache_key = self._build_raw_odom_cache_key(
+            playback_data=playback_data,
+            start_pose=params.particle_params.start_pose,
+            wheel_separation=wheel_separation,
+        )
         if self._raw_odom_poses_cache is None or self._raw_odom_cache_key != cache_key:
-            raw_odom_estimator = RawOdometryPoseEstimator(
-                predict_pose_fn=rbpf.particles[0].scan_matcher.predict_pose,
+            self._raw_odom_poses_cache = self.raw_odom_propagator.estimate(
+                steps=steps,
                 start_pose=params.particle_params.start_pose,
+                wheel_separation=wheel_separation,
             )
-            self._raw_odom_poses_cache = raw_odom_estimator.estimate(steps)
             self._raw_odom_cache_key = cache_key
 
         # Ensure valid scan downsampling values for filter/proposal and map update.
