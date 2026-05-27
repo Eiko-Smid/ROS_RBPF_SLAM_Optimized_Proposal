@@ -104,17 +104,21 @@ def compute_normals_numba(points, indices):
             c01 += dx * dy
             c11 += dy * dy
 
-        # Compute eigenvalues
-        trace = c00 + c11
-        det = c00 * c11 - c01 * c01
-        disc = trace * trace * 0.25 - det
+        # Estimate eigenvalues by compiuting determinant and find lambda values in quadratic function
+        lambda_coeff = c00 + c11
+        quaqdratic_const = c00 * c11 - c01 * c01
+
+        # Solve quadratic equation: lamb^2 - (c00+c11)*lambda + (c00 * c11 - c01^2) = 0
+        disc = lambda_coeff * lambda_coeff * 0.25 - quaqdratic_const
 
         # Clamp tiny negative values due to numerical precision
         if disc < 0.0:
             disc = 0.0
 
         tmp = np.sqrt(disc)
-        lambda_min = trace * 0.5 - tmp
+        
+        # Estimate min eigenvalue) -> min eigenvector (corresponding to direction of smallest variance in data)
+        lambda_min = lambda_coeff * 0.5 - tmp
 
         # Compute eigenvector corresponding to smallest eigenvalue (normal direction)
         vx = c01
@@ -766,6 +770,19 @@ class IterativeClosestPoint():
 
 
     def compute_normals_pca(self, points: np.ndarray, k: int = 10):
+        """
+        Compute normals using KNN + PCA (2D). Find the k NN for each point. Than we find the direction of the lowest variance 
+        for that points by PCA. This direction is the normal direction, the direction perpendicular to the local surface.
+        
+        Parameters:
+        ----------
+            points: Nx2 numpy array of points.
+            k: Number of neighbors to use for normal estimation.
+        
+        Returns:
+        ----------
+            normals: Nx2 numpy array of normal vectors corresponding to each point.
+        """
         # Check if we have enough points
         n_points = points.shape[0]
         if n_points < k:
