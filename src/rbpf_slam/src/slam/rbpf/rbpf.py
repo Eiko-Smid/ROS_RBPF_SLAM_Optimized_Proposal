@@ -505,7 +505,20 @@ class RBPF:
                 alpha=proposal_alpha,
                 beta=proposal_beta,
             )
-            
+
+            # new_pose = corr_pose
+            # p_weight = 1.0
+            # prop_metrics = {
+            #     "prop_mu": None,
+            #     "prop_cov_matrix": None,
+            #     "scan_match_pose": np.asarray(corr_pose, dtype=float),
+            #     "pred_pose": np.asarray(pred_pose, dtype=float),
+            #     "xjs": None,
+            #     "xj_weights": None,
+            #     "motion_probs": None,
+            #     "meas_probs": None,
+            # }
+                
 
             t_prop_s = time.perf_counter() - t_prop_start
             self._timing_stats["proposal_estimation_sum_s"] += t_prop_s
