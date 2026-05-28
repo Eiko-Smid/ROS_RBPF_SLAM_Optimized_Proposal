@@ -460,6 +460,11 @@ from .result_writer import ResultWriter
     - We updated the scorer to better reflect the new insights we got from the proposal analysis.
 
     29.1 Turtle bot map analysis with new scorer
+
+        29.1.1 Full run with new scorer
+
+
+        29.1.2 run with adapted scorer
     
 
 
@@ -469,15 +474,15 @@ from .result_writer import ResultWriter
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_params.json'
 
 USED_MEAS_MODEL = "Old_NN_Based"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -529,50 +534,6 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
-# def _grid_axes() -> dict:
-#     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [1],                         # number of particles in the RBPF
-#         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
-
-#         # measurement model params
-#         "sigma_measurement": [0.06, 0.12, 0.15, 0.18],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.08, 0.12, 0.2],       # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.03, 0.07, 0.1],           # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
-#             {
-#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             },
-#             {
-#                 "proposal_sigma_xy": 0.1,
-#                 "proposal_sigma_theta": 0.06,
-#                 "n_samples_dir": 5,
-#             },
-#         ],
-#         # TODO: Delete proposal values when no longer needed later on
-#         "proposal_alpha": [1.0],
-#         "proposal_beta": [1.0],
-
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-#         "min_free_ratio": [0.25],
-#     }
-
-
 def _grid_axes() -> dict:
     return {
         # General rbpf params
@@ -582,12 +543,12 @@ def _grid_axes() -> dict:
         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
 
         # measurement model params
-        "sigma_measurement": [0.06],                # measurement uncertainty [m]
+        "sigma_measurement": [0.06, 0.12, 0.15, 0.18],                # measurement uncertainty [m]
         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
         
         # Motion model params
-        "sigma_xy_motion": [0.2],       # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.07],           # motion model uncertainty in theta direction [rad]
+        "sigma_xy_motion": [0.08, 0.12, 0.2],       # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.03, 0.07, 0.1],           # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
         
@@ -615,6 +576,50 @@ def _grid_axes() -> dict:
         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
         "min_free_ratio": [0.25],
     }
+
+
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [1],                         # number of particles in the RBPF
+#         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
+
+#         # measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.2],       # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.07],           # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             },
+#             {
+#                 "proposal_sigma_xy": 0.1,
+#                 "proposal_sigma_theta": 0.06,
+#                 "n_samples_dir": 5,
+#             },
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.25],
+#     }
 
 
 def write_parameter_overview(path: str, n_repeats: int, start_pose, override: bool = False) -> None:

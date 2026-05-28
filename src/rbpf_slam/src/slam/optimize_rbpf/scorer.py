@@ -30,8 +30,12 @@ class RunScorer:
         Computes a single optimization score for one RBPF run.
         Lower score is better.
         """
-
+        # Get step count for normalization 
         n_steps = max(1.0, self._get(summary, "n_steps", 1.0))
+
+        # Get number of samples
+        n_samples_dir = self._get(summary, "n_samples_dir", 3.0)
+        n_xj = n_samples_dir ** 3 
 
         # Extract needed metric from summary
         # Main trajectory quality        
@@ -48,7 +52,7 @@ class RunScorer:
 
         # Reliability
         sm_fail_rate = self._get(summary, "scan_match_failed_count", 0.0) / n_steps
-        sm_fallback_fail_rate = self._get(summary, "scan_match_fallback_failed_count", 0.0) / n_steps
+        # sm_fallback_fail_rate = self._get(summary, "scan_match_fallback_failed_count", 0.0) / n_steps
 
         # Proposal correctness
         best_xj_pose_err = self._get(summary, "mean_best_weighted_xj_pose_err_true")
@@ -65,11 +69,10 @@ class RunScorer:
         log_meas_range = self._get(summary, "median_log_meas_range", 0.0)
         log_motion_range = self._get(summary, "median_log_motion_range", 0.0)
         xj_eff_meas = self._get(summary, "mean_xj_eff_meas", 27.0)
-        n_xj = 27.0
         meas_flatness = min(xj_eff_meas / n_xj, 1.0)
 
         # Reward useful measurement sharpness, but saturate it.
-        meas_sharpness_reward = min(log_meas_range / 1.0, 1.0)
+        meas_sharpness_reward = min(log_meas_range / 0.5, 1.0)
 
         return (
             # Trajectory quality
@@ -79,13 +82,13 @@ class RunScorer:
             # Proposal correctness
             + 1.0 * (best_xj_pose_err / 0.20)
             + 1.2 * mu_worse_penalty
-            + 1.0 * best_xj_worse_penalty
-            + 1.2 * min_xj_is_worse_best_xj
+            + 1.5 * best_xj_worse_penalty
+            + 1.5 * min_xj_is_worse_best_xj
 
             # Measurement/motion distribution behavior
-            - 0.4 * meas_sharpness_reward
-            + 0.3 * min(log_motion_range / 1.0, 2.0)
-            + 0.4 * meas_flatness
+            - 0.25 * meas_sharpness_reward
+            + 0.1 * min(log_motion_range / 1.0, 2.0)
+            + 0.2 * meas_flatness
 
             # Reliability
             + 2.0 * sm_fail_rate
