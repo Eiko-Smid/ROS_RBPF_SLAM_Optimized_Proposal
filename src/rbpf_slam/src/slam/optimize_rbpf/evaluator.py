@@ -52,6 +52,7 @@ class StepResult:
     mu_true_err_improves_over_sm_true: Optional[float] = None
     
     min_xj_pose_err_true: Optional[float] = None
+    min_xj_is_best_xj: Optional[bool] = None
     weight_min_xj_err: Optional[float] = None
     best_weighted_xj_pose_err_true: Optional[float] = None
     weight_best_xj: Optional[float] = None
@@ -216,6 +217,14 @@ class RBPFEvaluator:
             rank_score = 1.0 - (rank - 1) / (N - 1)
         
         return rank_score
+
+
+    @staticmethod
+    def _finite_values(values: List[Optional[float]]) -> List[float]:
+        arr = np.asarray(values, dtype=float)
+        if arr.size == 0:
+            return []
+        return arr[np.isfinite(arr)].astype(float).tolist()
     
 
     def evaluate_step(
@@ -277,6 +286,7 @@ class RBPFEvaluator:
         xj_eff_meas = None
 
         min_xj_pose_err_true = None
+        min_xj_is_best_xj = None
         weight_min_xj_err = None
         best_weighted_xj_pose_err_true = None
         weight_best_xj = None
@@ -412,10 +422,8 @@ class RBPFEvaluator:
                         pose_errors_xj_true = np.asarray(pose_errors_xj_true, dtype=float)
 
                         # Store per-sample proposal diagnostics for optional CSV export.
+                        # xj_weight/xj_motion/xj_meas are exported as normalized arrays.
                         xj_pose_err = pose_errors_xj_true.astype(float).tolist()
-                        xj_weight = weights.astype(float).tolist()
-                        xj_motion = motion_probs_arr.astype(float).tolist()
-                        xj_meas = meas_probs_arr.astype(float).tolist()
 
                         # Find xj which has min error to true pose
                         min_xj_pose_err_true = np.min(pose_errors_xj_true)
@@ -432,6 +440,9 @@ class RBPFEvaluator:
                             xj_pose_errors_true=pose_errors_xj_true,
                             xj_weights=weights
                         )
+
+                        # Measure if the min xj beats the bes xj
+                        min_xj_is_best_xj = bool(best_idx == np.argmin(pose_errors_xj_true))
 
                         # Compute correlation between all xj errors to true pose and corresponding weights/probs
                         corr_xjs_weights, _ = spearmanr(-pose_errors_xj_true, weights)
@@ -478,18 +489,23 @@ class RBPFEvaluator:
                         denom_meas = float(np.sum(meas_norm ** 2))
                         xj_eff_meas = float(1.0 / denom_meas)
 
+                        # Store normalized per-sample proposal diagnostics for CSV export.
+                        xj_weight = norm_weights.astype(float).tolist()
+                        xj_motion = motion_norm.astype(float).tolist()
+                        xj_meas = meas_norm.astype(float).tolist()
+
                         if norm_weights.shape[0] < 27:
                             print("Weights lower than 27")
 
                         # Compute weight ratio between best xj and min xj weight
                         weight_ratio_min_best_weight = weight_min_xj_err / weight_best_xj 
 
-                        # Motion model weight range
-                        log_motion_probs = np.log(motion_probs_arr + 1e-12)
+                        # Motion model weight range (normalized motion probabilities)
+                        log_motion_probs = np.log(motion_norm + 1e-12)
                         log_motion_range = np.max(log_motion_probs) - np.min(log_motion_probs)#
 
-                        # measurement model weight range
-                        log_meas_probs = np.log(meas_probs_arr + 1e-12)
+                        # measurement model weight range (normalized measurement probabilities)
+                        log_meas_probs = np.log(meas_norm + 1e-12)
                         log_meas_range = np.max(log_meas_probs) - np.min(log_meas_probs)
 
                         # weight range
@@ -577,6 +593,7 @@ class RBPFEvaluator:
             pose_err_sm_true=pose_err_sm_true,
             
             min_xj_pose_err_true=min_xj_pose_err_true,
+            min_xj_is_best_xj=min_xj_is_best_xj,
             weight_min_xj_err=weight_min_xj_err,
             best_weighted_xj_pose_err_true=best_weighted_xj_pose_err_true,
             weight_best_xj=weight_best_xj,
@@ -625,64 +642,74 @@ class RBPFEvaluator:
         """
         Computes run-level metrics for optimization and reporting.
         """
-        trans_err = [s.translation_error for s in step_results if s.translation_error is not None]
-        rot_err = [s.rotation_error for s in step_results if s.rotation_error is not None]
-        trans_err_raw_odom = [s.trans_err_raw_odom for s in step_results if s.trans_err_raw_odom is not None]
-        rot_err_raw_odom = [s.rot_err_raw_odom for s in step_results if s.rot_err_raw_odom is not None]
-        trans_err_best_p = [s.translation_error_best_p for s in step_results if s.translation_error_best_p is not None]
-        rot_err_best_p = [s.rotation_error_best_p for s in step_results if s.rotation_error_best_p is not None]
+        # Filter out infinite values form data before comptuaing summary metrics
+        trans_err = self._finite_values([s.translation_error for s in step_results if s.translation_error is not None])
+        rot_err = self._finite_values([s.rotation_error for s in step_results if s.rotation_error is not None])
+        trans_err_raw_odom = self._finite_values([s.trans_err_raw_odom for s in step_results if s.trans_err_raw_odom is not None])
+        rot_err_raw_odom = self._finite_values([s.rot_err_raw_odom for s in step_results if s.rot_err_raw_odom is not None])
+        trans_err_best_p = self._finite_values([s.translation_error_best_p for s in step_results if s.translation_error_best_p is not None])
+        rot_err_best_p = self._finite_values([s.rotation_error_best_p for s in step_results if s.rotation_error_best_p is not None])
         scan_match_failed_count = sum(1 for s in step_results if s.scan_match_failed)
         scan_match_fallback_failed_count = sum(1 for s in step_results if s.scan_match_fallback_failed)
-        neff_values = [s.neff for s in step_results if s.neff is not None]
-        particle_weight_min_values = [s.particle_weight_min for s in step_results if s.particle_weight_min is not None]
-        particle_weight_max_values = [s.particle_weight_max for s in step_results if s.particle_weight_max is not None]
-        particle_weight_mean_values = [s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None]
-        step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
+        neff_values = self._finite_values([s.neff for s in step_results if s.neff is not None])
+        particle_weight_min_values = self._finite_values([s.particle_weight_min for s in step_results if s.particle_weight_min is not None])
+        particle_weight_max_values = self._finite_values([s.particle_weight_max for s in step_results if s.particle_weight_max is not None])
+        particle_weight_mean_values = self._finite_values([s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None])
+        step_durations = self._finite_values([s.step_duration for s in step_results if s.step_duration is not None])
         
         # Compute proposal metrics
-        trans_err_mu_true_values = [s.trans_err_mu_true for s in step_results if s.trans_err_mu_true is not None]
-        rot_err_mu_true_values = [s.rot_err_mu_true for s in step_results if s.rot_err_mu_true is not None]
-        pose_err_mu_true_values = [s.pose_err_mu_true for s in step_results if s.pose_err_mu_true is not None]  
-        trans_err_mu_sm_values = [s.trans_err_mu_sm for s in step_results if s.trans_err_mu_sm is not None]
-        rot_err_mu_sm_values = [s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None]
-        pose_err_sm_true_values = [s.pose_err_sm_true for s in step_results if s.pose_err_sm_true is not None]
-        trans_err_mu_pred_values = [s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None]
-        rot_err_mu_pred_values = [s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None]
-        prop_std_x_values = [s.prop_std_x for s in step_results if s.prop_std_x is not None]
-        prop_std_y_values = [s.prop_std_y for s in step_results if s.prop_std_y is not None]
-        prop_std_theta_values = [s.prop_std_theta for s in step_results if s.prop_std_theta is not None]
+        trans_err_mu_true_values = self._finite_values([s.trans_err_mu_true for s in step_results if s.trans_err_mu_true is not None])
+        rot_err_mu_true_values = self._finite_values([s.rot_err_mu_true for s in step_results if s.rot_err_mu_true is not None])
+        pose_err_mu_true_values = self._finite_values([s.pose_err_mu_true for s in step_results if s.pose_err_mu_true is not None])
+        trans_err_mu_sm_values = self._finite_values([s.trans_err_mu_sm for s in step_results if s.trans_err_mu_sm is not None])
+        rot_err_mu_sm_values = self._finite_values([s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None])
+        pose_err_sm_true_values = self._finite_values([s.pose_err_sm_true for s in step_results if s.pose_err_sm_true is not None])
+        trans_err_mu_pred_values = self._finite_values([s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None])
+        rot_err_mu_pred_values = self._finite_values([s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None])
+        prop_std_x_values = self._finite_values([s.prop_std_x for s in step_results if s.prop_std_x is not None])
+        prop_std_y_values = self._finite_values([s.prop_std_y for s in step_results if s.prop_std_y is not None])
+        prop_std_theta_values = self._finite_values([s.prop_std_theta for s in step_results if s.prop_std_theta is not None])
         
-        mean_prop_std_xy = np.mean(
-            [(sx + sy) / 2.0 for sx, sy in zip(prop_std_x_values, prop_std_y_values)] 
+        prop_std_xy_values = self._finite_values(
+            [
+                (s.prop_std_x + s.prop_std_y) / 2.0
+                for s in step_results
+                if s.prop_std_x is not None
+                and s.prop_std_y is not None
+                and np.isfinite(s.prop_std_x)
+                and np.isfinite(s.prop_std_y)
+            ]
         )
+        mean_prop_std_xy = float(np.mean(prop_std_xy_values)) if prop_std_xy_values else float("nan")
         mean_std_theta = np.mean(prop_std_theta_values) if prop_std_theta_values else float("nan")
         
-        prop_corr_xy_values = [s.corr_xy for s in step_results if s.corr_xy is not None]
-        prop_corr_x_theta_values = [s.corr_x_theta for s in step_results if s.corr_x_theta is not None]
-        prop_corr_y_theta_values = [s.corr_y_theta for s in step_results if s.corr_y_theta is not None]
-        xj_eff_values = [s.xj_eff for s in step_results if s.xj_eff is not None]
-        xj_eff_motion_values = [s.xj_eff_motion for s in step_results if s.xj_eff_motion is not None]
-        xj_eff_meas_values = [s.xj_eff_meas for s in step_results if s.xj_eff_meas is not None]
-        min_xj_pose_err_true_values = [s.min_xj_pose_err_true for s in step_results if s.min_xj_pose_err_true is not None]
-        min_xj_true_err_improves_over_sm_true_values = [s.min_xj_true_err_improves_over_sm_true for s in step_results if s.min_xj_true_err_improves_over_sm_true is not None]
-        best_xj_true_err_improves_over_sm_true_values = [s.best_xj_true_err_improves_over_sm_true for s in step_results if s.best_xj_true_err_improves_over_sm_true is not None]
-        min_xj_true_err_weight_score_values = [s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None]
-        corr_xjs_weights_values = [s.corr_xjs_weights for s in step_results if s.corr_xjs_weights is not None]
-        corr_xjs_motion_values = [s.corr_xjs_motion for s in step_results if s.corr_xjs_motion is not None]
-        corr_xjs_meas_values = [s.corr_xjs_meas for s in step_results if s.corr_xjs_meas is not None]
-        corr_weights_motion_values = [s.corr_weights_motion for s in step_results if s.corr_weights_motion is not None]
-        corr_weights_meas_values = [s.corr_weights_meas for s in step_results if s.corr_weights_meas is not None]
-        best_xj_score_values = [s.best_xj_score for s in step_results if s.best_xj_score is not None]
-        motion_rank_score_values = [s.motion_rank_score for s in step_results if s.motion_rank_score is not None]
-        meas_rank_score_values = [s.meas_rank_score for s in step_results if s.meas_rank_score is not None]
-        mu_true_err_improves_over_sm_true_values = [s.mu_true_err_improves_over_sm_true for s in step_results if s.mu_true_err_improves_over_sm_true is not None]
-        weight_min_xj_err_values = [s.weight_min_xj_err for s in step_results if s.weight_min_xj_err is not None]
-        best_weighted_xj_pose_err_true_values = [s.best_weighted_xj_pose_err_true for s in step_results if s.best_weighted_xj_pose_err_true is not None]
-        weight_best_xj_values = [s.weight_best_xj for s in step_results if s.weight_best_xj is not None]
-        weight_ratio_min_best_weight_values = [s.weight_ratio_min_best_weight for s in step_results if s.weight_ratio_min_best_weight is not None]
-        log_motion_range_values = [s.log_motion_range for s in step_results if s.log_motion_range is not None]
-        log_meas_range_values = [s.log_meas_range for s in step_results if s.log_meas_range is not None]
-        log_weight_range_values = [s.log_weight_range for s in step_results if s.log_weight_range is not None]
+        prop_corr_xy_values = self._finite_values([s.corr_xy for s in step_results if s.corr_xy is not None])
+        prop_corr_x_theta_values = self._finite_values([s.corr_x_theta for s in step_results if s.corr_x_theta is not None])
+        prop_corr_y_theta_values = self._finite_values([s.corr_y_theta for s in step_results if s.corr_y_theta is not None])
+        xj_eff_values = self._finite_values([s.xj_eff for s in step_results if s.xj_eff is not None])
+        xj_eff_motion_values = self._finite_values([s.xj_eff_motion for s in step_results if s.xj_eff_motion is not None])
+        xj_eff_meas_values = self._finite_values([s.xj_eff_meas for s in step_results if s.xj_eff_meas is not None])
+        min_xj_pose_err_true_values = self._finite_values([s.min_xj_pose_err_true for s in step_results if s.min_xj_pose_err_true is not None])
+        min_xj_is_best_xj_values = [s.min_xj_is_best_xj for s in step_results if s.min_xj_is_best_xj is not None]
+        min_xj_true_err_improves_over_sm_true_values = self._finite_values([s.min_xj_true_err_improves_over_sm_true for s in step_results if s.min_xj_true_err_improves_over_sm_true is not None])
+        best_xj_true_err_improves_over_sm_true_values = self._finite_values([s.best_xj_true_err_improves_over_sm_true for s in step_results if s.best_xj_true_err_improves_over_sm_true is not None])
+        min_xj_true_err_weight_score_values = self._finite_values([s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None])
+        corr_xjs_weights_values = self._finite_values([s.corr_xjs_weights for s in step_results if s.corr_xjs_weights is not None])
+        corr_xjs_motion_values = self._finite_values([s.corr_xjs_motion for s in step_results if s.corr_xjs_motion is not None])
+        corr_xjs_meas_values = self._finite_values([s.corr_xjs_meas for s in step_results if s.corr_xjs_meas is not None])
+        corr_weights_motion_values = self._finite_values([s.corr_weights_motion for s in step_results if s.corr_weights_motion is not None])
+        corr_weights_meas_values = self._finite_values([s.corr_weights_meas for s in step_results if s.corr_weights_meas is not None])
+        best_xj_score_values = self._finite_values([s.best_xj_score for s in step_results if s.best_xj_score is not None])
+        motion_rank_score_values = self._finite_values([s.motion_rank_score for s in step_results if s.motion_rank_score is not None])
+        meas_rank_score_values = self._finite_values([s.meas_rank_score for s in step_results if s.meas_rank_score is not None])
+        mu_true_err_improves_over_sm_true_values = self._finite_values([s.mu_true_err_improves_over_sm_true for s in step_results if s.mu_true_err_improves_over_sm_true is not None])
+        weight_min_xj_err_values = self._finite_values([s.weight_min_xj_err for s in step_results if s.weight_min_xj_err is not None])
+        best_weighted_xj_pose_err_true_values = self._finite_values([s.best_weighted_xj_pose_err_true for s in step_results if s.best_weighted_xj_pose_err_true is not None])
+        weight_best_xj_values = self._finite_values([s.weight_best_xj for s in step_results if s.weight_best_xj is not None])
+        weight_ratio_min_best_weight_values = self._finite_values([s.weight_ratio_min_best_weight for s in step_results if s.weight_ratio_min_best_weight is not None])
+        log_motion_range_values = self._finite_values([s.log_motion_range for s in step_results if s.log_motion_range is not None])
+        log_meas_range_values = self._finite_values([s.log_meas_range for s in step_results if s.log_meas_range is not None])
+        log_weight_range_values = self._finite_values([s.log_weight_range for s in step_results if s.log_weight_range is not None])
 
         drift_trans_err = float("inf")
         drift_rot_err = float("inf")
@@ -730,6 +757,7 @@ class RBPFEvaluator:
             "mean_pose_err_mu_true": float(np.mean(pose_err_mu_true_values)) if pose_err_mu_true_values else float("nan"),
             "mean_min_xj_pose_err_true": float(np.mean(min_xj_pose_err_true_values)) if min_xj_pose_err_true_values else float("nan"),
             "rmse_min_xj_pose_err_true": float(np.sqrt(np.mean(np.square(min_xj_pose_err_true_values)))) if min_xj_pose_err_true_values else float("nan"),
+            "mean_min_xj_is_best_xj": float(np.mean(min_xj_is_best_xj_values)) if min_xj_is_best_xj_values else float("nan"),
             "mean_min_xj_true_err_improves_over_sm_true": float(np.mean(min_xj_true_err_improves_over_sm_true_values)) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
             "rmse_min_xj_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(min_xj_true_err_improves_over_sm_true_values)))) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
             "mean_best_xj_true_err_improves_over_sm_true": float(np.mean(best_xj_true_err_improves_over_sm_true_values)) if best_xj_true_err_improves_over_sm_true_values else float("nan"),

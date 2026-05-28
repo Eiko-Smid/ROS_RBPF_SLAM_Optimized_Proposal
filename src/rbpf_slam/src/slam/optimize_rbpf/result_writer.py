@@ -124,10 +124,13 @@ class ResultWriter:
 					
 					# Proposal Pose errors metrics and xj weights
 					"pose_err_mu_true",
-					"min_xj_pose_err_true",
+					"min_xj_pose_err_true",					
 					"weight_min_xj_err",
 					"best_weighted_xj_pose_err_true",
 					"weight_best_xj",
+
+					# min xj beats best info
+					"min_xj_is_best_xj",
 
 					# Improvement metrics (Did Proposal beat sm)
 					"min_xj_true_err_improves_over_sm_true",
@@ -223,10 +226,13 @@ class ResultWriter:
 						
 						# Proposal Pose errors metrics and xj weights
 						step.pose_err_mu_true,
-						step.min_xj_pose_err_true,
+						step.min_xj_pose_err_true,						
 						step.weight_min_xj_err,
 						step.best_weighted_xj_pose_err_true,
 						step.weight_best_xj,
+
+						# min xj beats best info
+						step.min_xj_is_best_xj,
 
 						# Improvement metrics (Did Proposal beat sm)
 						step.min_xj_true_err_improves_over_sm_true,
@@ -488,10 +494,11 @@ class ResultWriter:
 					"mean_xj_eff_motion",
 					"mean_xj_eff_meas",
 
-					# Pose errrors metrics and xj weights
+					# Pose errors metrics and xj weights
 					"mean_pose_err_sm_true",	
 					"mean_pose_err_mu_true",			
 					"mean_min_xj_pose_err_true",
+					
 					# "rmse_min_xj_pose_err_true",
 					"mean_weight_min_xj_err",
 					"mean_best_weighted_xj_pose_err_true",
@@ -509,8 +516,11 @@ class ResultWriter:
 					"rmse_min_xj_true_err_improves_over_sm_true",
 					"mean_best_xj_true_err_improves_over_sm_true",
 					"rmse_best_xj_true_err_improves_over_sm_true",
+					"mean_mu_true_err_improves_over_sm_true",
+					"rmse_mu_true_err_improves_over_sm_true",
 
 					# xj and weight analysis metrics
+					"mean_min_xj_is_best_xj",
 					"mean_min_xj_true_err_weight_score",
 					"rmse_min_xj_true_err_weight_score",
 					"mean_corr_xjs_weights",
@@ -527,8 +537,7 @@ class ResultWriter:
 					"rmse_best_xj_score",
 					"mean_motion_rank_score",
 					"mean_meas_rank_score",
-					"mean_mu_true_err_improves_over_sm_true",
-					"rmse_mu_true_err_improves_over_sm_true",
+					
 					
 					# Step information
 					"n_steps",
@@ -626,6 +635,7 @@ class ResultWriter:
 					summary.get("mean_pose_err_sm_true"),
 					summary.get("mean_pose_err_mu_true"),
 					summary.get("mean_min_xj_pose_err_true"),
+					
 					# summary.get("rmse_min_xj_pose_err_true"),
 					summary.get("mean_weight_min_xj_err"),
 					summary.get("mean_best_weighted_xj_pose_err_true"),
@@ -643,8 +653,11 @@ class ResultWriter:
 					summary.get("rmse_min_xj_true_err_improves_over_sm_true"),
 					summary.get("mean_best_xj_true_err_improves_over_sm_true"),
 					summary.get("rmse_best_xj_true_err_improves_over_sm_true"),
+					summary.get("mean_mu_true_err_improves_over_sm_true"),
+					summary.get("rmse_mu_true_err_improves_over_sm_true"),
 
 					# xj and weight analysis metrics
+					summary.get("mean_min_xj_is_best_xj"),
 					summary.get("mean_min_xj_true_err_weight_score"),
 					summary.get("rmse_min_xj_true_err_weight_score"),
 					summary.get("mean_corr_xjs_weights"),
@@ -661,8 +674,7 @@ class ResultWriter:
 					summary.get("rmse_best_xj_score"),
 					summary.get("mean_motion_rank_score"),
 					summary.get("mean_meas_rank_score"),
-					summary.get("mean_mu_true_err_improves_over_sm_true"),
-					summary.get("rmse_mu_true_err_improves_over_sm_true"),
+					
 					
 					# Step information
 					summary.get("n_steps"),
