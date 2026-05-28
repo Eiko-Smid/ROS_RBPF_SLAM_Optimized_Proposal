@@ -318,7 +318,7 @@ from .result_writer import ResultWriter
         
         26.2.1 K = 5    
 
-            this does the follwoing:
+            this does the following:
                 old: 0.95 vs 0.90
                 new: 0.95^5 vs 0.90^5
                     0.774 vs 0.590
@@ -428,24 +428,37 @@ from .result_writer import ResultWriter
                         - mean_corr_xjs_meas = 0.264045 -> Weak correlation between xj pose errr and measurement prob
                     
                 TODOs:
+                    - Update scorer to compare results over different runs and find best params for each map
                     - We need a new parameter search over both maps and different seeds 
                     - Then we need to compare the results and find best common params
                     - Then we need to try this for the different measurement models 
                     - If we are not able to improve we tzune icp for grid resolution of 0.05 instead of 0.1
                     - IF this still doesnt imrpvoe proposal than we need to change measurement model (ogm with mean positions stored)
+
+        28.2 cafe map
+
+            - THis run failed completly
+            - Doesn't make sense at all cause scan matcher made good estimate and then suddenly failed
+            - The result was an increasing error in the pose which the system wasn't able to recover from 
+            - That shoudnt have happened
+
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_28_1_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_1_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_summary.csv'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_steps.csv'
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_params.json'
+
+USED_MEAS_MODEL = "Old_NN_Based"
+# USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
+# USED_MEAS_MODEL = "GMAPPING"
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -466,8 +479,9 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
-PLAYBACK_SUFFIX = "1779363559"          # turtlebot 3 map
-# PLAYBACK_SUFFIX = "1779375646"        # Cafe map   
+# PLAYBACK_SUFFIX = "1779363559"          # turtlebot 3 map
+PLAYBACK_SUFFIX = "1779375646"        # Cafe map   
+
 
 def _to_jsonable(value):
     if isinstance(value, np.ndarray):
@@ -713,7 +727,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 proposal_beta=beta,
                 measurement_noise_stddev=MEASUREMENT_STDDEV,
                 tag=(
-                    f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
+                    f"measmodel{USED_MEAS_MODEL}_meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
                     f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
                     f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}_rep{repeat_idx}"

@@ -69,6 +69,9 @@ from .result_writer_scanmatching import ResultWriterScanMatching
         3.1.4 Run on cafe map with on small grid with different seeds -> find stable params
 
         
+        3.1.5 Final run with best union params
+
+        
     3.2 turtle bot 3 map (1779363559)
 
         3.2.1 First run on turtle bot map with zero stddev in scan measurements
@@ -82,15 +85,16 @@ from .result_writer_scanmatching import ResultWriterScanMatching
         
         3.2.4 Run on turtle bot map with on small grid with different seeds -> find stable params
 
+        
         3.2.5 Final run with best union params
 
 
 '''
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_6_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_6_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779363559_3_2_6_params.json"
+SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_5_summary.csv"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_5_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_5_params.json"
 
 # SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_summary.csv"
 # SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_trace_steps.csv"
@@ -114,8 +118,8 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
-PLAYBACK_SUFFIX = "1779363559"        # turtlebot 3 map
-# PLAYBACK_SUFFIX = "1779375646"          # Cafe map    
+# PLAYBACK_SUFFIX = "1779363559"        # turtlebot 3 map
+PLAYBACK_SUFFIX = "1779375646"          # Cafe map    
 
 
 def _to_jsonable(value: Any) -> Any:
