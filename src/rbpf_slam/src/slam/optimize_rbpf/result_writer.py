@@ -88,6 +88,20 @@ class ResultWriter:
 					"every_nth_beam_filter",
 					"every_nth_beam_map",
 					"step_id",
+
+					# Pose tuples (x, y, theta) in radians
+					"raw_odom_pose_x",
+					"raw_odom_pose_y",
+					"raw_odom_pose_theta_rad",
+					"scan_match_pose_x",
+					"scan_match_pose_y",
+					"scan_match_pose_theta_rad",
+					"est_pose_x",
+					"est_pose_y",
+					"est_pose_theta_rad",
+					"true_pose_x",
+					"true_pose_y",
+					"true_pose_theta_rad",
 					# "neff",
 					# "trans_error_best_p",
 					# "rot_error_best_p_deg",
@@ -159,6 +173,11 @@ class ResultWriter:
 
 			for rank, run in enumerate(ranked_runs, start=1):
 				for step in run.step_results:
+					raw_odom_pose = step.raw_odom_pose
+					scan_match_pose = step.scan_match_pose
+					true_pose = step.true_pose
+					est_pose = step.est_pose
+
 					row = [
 						rank,
 
@@ -168,6 +187,20 @@ class ResultWriter:
 						run.params.every_nth_scan_filter,
 						run.params.every_nth_scan_map,
 						step.step_idx,
+
+						# Pose tuples (x, y, theta) in radians
+						raw_odom_pose[0] if raw_odom_pose is not None else None,
+						raw_odom_pose[1] if raw_odom_pose is not None else None,
+						raw_odom_pose[2] if raw_odom_pose is not None else None,
+						scan_match_pose[0] if scan_match_pose is not None else None,
+						scan_match_pose[1] if scan_match_pose is not None else None,
+						scan_match_pose[2] if scan_match_pose is not None else None,
+						est_pose[0] if est_pose is not None else None,
+						est_pose[1] if est_pose is not None else None,
+						est_pose[2] if est_pose is not None else None,
+						true_pose[0] if true_pose is not None else None,
+						true_pose[1] if true_pose is not None else None,
+						true_pose[2] if true_pose is not None else None,
 						# step.neff,
 						# step.translation_error_best_p,
 						# math.degrees(step.rotation_error_best_p) if step.rotation_error_best_p is not None else None,

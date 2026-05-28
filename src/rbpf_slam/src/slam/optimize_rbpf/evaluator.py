@@ -27,6 +27,7 @@ class StepResult:
     est_pose: Optional[Pose2D]
     best_particle_pose: Optional[Pose2D]
     neff: Optional[float]
+    scan_match_pose: Optional[Pose2D] = None
     scan_match_failed: Optional[bool] = None
     scan_match_fallback_failed: Optional[bool] = None
     translation_error: Optional[float] = None
@@ -239,6 +240,7 @@ class RBPFEvaluator:
         """
         true_pose_t = self._to_pose_tuple(true_pose)
         raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
+        scan_match_pose_t = None
         est_pose_t = self._to_pose_tuple(est_pose)
         best_particle_pose_t = self._to_pose_tuple(best_particle_pose)
 
@@ -324,6 +326,7 @@ class RBPFEvaluator:
         if proposal_metrics is not None:
             mu = proposal_metrics.get("prop_mu")
             scan_match_pose = proposal_metrics.get("scan_match_pose")
+            scan_match_pose_t = self._to_pose_tuple(scan_match_pose)
             pred_pose = proposal_metrics.get("pred_pose")
             cov = proposal_metrics.get("prop_cov_matrix")
             xjs = proposal_metrics.get("xjs")
@@ -544,6 +547,7 @@ class RBPFEvaluator:
             t=float(t),
             true_pose=true_pose_t,
             raw_odom_pose=raw_odom_pose_t,
+            scan_match_pose=scan_match_pose_t,
             est_pose=est_pose_t,
             best_particle_pose=best_particle_pose_t,
             neff=float(neff) if neff is not None else None,

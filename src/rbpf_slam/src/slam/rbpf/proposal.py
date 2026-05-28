@@ -75,7 +75,7 @@ class ProposalEstimator:
         measurement_model: MeasurementModel,
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
-        n_samples: int=10,
+        n_samples: int=3,
     ) -> Tuple[np.ndarray, np.ndarray, float]:
         # Define vars
         norm = 0.0
@@ -163,7 +163,7 @@ class ProposalEstimator:
         gaussian_sigma: float=0.05,
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
-        n_samples_dir: int=1,
+        n_samples_dir: int=3,
         alpha: float=0.5,
         beta: float=2.0,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D]:
@@ -263,7 +263,7 @@ class ProposalEstimator:
         measurement_model: MeasurementModel,
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
-        n_samples: int=1,
+        n_samples: int=3,
         alpha: float=0.5,
         beta: float=2.0,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D]:
@@ -356,7 +356,7 @@ class ProposalEstimator:
         measurement_model: MeasurementModel,
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
-        n_samples: int=10,
+        n_samples: int=3,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D]:
         '''
         Proposal computation with deterministic sampling around scan match pose. Motion and measurement probabilities are 
@@ -445,7 +445,7 @@ class ProposalEstimator:
         measurement_model: MeasurementModel,
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
-        n_samples: int=10,
+        n_samples: int=3,
         meas_kernel_size: int=1,
         gaussian_sigma: float=0.05,
         alpha: float=0.5,
