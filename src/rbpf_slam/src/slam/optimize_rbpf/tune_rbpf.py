@@ -453,15 +453,26 @@ from .result_writer import ResultWriter
                 Result:
                     - Same results than in sm pipeline!
                     - That means proposal was the reason for teh bad results in 28.2.1 
+                    - i will delete this cause its no longer needed and takes away memory 
 
+
+29. Updated scorer
+    - We updated the scorer to better reflect the new insights we got from the proposal analysis.
+
+    29.1 Turtle bot map analysis with new scorer
+    
+
+
+    29.2 Cafe map analysis with new scorer
+                    
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_2_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_2_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_2_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779375646_optm_28_2_2_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_summary.csv'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_1_params.json'
 
 OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_summary.csv'
 STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_steps.csv'
@@ -474,7 +485,7 @@ USED_MEAS_MODEL = "Old_NN_Based"
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 25             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22]
@@ -491,8 +502,8 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
-# PLAYBACK_SUFFIX = "1779363559"          # turtlebot 3 map
-PLAYBACK_SUFFIX = "1779375646"        # Cafe map   
+PLAYBACK_SUFFIX = "1779363559"          # turtlebot 3 map
+# PLAYBACK_SUFFIX = "1779375646"        # Cafe map   
 
 
 def _to_jsonable(value):
@@ -518,21 +529,52 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [1],                         # number of particles in the RBPF
+#         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
+
+#         # measurement model params
+#         "sigma_measurement": [0.06, 0.12, 0.15, 0.18],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.08, 0.12, 0.2],       # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.03, 0.07, 0.1],           # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             },
+#             {
+#                 "proposal_sigma_xy": 0.1,
+#                 "proposal_sigma_theta": 0.06,
+#                 "n_samples_dir": 5,
+#             },
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.25],
+#     }
+
+
 def _grid_axes() -> dict:
     return {
-        # "sigma_measurement": [0.08, 0.15],
-        # "every_nth_beam_filter": [4],
-        # "every_nth_beam_map": [2],
-        # "n_particles": [40],
-        # "sigma_xy_motion": [0.12, 0.2],
-        # "sigma_theta": [0.05],
-        # "ctrl_motion_fac": [0.1],
-        # "ctrl_turn_fac": [0.15],
-        # "neff_threshold": [20],
-        # "proposal_sigma_xy": [0.05],
-        # "proposal_sigma_theta": [0.02],
-        # "n_samples_dir": [3],
-
         # General rbpf params
         "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
@@ -540,27 +582,37 @@ def _grid_axes() -> dict:
         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
 
         # measurement model params
-        "sigma_measurement": [0.15],                # measurement uncertainty [m]
+        "sigma_measurement": [0.06],                # measurement uncertainty [m]
         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
         
         # Motion model params
-        "sigma_xy_motion": [0.12],                  # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.05],                      # motion model uncertainty in theta direction [rad]
+        "sigma_xy_motion": [0.2],       # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.07],           # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
         
-        # Proposal params
-        # "proposal_sigma_xy": [0.05, 0.1, 0.2],
-        # "proposal_sigma_theta": [0.02, 0.08],     # in rad
-        "proposal_sigma_xy": [0.05],                # Proposal window size in x/y direction [m]
-        "proposal_sigma_theta": [0.02],             # Proposal window size in theta direction [rad]
-        "n_samples_dir": [3],                       # number of samples in each direction (x, y, theta)  for proposal sampling        
+        # Proposal params (bound sets).
+        # Each dict is one fixed combination of:
+        # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+        # so these three values are sampled together (no Cartesian product among them).
+        "proposal_param_sets": [
+            {
+                "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
+                "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
+                "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+            },
+            {
+                "proposal_sigma_xy": 0.1,
+                "proposal_sigma_theta": 0.06,
+                "n_samples_dir": 5,
+            },
+        ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
         "proposal_beta": [1.0],
 
         # ScanMatcherParams (map extraction)
-        "surface_radius_m": [0.2],
+        "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
         "min_free_ratio": [0.25],
     }
 
@@ -616,9 +668,30 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
     ctrl_motion_fac = axes.get("ctrl_motion_fac", [0.1])
     ctrl_turn_fac = axes.get("ctrl_turn_fac", [0.15])
     neff_threshold = axes.get("neff_threshold", [20])
-    proposal_sigma_xy = axes.get("proposal_sigma_xy", [0.05])
-    proposal_sigma_theta = axes.get("proposal_sigma_theta", [0.02])
-    n_samples_dir = axes.get("n_samples_dir", [3])
+    proposal_param_sets = axes.get("proposal_param_sets", [])
+    proposal_triplets = []
+    for i, proposal_set in enumerate(proposal_param_sets):
+        if not isinstance(proposal_set, dict):
+            raise TypeError(
+                f"proposal_param_sets[{i}] must be a dict, got {type(proposal_set)}"
+            )
+
+        try:
+            proposal_triplets.append(
+                (
+                    float(proposal_set["proposal_sigma_xy"]),
+                    float(proposal_set["proposal_sigma_theta"]),
+                    int(proposal_set["n_samples_dir"]),
+                )
+            )
+        except KeyError as exc:
+            raise KeyError(
+                f"proposal_param_sets[{i}] is missing required key: {exc}"
+            ) from exc
+
+    if not proposal_triplets:
+        raise ValueError("No proposal parameter sets configured.")
+
     meas_kernel_size = axes.get("meas_kernel_size", [1])
     proposal_alpha = axes.get("proposal_alpha", [1.0])
     proposal_beta = axes.get("proposal_beta", [1.0])
@@ -639,9 +712,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             ctrl_motion,
             ctrl_turn,
             neff_th,
-            sigma_xy,
-            sigma_theta,
-            samples_dir,
+            proposal_triplet,
             kernel_size,
             alpha,
             beta,
@@ -657,15 +728,15 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             ctrl_motion_fac,
             ctrl_turn_fac,
             neff_threshold,
-            proposal_sigma_xy,
-            proposal_sigma_theta,
-            n_samples_dir,
+            proposal_triplets,
             meas_kernel_size,
             proposal_alpha,
             proposal_beta,
             surface_radius_m,
             min_free_ratio,
         ):
+            sigma_xy, sigma_theta, samples_dir = proposal_triplet
+
             # Define experiment params for each run
             yield ExperimentParams(
                 occupancy_params=OccupancyParams(
