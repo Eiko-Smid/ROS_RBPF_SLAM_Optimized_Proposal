@@ -52,3 +52,4 @@ class ExperimentParams:
     proposal_alpha: float = 0.5
     proposal_beta: float = 2.0
     measurement_noise_stddev: Optional[float] = None
+    used_meas_model: str = "Unknown"

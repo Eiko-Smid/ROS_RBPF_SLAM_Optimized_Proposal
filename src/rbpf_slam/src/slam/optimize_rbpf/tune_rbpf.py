@@ -32,6 +32,7 @@ from .playback_runner import PlaybackRunner, RawOdometryPropagator
 from .scorer import RunScorer
 from .optimizer import RBPFOptimizer
 from .result_writer import ResultWriter
+from .aggregator import RankedRunConverter, ResultAggregator
 
 
 '''
@@ -479,10 +480,10 @@ from .result_writer import ResultWriter
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_test_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_1_params.json'
 
 USED_MEAS_MODEL = "Old_NN_Based"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -493,7 +494,7 @@ OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = 25             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
-SEED_LIST = [22]
+SEED_LIST = [22, 31]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -621,12 +622,12 @@ def _grid_axes() -> dict:
                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-            }
-            # {
-            #     "proposal_sigma_xy": 0.1,
-            #     "proposal_sigma_theta": 0.06,
-            #     "n_samples_dir": 5,
-            # },
+            },
+            {
+                "proposal_sigma_xy": 0.1,
+                "proposal_sigma_theta": 0.06,
+                "n_samples_dir": 5,
+            },
         ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
@@ -654,6 +655,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
     example_params = next(generate_param_grid(start_pose=dummy_pose, n_repeats=1), None)
 
     payload = {
+        "used_meas_model": USED_MEAS_MODEL,
         "measurement_stddev": MEASUREMENT_STDDEV,
         "use_seed_list_for_measurement_noise": USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
         "n_playback_steps": N_PLAYBACK_STEPS,
@@ -830,11 +832,12 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 proposal_alpha=alpha,
                 proposal_beta=beta,
                 measurement_noise_stddev=MEASUREMENT_STDDEV,
+                used_meas_model=USED_MEAS_MODEL,
                 tag=(
-                    f"measmodel{USED_MEAS_MODEL}_meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
+                    f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
                     f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
-                    f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}_rep{repeat_idx}"
+                    f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}"
                 ),
             )
 
@@ -863,16 +866,22 @@ def build_optimizer():
 def main():
     # Define vars
     ranked_run_list = []
+    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
+    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_seed.csv"
+    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
 
+    # Init
     # Init playback loader and converter
     playback_loader = PlaybackLoader()
     playback_conv = PlaybackConverter()
-   
+    
     # Init optimizer
     rbpf_optimizer = build_optimizer()
-
+    
     # Build result writer
     result_writer = ResultWriter()
+    ranked_run_conv = RankedRunConverter()
+    result_aggregator = ResultAggregator()
 
     # Store compact parameter overview (grid axes + one representative ExperimentParams)
     write_parameter_overview(
@@ -909,20 +918,53 @@ def main():
             playback_data=playback_data,
             param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
             seeds=SEED_LIST,
+            dataset_id=playback_ds.playback_suffix,
+            map_name=raw_playback_data.metadata.get("map", "unknown_map"),
             use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
         )
 
         # Store ranked runs
         ranked_run_list.extend(ranked_runs)
 
+    # Aggregate results
+    # Convert ranked runs to pandas DataFrame for easier analysis 
+    ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
+
+    # Rank results by score
+    rank_scored_df = result_aggregator.rank_by_score(
+        ranked_run_df=ranked_run_df,
+        score_col="score",   
+        ascending=True,
+    )
+
+    # Groupe and rank by playback data and seed
+    agg_dataset_seed_df = result_aggregator.aggregate_by_data_and_seed(ranked_run_df)
+
+    # Froupe and rank by paramters 
+    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_seed_df)
 
     # Save results
-    result_writer.write_run_summary_csv(
-        path=OPTM_SUMMARY_PATH,
-        ranked_runs=ranked_run_list,
+    result_writer.write_dataframe_csv(
+        path=ranked_scored_path,
+        df=rank_scored_df,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )
+
+    result_writer.write_dataframe_csv(
+        path=agg_dataset_seed_path,
+        df=agg_dataset_seed_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    result_writer.write_dataframe_csv(
+        path=agg_param_path,
+        df=agg_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
 
     # Save independent per-step diagnostic traces for each ranked run.
     # result_writer.write_run_steps_csv(
