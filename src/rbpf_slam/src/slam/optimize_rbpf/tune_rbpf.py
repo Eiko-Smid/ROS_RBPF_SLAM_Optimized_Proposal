@@ -481,9 +481,9 @@ from .aggregator import RankedRunConverter, ResultAggregator
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_params.json'
 
 OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_1_params.json'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_params.json'
 
 USED_MEAS_MODEL = "Old_NN_Based"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -869,6 +869,7 @@ def main():
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
     agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_seed.csv"
     agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
+    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
 
     # Init
     # Init playback loader and converter
@@ -938,10 +939,16 @@ def main():
     )
 
     # Groupe and rank by playback data and seed
-    agg_dataset_seed_df = result_aggregator.aggregate_by_data_and_seed(ranked_run_df)
+    agg_dataset_seed_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
 
     # Froupe and rank by paramters 
     agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_seed_df)
+
+    # Build ranked parameter overview with one row per parameter_hash.
+    ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
+        agg_param_df=agg_param_df,
+        ranked_runs=ranked_run_list,
+    )
 
     # Save results
     result_writer.write_dataframe_csv(
@@ -961,6 +968,13 @@ def main():
     result_writer.write_dataframe_csv(
         path=agg_param_path,
         df=agg_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    result_writer.write_dataframe_csv(
+        path=ranked_param_overview_path,
+        df=ranked_param_overview_df,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )

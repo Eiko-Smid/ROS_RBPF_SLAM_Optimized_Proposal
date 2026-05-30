@@ -90,7 +90,6 @@ class RBPFOptimizer:
             "scan_matcher_min_free_ratio": exp_params.scan_matcher_params.min_free_ratio,
 
             # ParticleParams
-            "particle_start_pose": exp_params.particle_params.start_pose,
             "particle_n_particles": exp_params.particle_params.n_particles,
 
             # MotionModelParams
@@ -116,7 +115,6 @@ class RBPFOptimizer:
             "proposal_alpha": exp_params.proposal_alpha,
             "proposal_beta": exp_params.proposal_beta,
             "measurement_noise_stddev": exp_params.measurement_noise_stddev,
-            "used_meas_model": exp_params.used_meas_model,
         }
 
         return parameter_for_hash

@@ -3,7 +3,7 @@ from typing import Iterable, List
 
 import pandas as pd
 
-from .optimizer import RankedRun
+from .optimizer import RankedRun, RBPFOptimizer
 
 
 class RankedRunConverter:
@@ -224,6 +224,7 @@ class ResultAggregator:
         except TypeError:
             return df.groupby(by)
 
+
     def rank_by_score(self, ranked_run_df: pd.DataFrame, score_col, ascending=True) -> pd.DataFrame:
         '''
         Sorts the given df by score in the desired order (asc or desc).
@@ -234,16 +235,17 @@ class ResultAggregator:
         # Check if rank col exists, if so delete
         if "rank" in ranked_run_df.columns:
             ranked_df = ranked_df.drop(columns=["rank"])
-        
-        # Add rank col
-        ranked_df["rank"] = ranked_df.index + 1
+
+        # Add rank col as first column
+        ranked_df.insert(0, "rank", ranked_df.index + 1)
         
         return ranked_df
 
 
-    def aggregate_by_data_and_seed(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
+    def aggregate_by_dataset_and_param(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
         '''
-        Aggregate runs by map and seed and compute a weighted group score.
+        Groupes the df by dataset_id and parameter_hash and computes metrics for each group. These metrics are then used 
+        to compute a score. At the end the df is sorted by score in ascending order and a rank column is added.
         '''
         # Estimate if all needed columns exist
         required_cols = {
@@ -352,3 +354,61 @@ class ResultAggregator:
         agg_param_df["rank"] = agg_param_df.index + 1
 
         return self.rank_by_score(agg_param_df, "global_score", ascending=True)
+
+
+    def build_ranked_parameter_overview(
+        self,
+        agg_param_df: pd.DataFrame,
+        ranked_runs: Iterable[RankedRun],
+    ) -> pd.DataFrame:
+        """
+        Build a compact parameter overview table keyed by parameter_hash.
+
+        Output columns are:
+        rank, global_score, parameter_hash, followed by all ExperimentParams fields
+        used for parameter identity (excluding start_pose and tag).
+        """
+        required_cols = {"rank", "global_score", "parameter_hash"}
+        missing = sorted(col for col in required_cols if col not in agg_param_df.columns)
+        if missing:
+            raise ValueError(
+                "build_ranked_parameter_overview missing required columns: " + ", ".join(missing)
+            )
+
+        params_by_hash = {}
+        for run in ranked_runs:
+            if run.parameter_hash is None:
+                continue
+
+            params_for_hash = RBPFOptimizer.generate_params_for_hash(run.params)
+            existing = params_by_hash.get(run.parameter_hash)
+
+            if existing is None:
+                params_by_hash[run.parameter_hash] = params_for_hash
+            elif existing != params_for_hash:
+                raise ValueError(
+                    f"Inconsistent params detected for parameter_hash '{run.parameter_hash}'."
+                )
+
+        if not params_by_hash:
+            return pd.DataFrame(columns=["rank", "global_score", "parameter_hash"])
+
+        # Keep parameter column order stable and readable.
+        param_cols = list(next(iter(params_by_hash.values())).keys())
+
+        rows = []
+        for _, row in agg_param_df.sort_values(by="rank", ascending=True).iterrows():
+            param_hash = row["parameter_hash"]
+            row_payload = {
+                "rank": row["rank"],
+                "global_score": row["global_score"],
+                "parameter_hash": param_hash,
+            }
+            row_payload.update(params_by_hash.get(param_hash, {}))
+            rows.append(row_payload)
+
+        overview_df = pd.DataFrame(rows)
+
+        ordered_cols = ["rank", "global_score", "parameter_hash"] + param_cols
+        ordered_existing_cols = [col for col in ordered_cols if col in overview_df.columns]
+        return overview_df[ordered_existing_cols]
