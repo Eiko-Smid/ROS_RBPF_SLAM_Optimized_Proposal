@@ -2,6 +2,8 @@ from pathlib import Path
 import csv
 import numbers
 import math
+import pandas as pd
+import numpy as np
 
 from typing import Any, List
 
@@ -64,6 +66,34 @@ class ResultWriterScanMatching:
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
         return path_obj.exists()
+
+
+    @staticmethod
+    def write_dataframe_csv(
+        path: str,
+        df: pd.DataFrame,
+        override: bool = False,
+        float_decimals: int = 6,
+        label: str = "DataFrame",
+    ) -> None:
+        file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
+
+        if file_exists and not override:
+            print(f"\n{label} has not been saved because file already exists and override is set to False!")
+            return
+
+        formatted_df = df.copy()
+        for col in formatted_df.columns:
+            formatted_df[col] = formatted_df[col].map(
+                lambda value: (
+                    np.nan
+                    if value is None
+                    else ResultWriterScanMatching._format_csv_value(value, float_decimals=float_decimals)
+                )
+            )
+
+        formatted_df.to_csv(path, index=False)
+        print(f"\n{label} has been saved to:\n{path}")
 
 
     @staticmethod

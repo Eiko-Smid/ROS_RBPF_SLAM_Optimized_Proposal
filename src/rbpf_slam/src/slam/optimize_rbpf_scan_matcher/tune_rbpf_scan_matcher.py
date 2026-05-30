@@ -8,7 +8,7 @@
 import itertools
 import json
 import numpy as np
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Any, Dict, Iterator, List, Tuple, Union
 
 from ..infrastructure.playback_loader import PlaybackLoader
@@ -30,6 +30,7 @@ from .playback_runner_scanmatching import PlaybackRunnerScanMatching, RawOdometr
 from .scorer_scanmatching import ScanMatchingScorer
 from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
+from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggregatorScanMatching
 
 '''
 1. Test final pipeline
@@ -92,20 +93,16 @@ from .result_writer_scanmatching import ResultWriterScanMatching
 '''
 
 
-SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_5_summary.csv"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_5_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_1779375646_3_1_5_params.json"
-
-# SCAN_MATCHING_RESULT_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_summary.csv"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_7_params.json"
+OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None
+N_PLAYBACK_STEPS = 25
 N_OPTIMIZATION_REPEATS = 1
-SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22]
+# SEED_LIST = [22, 23, 56]
+SEED_LIST = [22, 56]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -118,8 +115,24 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
-# PLAYBACK_SUFFIX = "1779363559"        # turtlebot 3 map
-PLAYBACK_SUFFIX = "1779375646"          # Cafe map    
+
+
+@dataclass
+class PlaybackDataset:
+    playback_dir: str
+    playback_suffix: str
+
+
+PLAYBACK_DATA_LIST = [
+    PlaybackDataset(
+        playback_dir=PLAYBACK_DIR,
+        playback_suffix="1779363559",
+    ),
+    PlaybackDataset(
+        playback_dir=PLAYBACK_DIR,
+        playback_suffix="1779375646",
+    ),
+]
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -152,8 +165,8 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "every_nth_beam_map": [2],
 
         # OccupancyParams (OGM)
-        "increasing_probability": [0.85],
-        "decreasing_probability": [0.15],
+        "increasing_probability": [0.7, 0.85],
+        "decreasing_probability": [0.3, 0.15],
         "min_log_odds": [-5.0],
         "max_log_odds": [5.0],
 
@@ -207,7 +220,6 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
 def write_parameter_overview(
     path: str,
     n_repeats: int,
-    start_pose: Tuple[float, float, float],
     override: bool = False,
 ) -> None:
     file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
@@ -217,18 +229,23 @@ def write_parameter_overview(
         return
 
     axes = _grid_axes()
-    example_params = next(generate_param_grid(start_pose=start_pose, n_repeats=1), None)
+    dummy_pose = None
+    example_params = next(generate_param_grid(start_pose=dummy_pose, n_repeats=1), None)
+    example_params_json = (
+        _to_jsonable(ScanMatchingOptimizer.generate_params_for_hash(example_params))
+        if example_params is not None
+        else None
+    )
 
     payload = {
-        "playback_dir": PLAYBACK_DIR,
-        "playback_suffix": PLAYBACK_SUFFIX,
+        "playback_data_list": [asdict(ds) for ds in PLAYBACK_DATA_LIST],
         "measurement_stddev": MEASUREMENT_STDDEV,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
         "seed_list": SEED_LIST,
-        "start_pose": start_pose,
+        "start_pose": dummy_pose,
         "grid_axes": axes,
-        "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
+        "example_experiment_params": example_params_json,
     }
 
     with open(path, "w") as f:
@@ -405,60 +422,110 @@ def build_optimizer() -> ScanMatchingOptimizer:
 
 
 def main() -> None:
+    ranked_run_list = []
+    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
+    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_seed.csv"
+    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
+    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
+
     playback_loader = PlaybackLoader()
-    raw_playback_data = playback_loader.load(
-        file_suffix=PLAYBACK_SUFFIX,
-        filedir=PLAYBACK_DIR,
-        n_steps=N_PLAYBACK_STEPS,
-        ensure_start_pose=True,
-        prompt_for_missing_start_pose=True,
-    )
-
-    start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
-    print(f"Using start pose for tuning: {start_pose}")
-
     playback_conv = PlaybackConverter()
-    
-    # Keep scans clean here. Measurement noise is injected per seed in the optimizer.
-    playback_data = playback_conv.convert(
-        raw_playback_data,
-        measurement_stddev=None,
-        min_range=MIN_SENSOR_RANGE,
-        max_range=MAX_SENSOR_RANGE,
-    )
-
     optimizer = build_optimizer()
     writer = ResultWriterScanMatching()
+    ranked_run_conv = RankedRunConverterScanMatching()
+    result_aggregator = ResultAggregatorScanMatching()
 
     # Store compact parameter overview (grid axes + one representative ExperimentParams)
     write_parameter_overview(
         path=PARAMETER_OVERVIEW_PATH,
         n_repeats=N_OPTIMIZATION_REPEATS,
-        start_pose=start_pose,
         override=OVERRIDE_EXISTING_RESULTS,
     )
 
-    ranked_runs = optimizer.optimize(
-        playback_data=playback_data,
-        param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
-        seeds=SEED_LIST,
-        use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
+    # Load each dataset and optimize with identical parameter/seed setup.
+    for playback_ds in PLAYBACK_DATA_LIST:
+        print(
+            f"\nLoading playback data:\n"
+            f"suffix: {playback_ds.playback_suffix}\n"
+            f"dir: {playback_ds.playback_dir}"
+        )
+        raw_playback_data = playback_loader.load(
+            file_suffix=playback_ds.playback_suffix,
+            filedir=playback_ds.playback_dir,
+            n_steps=N_PLAYBACK_STEPS,
+            ensure_start_pose=True,
+            prompt_for_missing_start_pose=True,
+        )
+
+        start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+        print(f"Using start pose for tuning: {start_pose}")
+
+        # Keep scans clean here. Measurement noise is injected per seed in the optimizer.
+        playback_data = playback_conv.convert(
+            raw_playback_data,
+            measurement_stddev=None,
+            min_range=MIN_SENSOR_RANGE,
+            max_range=MAX_SENSOR_RANGE,
+        )
+
+        ranked_runs = optimizer.optimize(
+            playback_data=playback_data,
+            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
+            seeds=SEED_LIST,
+            dataset_id=playback_ds.playback_suffix,
+            map_name=raw_playback_data.metadata.get("map", "unknown_map"),
+            use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
+        )
+
+        ranked_run_list.extend(ranked_runs)
+
+    # Aggregate results
+    ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
+    rank_scored_df = result_aggregator.rank_by_score(
+        ranked_run_df=ranked_run_df,
+        score_col="score",
+        ascending=True,
+    )
+    agg_dataset_seed_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
+    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_seed_df)
+    ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
+        agg_param_df=agg_param_df,
+        ranked_runs=ranked_run_list,
     )
 
-    writer.write_summary_runs_csv(
-        path=SCAN_MATCHING_RESULT_PATH,
-        ranked_runs=ranked_runs,
+    # Save results
+    writer.write_dataframe_csv(
+        path=ranked_scored_path,
+        df=rank_scored_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+    writer.write_dataframe_csv(
+        path=agg_dataset_seed_path,
+        df=agg_dataset_seed_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+    writer.write_dataframe_csv(
+        path=agg_param_path,
+        df=agg_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+    writer.write_dataframe_csv(
+        path=ranked_param_overview_path,
+        df=ranked_param_overview_df,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 
-    
-    writer.write_ranked_step_traces_csv(
-        output_path=SCAN_MATCHING_STEP_TRACE_PATH,
-        ranked_runs=ranked_runs,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
+    # Optional: Save per-step traces for all runs.
+    # writer.write_ranked_step_traces_csv(
+    #     output_path=SCAN_MATCHING_STEP_TRACE_PATH,
+    #     ranked_runs=ranked_run_list,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    # )
 
     print("Scan-matching-only tuning run finished.")
 
