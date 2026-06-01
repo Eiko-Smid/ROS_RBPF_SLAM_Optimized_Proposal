@@ -646,6 +646,7 @@ def extract_map_numba(
     n_rows, n_cols = log_odds_map.shape
 
     # Define maximum number of points that can be extracted and pre-allocate array for points
+    # This is a simplistic upper bound cause we use a squared area instead of circular area.
     max_points = (r_cells * 2 + 1) * (r_cells * 2 + 1)
     # points = np.empty((max_points, 2), dtype=np.float64)
     map_points = np.full((max_points, 2), np.nan, dtype=np.float64)

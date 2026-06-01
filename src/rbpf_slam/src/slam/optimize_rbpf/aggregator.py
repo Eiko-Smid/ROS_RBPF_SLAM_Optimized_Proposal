@@ -38,6 +38,25 @@ class RankedRunConverter:
 
         for run in ranked_runs:
             params = run.params
+            n_steps = cls._summary(run, "n_steps")
+            scan_match_failed_count = cls._summary(run, "scan_match_failed_count", 0)
+            scan_match_fallback_failed_count = cls._summary(
+                run,
+                "scan_match_fallback_failed_count",
+                0,
+            )
+
+            # failed_rate = 1 - success_rate; equivalent to failed_count / n_steps
+            scan_match_failed_rate = (
+                float(scan_match_failed_count) / float(n_steps)
+                if n_steps not in (None, 0)
+                else None
+            )
+            scan_match_fallback_failed_rate = (
+                float(scan_match_fallback_failed_count) / float(n_steps)
+                if n_steps not in (None, 0)
+                else None
+            )
 
             row = {
                 # Basic run information
@@ -69,8 +88,12 @@ class RankedRunConverter:
                 "meas_kernel_size": params.meas_kernel_size,
 
                 # Scan matcher information metrics
-                "scan_match_failed_count": cls._summary(run, "scan_match_failed_count"),
-                "scan_match_fallback_failed_count": cls._summary(run, "scan_match_fallback_failed_count"),
+                "scan_match_failed_count": scan_match_failed_count,
+                "scan_match_fallback_failed_count": scan_match_fallback_failed_count,
+                "scan_match_failed_rate": scan_match_failed_rate,
+                "scan_match_fallback_failed_rate": scan_match_fallback_failed_rate,
+                "median_extracted_map_points": cls._summary(run, "median_extracted_map_points"),
+                "median_map_point_keep_ratio": cls._summary(run, "median_map_point_keep_ratio"),
                 "count_too_few_points": cls._summary(run, "count_too_few_points", 0),
                 "count_too_few_corresp": cls._summary(run, "count_too_few_corresp", 0),
                 "infinite_h_or_g": cls._summary(run, "infinite_h_or_g", 0),
@@ -113,6 +136,10 @@ class RankedRunConverter:
                 "mean_trans_err_mu_sm": cls._summary(run, "mean_trans_err_mu_sm"),
                 "mean_rot_err_mu_sm_deg": cls._deg(
                     cls._summary(run, "mean_rot_err_mu_sm")
+                ),
+                "rmse_trans_err_sm_true": cls._summary(run, "rmse_trans_err_sm_true"),
+                "rmse_rot_err_sm_true_deg": cls._deg(
+                    cls._summary(run, "rmse_rot_err_sm_true")
                 ),
                 "rmse_trans_err_mu_sm": cls._summary(run, "rmse_trans_err_mu_sm"),
                 "rmse_rot_err_mu_sm_deg": cls._deg(
@@ -209,7 +236,7 @@ class RankedRunConverter:
 
 class ResultAggregator:
     """
-    Aggregate the given dataframe run results into the desried output types.
+    Aggregate the given dataframe run results into the desired output types.
     """
     @staticmethod
     def _groupby(df: pd.DataFrame, by, dropna: bool = False):
@@ -225,7 +252,14 @@ class ResultAggregator:
             return df.groupby(by)
 
 
-    def rank_by_score(self, ranked_run_df: pd.DataFrame, score_col, ascending=True) -> pd.DataFrame:
+    @staticmethod
+    def _place_col_after_col(df: pd.DataFrame, col: str, col_after: str) -> pd.DataFrame:
+        extract_col = df.pop(col)
+        df.insert(df.columns.get_loc(col_after) + 1, col, extract_col)
+        return df
+
+
+    def rank_by_score(self, ranked_run_df: pd.DataFrame, score_col: str, ascending=True) -> pd.DataFrame:
         '''
         Sorts the given df by score in the desired order (asc or desc).
         '''   
@@ -249,109 +283,281 @@ class ResultAggregator:
         '''
         # Estimate if all needed columns exist
         required_cols = {
-                "dataset_id",
-                "seed",
-                "score",
-                "rmse_trans_error",
-                "rmse_rot_error_deg",
-                "mean_min_xj_is_best_xj",
-                "parameter_tag",
-                "parameter_hash",
-                "used_meas_model",
-            }
+            "dataset_id",
+            "seed",
+            "map",
+            "n_steps",
+            "score",
+            "rmse_trans_error",
+            "rmse_rot_error_deg",
+            "rmse_trans_err_sm_true",
+            "rmse_rot_err_sm_true_deg",
+            "mean_min_xj_is_best_xj",
+            "mean_min_xj_pose_err_true",
+            "mean_best_weighted_xj_pose_err_true",
+            "mean_min_xj_true_err_improves_over_sm_true",
+            "mean_best_xj_true_err_improves_over_sm_true",
+            "median_log_motion_range",
+            "median_log_meas_range",
+            "mean_corr_xjs_motion",
+            "mean_corr_xjs_meas",
+            "scan_match_failed_count",
+            "scan_match_fallback_failed_count",
+            "median_extracted_map_points",
+            "median_map_point_keep_ratio",
+            "parameter_tag",
+            "parameter_hash",
+            "used_meas_model",
+        }
 
         missing = sorted(col for col in required_cols if col not in ranked_run_df.columns)
         if missing:
             raise ValueError(
-                "aggregate_by_dataset_id_and_seed missing required columns: " + ", ".join(missing)
+                "aggregate_by_dataset_and_param missing required columns: " + ", ".join(missing)
             )
 
-        # Compute metrics from columns
-        agg_dataset_seed_df = self._groupby(
+        # Compute metrics from grouped columns
+        agg_dataset_param_df = self._groupby(
             ranked_run_df,
-            ["dataset_id", "parameter_hash"],
+            ["dataset_id", "parameter_hash", "used_meas_model"],
         )
-        agg_dataset_seed_df: pd.DataFrame = agg_dataset_seed_df.agg(
+        agg_dataset_param_df: pd.DataFrame = agg_dataset_param_df.agg(
+            # general information
+            map=("map", "first"),
             parameter_tag=("parameter_tag", "first"),
-            used_meas_model=("used_meas_model", "first"),
+            # used_meas_model=("used_meas_model", "first"),
             n_runs=("score", "size"),
             n_seeds=("seed", "nunique"),
 
+            total_n_steps=("n_steps", "sum"),
+
+            # Metrics for score computation
             mean_score=("score", "mean"),
             worst_score=("score", "max"),
             std_score=("score", "std"),
 
+            # Scan matcher info            
+            total_scan_match_failed_count=("scan_match_failed_count", "sum"),
+            total_scan_match_fallback_failed_count=("scan_match_fallback_failed_count", "sum"),
+            
+            median_extracted_map_points=("median_extracted_map_points", "median"),
+            median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
+
+            mean_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "mean"),
+            worst_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "max"),
+
+            mean_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "mean"),
+            worst_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "max"),
+
+            # Metrics for pose errors
             mean_rmse_trans_error=("rmse_trans_error", "mean"),
             worst_rmse_trans_error=("rmse_trans_error", "max"),
 
             mean_rmse_rot_error_deg=("rmse_rot_error_deg", "mean"),
             worst_rmse_rot_error_deg=("rmse_rot_error_deg", "max"),
 
+            # Proposal information metrics
             mean_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "mean"),
             worst_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "min"),
-        ).reset_index()
-        
-        # Use 0.0 score if score is none
-        agg_dataset_seed_df["std_score"] = agg_dataset_seed_df["std_score"].fillna(0.0)
 
-        # Compute score 
-        agg_dataset_seed_df["dataset_param_score"] = (
-            1.0 * agg_dataset_seed_df["mean_score"]
-            + 0.5 * agg_dataset_seed_df["worst_score"]
-            + 0.2 * agg_dataset_seed_df["std_score"]
+            mean_min_xj_pose_err_true=("mean_min_xj_pose_err_true", "mean"),
+            worst_min_xj_pose_err_true=("mean_min_xj_pose_err_true", "max"),
+
+            mean_best_weighted_xj_pose_err_true=("mean_best_weighted_xj_pose_err_true", "mean"),
+            worst_best_weighted_xj_pose_err_true=("mean_best_weighted_xj_pose_err_true", "max"),
+
+            mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
+            worst_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "min"),          
+            
+            mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
+            worst_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "min"),
+
+            median_log_motion_range=("median_log_motion_range", "median"),
+            median_log_meas_range=("median_log_meas_range", "median"),
+
+            mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),
+            worst_corr_xjs_motion=("mean_corr_xjs_motion", "min"),
+            mean_corr_xjs_meas=("mean_corr_xjs_meas", "mean"),
+            worst_corr_xjs_meas=("mean_corr_xjs_meas", "min"),
+        ).reset_index()
+
+        # Place map name directly after dataset id
+        agg_dataset_param_df = self._place_col_after_col(
+            df=agg_dataset_param_df,
+            col="map",
+            col_after="dataset_id"
         )
 
-        return self.rank_by_score(agg_dataset_seed_df, "dataset_param_score", ascending=True)
+        # Compute failed rates for sm
+        # Here we don't compute mean from rates before because here we can safely compute this by the n_steps. This
+        # is because we aggregate per map. This is the correct computation
+        n_steps = agg_dataset_param_df["total_n_steps"]
+        agg_dataset_param_df["scan_match_failed_rate"] = (
+            agg_dataset_param_df["total_scan_match_failed_count"] / n_steps
+        )
+
+        agg_dataset_param_df["scan_match_fallback_failed_rate"] = (
+            agg_dataset_param_df["total_scan_match_fallback_failed_count"] / n_steps
+        )
+
+        # Place scan match fallback rates directly after scan match counts
+        agg_dataset_param_df = self._place_col_after_col(
+            df=agg_dataset_param_df,
+            col="scan_match_failed_rate",
+            col_after="total_scan_match_failed_count"
+        )
+        agg_dataset_param_df = self._place_col_after_col(
+            df=agg_dataset_param_df,
+            col="scan_match_fallback_failed_rate",
+            col_after="total_scan_match_fallback_failed_count"
+        )
+
+        # Use 0.0 score if score is none
+        agg_dataset_param_df["std_score"] = agg_dataset_param_df["std_score"].fillna(0.0)
+
+        # Compute score 
+        dataset_param_score = (
+            1.0 * agg_dataset_param_df["mean_score"]
+            + 0.5 * agg_dataset_param_df["worst_score"]
+            + 0.2 * agg_dataset_param_df["std_score"]
+        )
+
+        agg_dataset_param_df.insert(0, "dataset_param_score", dataset_param_score)
+
+        return self.rank_by_score(agg_dataset_param_df, "dataset_param_score", ascending=True)
 
 
-    def aggregate_by_params(self, agg_dataset_seed_df: pd.DataFrame):
+    def aggregate_by_params(self, agg_dataset_param_df: pd.DataFrame):
         # Estimate if all needed columns exist
         required_cols = {
             "dataset_param_score",
+            "dataset_id",
             "parameter_hash",
             "parameter_tag",
+            "used_meas_model",
+
+            "total_n_steps",
+
+            "mean_rmse_trans_err_sm_true",
+            "worst_rmse_trans_err_sm_true",
+            "mean_rmse_rot_err_sm_true_deg",
+            "worst_rmse_rot_err_sm_true_deg",
+
+            # "mean_scan_match_failed_rate",
+            # "worst_scan_match_failed_rate",
+            # "mean_scan_match_fallback_failed_rate",
+            # "worst_scan_match_fallback_failed_rate",
+
+            "mean_rmse_trans_error",
+            "worst_rmse_trans_error",
+            "mean_rmse_rot_error_deg",
+            "worst_rmse_rot_error_deg",
+
+            "mean_min_xj_is_best_xj",
+            "worst_min_xj_is_best_xj",
+            "mean_min_xj_pose_err_true",
+            "worst_min_xj_pose_err_true",
+            "mean_best_weighted_xj_pose_err_true",
+            "worst_best_weighted_xj_pose_err_true",
+            "mean_min_xj_true_err_improves_over_sm_true",
+            "worst_min_xj_true_err_improves_over_sm_true",
+            "mean_best_xj_true_err_improves_over_sm_true",
+            "worst_best_xj_true_err_improves_over_sm_true",
+            "median_log_motion_range",
+            "median_log_meas_range",
+            "mean_corr_xjs_motion",
+            "mean_corr_xjs_meas",
+            "worst_corr_xjs_motion",
+            "worst_corr_xjs_meas",
+            
+            "scan_match_failed_rate",
+            "scan_match_fallback_failed_rate",
+            "median_extracted_map_points",
+            "median_map_point_keep_ratio",
         }
 
-        missing = sorted(col for col in required_cols if col not in agg_dataset_seed_df.columns)
+        missing = sorted(col for col in required_cols if col not in agg_dataset_param_df.columns)
         if missing:
             raise ValueError(
                 "aggregate_by_params missing required columns: " + ", ".join(missing)
             )
         
-        # Compute metrics from columns
-        agg_param_df = self._groupby(agg_dataset_seed_df, ["parameter_hash"])
+        # Compute metrics from grouped columns
+        agg_param_df = self._groupby(agg_dataset_param_df, ["parameter_hash"])
         agg_param_df: pd.DataFrame = agg_param_df.agg(
+            # General info
             parameter_tag=("parameter_tag", "first"),
             used_meas_model=("used_meas_model", "first"),
             n_datasets=("dataset_id", "nunique"),
             n_results=("dataset_param_score", "size"),
 
+            total_n_steps=("total_n_steps", "sum"),            
+            
+            # Metrics for score computation
             mean_score=("dataset_param_score", "mean"),
             worst_score=("dataset_param_score", "max"),
             std_score=("dataset_param_score", "std"),
 
+            # Scan matcher info
+            # Here we dont compute the rates manually because we aggregate over different maps and don't
+            # want to have big influence in unioned metrics because if big maps comapred to small maps
+            mean_scan_match_failed_rate=("scan_match_failed_rate", "mean"),
+            worst_scan_match_failed_rate=("scan_match_failed_rate", "max"),
+            
+            mean_scan_match_fallback_failed_rate=("scan_match_fallback_failed_rate", "mean"),
+            worst_scan_match_fallback_failed_rate=("scan_match_fallback_failed_rate", "max"),
+
+            median_extracted_map_points=("median_extracted_map_points", "median"),
+            median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
+
+            mean_rmse_trans_err_sm_true=("mean_rmse_trans_err_sm_true", "mean"),
+            worst_rmse_trans_err_sm_true=("worst_rmse_trans_err_sm_true", "max"),
+
+            mean_rmse_rot_err_sm_true_deg=("mean_rmse_rot_err_sm_true_deg", "mean"),
+            worst_rmse_rot_err_sm_true_deg=("worst_rmse_rot_err_sm_true_deg", "max"),
+
+            # Metrics for pose errors
             mean_rmse_trans_error=("mean_rmse_trans_error", "mean"),
             worst_rmse_trans_error=("worst_rmse_trans_error", "max"),
 
             mean_rmse_rot_error_deg=("mean_rmse_rot_error_deg", "mean"),
             worst_rmse_rot_error_deg=("worst_rmse_rot_error_deg", "max"),
 
+            # Proposal information metrics
             mean_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "mean"),
             worst_min_xj_is_best_xj=("worst_min_xj_is_best_xj", "min"),
+
+            mean_min_xj_pose_err_true=("mean_min_xj_pose_err_true", "mean"),
+            worst_min_xj_pose_err_true=("worst_min_xj_pose_err_true", "max"),
+
+            mean_best_weighted_xj_pose_err_true=("mean_best_weighted_xj_pose_err_true", "mean"),
+            worst_best_weighted_xj_pose_err_true=("worst_best_weighted_xj_pose_err_true", "max"),
+
+            mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
+            worst_min_xj_true_err_improves_over_sm_true =("worst_min_xj_true_err_improves_over_sm_true", "min"),
+
+            mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
+            worst_best_xj_true_err_improves_over_sm_true =("worst_best_xj_true_err_improves_over_sm_true", "min"),
+
+            median_log_motion_range=("median_log_motion_range", "median"),
+            median_log_meas_range=("median_log_meas_range", "median"),
+
+            mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),
+            worst_corr_xjs_motion=("worst_corr_xjs_motion", "min"),
+            mean_corr_xjs_meas=("mean_corr_xjs_meas", "mean"),
+            worst_corr_xjs_meas=("worst_corr_xjs_meas", "min"),            
         ).reset_index()
         
         agg_param_df["std_score"] = agg_param_df["std_score"].fillna(0.0)
         
         # Compute score
-        agg_param_df["global_score"] = (
+        global_score = (
             1.0 * agg_param_df["mean_score"]
             + 0.5 * agg_param_df["worst_score"]
-            + 0.2 * agg_param_df["std_score"]
+            + 0.2 * agg_param_df["std_score"]   
         )
 
-        # Sort df by score
-        agg_param_df = agg_param_df.sort_values(by="global_score", ascending=True).reset_index(drop=True)
-        agg_param_df["rank"] = agg_param_df.index + 1
+        agg_param_df.insert(0, "global_score", global_score)
 
         return self.rank_by_score(agg_param_df, "global_score", ascending=True)
 
@@ -368,18 +574,21 @@ class ResultAggregator:
         rank, global_score, parameter_hash, followed by all ExperimentParams fields
         used for parameter identity (excluding start_pose and tag).
         """
+        # Check if required columns exist
         required_cols = {"rank", "global_score", "parameter_hash"}
         missing = sorted(col for col in required_cols if col not in agg_param_df.columns)
         if missing:
             raise ValueError(
                 "build_ranked_parameter_overview missing required columns: " + ", ".join(missing)
             )
-
+        
         params_by_hash = {}
         for run in ranked_runs:
+            # Check if param hash exists
             if run.parameter_hash is None:
-                continue
-
+                continue            
+            
+            # Generate parameter overview and store it
             params_for_hash = RBPFOptimizer.generate_params_for_hash(run.params)
             existing = params_by_hash.get(run.parameter_hash)
 

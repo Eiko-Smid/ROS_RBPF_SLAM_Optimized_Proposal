@@ -468,22 +468,37 @@ from .aggregator import RankedRunConverter, ResultAggregator
         29.1.2 run with adapted scorer
     
 
-
     29.2 Cafe map analysis with new scorer
-                    
+
+
+30. Create automated optimization pipeline
+    - We created an automated pipelien that is able to run the rbpf on multiple maps, with multiple param sets on different seeds
+      and finds the best overall performing metrics. 
+    
+      Attention!    
+        Step duration will be longer here cause we iterate over different seeds!
+    
+        30.1 First run
+            - cafe and turtle bot map
+            - 72 different params
+            - 3 seeds
+
+            -> 2*72*3 = 864 runs in total
+
+
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_summary.csv'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_optm_29_1_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_summary.csv'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_params.json'
 
 USED_MEAS_MODEL = "Old_NN_Based"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -491,10 +506,10 @@ USED_MEAS_MODEL = "Old_NN_Based"
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 25             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 24, 56]
-SEED_LIST = [22, 31]
+SEED_LIST = [22, 23, 56]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -551,50 +566,6 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
-# def _grid_axes() -> dict:
-#     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [1],                         # number of particles in the RBPF
-#         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
-
-#         # measurement model params
-#         "sigma_measurement": [0.06, 0.12, 0.15, 0.18],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.08, 0.12, 0.2],       # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.03, 0.07, 0.1],           # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
-#             {
-#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             },
-#             {
-#                 "proposal_sigma_xy": 0.1,
-#                 "proposal_sigma_theta": 0.06,
-#                 "n_samples_dir": 5,
-#             },
-#         ],
-#         # TODO: Delete proposal values when no longer needed later on
-#         "proposal_alpha": [1.0],
-#         "proposal_beta": [1.0],
-
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-#         "min_free_ratio": [0.25],
-#     }
-
-
 def _grid_axes() -> dict:
     return {
         # General rbpf params
@@ -604,12 +575,12 @@ def _grid_axes() -> dict:
         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
 
         # measurement model params
-        "sigma_measurement": [0.06],                # measurement uncertainty [m]
+        "sigma_measurement": [0.06, 0.12, 0.15, 0.18],                # measurement uncertainty [m]
         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
         
         # Motion model params
-        "sigma_xy_motion": [0.2],       # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.07],           # motion model uncertainty in theta direction [rad]
+        "sigma_xy_motion": [0.08, 0.12, 0.2],       # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.03, 0.07, 0.1],           # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
         
@@ -637,6 +608,50 @@ def _grid_axes() -> dict:
         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
         "min_free_ratio": [0.25],
     }
+
+
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [1],                         # number of particles in the RBPF
+#         "neff_threshold": [20],                     # Number of effective particles threshold for resampling
+
+#         # measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.2],       # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.07],           # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             },
+#             {
+#                 "proposal_sigma_xy": 0.1,
+#                 "proposal_sigma_theta": 0.06,
+#                 "n_samples_dir": 5,
+#             },
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.25],
+#     }
 
 
 def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
@@ -867,7 +882,7 @@ def main():
     # Define vars
     ranked_run_list = []
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_seed.csv"
+    agg_dataset_param_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
     agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
     ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
 
@@ -939,10 +954,10 @@ def main():
     )
 
     # Groupe and rank by playback data and seed
-    agg_dataset_seed_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
+    agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
 
     # Froupe and rank by paramters 
-    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_seed_df)
+    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
 
     # Build ranked parameter overview with one row per parameter_hash.
     ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
@@ -959,8 +974,8 @@ def main():
     )
 
     result_writer.write_dataframe_csv(
-        path=agg_dataset_seed_path,
-        df=agg_dataset_seed_df,
+        path=agg_dataset_param_path,
+        df=agg_dataset_param_df,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )

@@ -30,6 +30,9 @@ class StepResult:
     scan_match_pose: Optional[Pose2D] = None
     scan_match_failed: Optional[bool] = None
     scan_match_fallback_failed: Optional[bool] = None
+    n_raw_map_points: Optional[int] = None
+    n_used_map_points: Optional[int] = None
+    map_point_keep_ratio: Optional[float] = None
     translation_error: Optional[float] = None
     rotation_error: Optional[float] = None
     trans_err_raw_odom: Optional[float] = None
@@ -319,6 +322,9 @@ class RBPFEvaluator:
         xj_weight = None
         xj_motion = None
         xj_meas = None
+        n_raw_map_points = None
+        n_used_map_points = None
+        map_point_keep_ratio = None
 
         if raw_odom_pose_t is not None:
             trans_err_raw_odom = self.translation_error(raw_odom_pose_t, true_pose_t)
@@ -344,6 +350,24 @@ class RBPFEvaluator:
             motion_probs = proposal_metrics.get("motion_probs")
             meas_probs = proposal_metrics.get("meas_probs")
 
+            # Extract scan matcher info
+            scan_matcher_info = proposal_metrics.get("scan_matcher_info")
+            if isinstance(scan_matcher_info, dict):
+                raw_map_points_val = scan_matcher_info.get("map_points_count")
+
+                if scan_matcher_info.get("n_points_true_data") is not None:
+                    used_map_points_val = scan_matcher_info.get("n_points_true_data")
+                else:
+                    used_map_points_val = 0
+
+                if raw_map_points_val is not None and np.isfinite(raw_map_points_val):
+                    n_raw_map_points = max(0, int(raw_map_points_val))
+
+                if used_map_points_val is not None and np.isfinite(used_map_points_val):
+                    n_used_map_points = max(0, int(used_map_points_val))
+
+                if n_used_map_points is not None and n_raw_map_points is not None:
+                    map_point_keep_ratio = float(n_used_map_points) / float(max(n_raw_map_points, 1))
 
             # Compute mu, sm error metrics
             if mu is not None and scan_match_pose is not None:
@@ -569,6 +593,9 @@ class RBPFEvaluator:
             neff=float(neff) if neff is not None else None,
             scan_match_failed=scan_match_failed,
             scan_match_fallback_failed=scan_match_fallback_failed,
+            n_raw_map_points=n_raw_map_points,
+            n_used_map_points=n_used_map_points,
+            map_point_keep_ratio=map_point_keep_ratio,
             translation_error=trans_err,
             rotation_error=rot_err,
             trans_err_raw_odom=trans_err_raw_odom,
@@ -656,6 +683,12 @@ class RBPFEvaluator:
         particle_weight_max_values = self._finite_values([s.particle_weight_max for s in step_results if s.particle_weight_max is not None])
         particle_weight_mean_values = self._finite_values([s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None])
         step_durations = self._finite_values([s.step_duration for s in step_results if s.step_duration is not None])
+        n_raw_map_points_values = self._finite_values(
+            [s.n_raw_map_points for s in step_results if s.n_raw_map_points is not None]
+        )
+        map_point_keep_ratio_values = self._finite_values(
+            [s.map_point_keep_ratio for s in step_results if s.map_point_keep_ratio is not None]
+        )
         
         # Compute proposal metrics
         trans_err_mu_true_values = self._finite_values([s.trans_err_mu_true for s in step_results if s.trans_err_mu_true is not None])
@@ -663,6 +696,8 @@ class RBPFEvaluator:
         pose_err_mu_true_values = self._finite_values([s.pose_err_mu_true for s in step_results if s.pose_err_mu_true is not None])
         trans_err_mu_sm_values = self._finite_values([s.trans_err_mu_sm for s in step_results if s.trans_err_mu_sm is not None])
         rot_err_mu_sm_values = self._finite_values([s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None])
+        trans_err_sm_true_values = self._finite_values([s.trans_err_sm_true for s in step_results if s.trans_err_sm_true is not None])
+        rot_err_sm_true_values = self._finite_values([s.rot_err_sm_true for s in step_results if s.rot_err_sm_true is not None])
         pose_err_sm_true_values = self._finite_values([s.pose_err_sm_true for s in step_results if s.pose_err_sm_true is not None])
         trans_err_mu_pred_values = self._finite_values([s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None])
         rot_err_mu_pred_values = self._finite_values([s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None])
@@ -753,6 +788,8 @@ class RBPFEvaluator:
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
             "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
             "mean_step_duration": float(np.mean(step_durations)) if step_durations else float("nan"),
+            "median_extracted_map_points": float(np.median(n_raw_map_points_values)) if n_raw_map_points_values else float("nan"),
+            "median_map_point_keep_ratio": float(np.median(map_point_keep_ratio_values)) if map_point_keep_ratio_values else float("nan"),
             
             "mean_pose_err_mu_true": float(np.mean(pose_err_mu_true_values)) if pose_err_mu_true_values else float("nan"),
             "mean_min_xj_pose_err_true": float(np.mean(min_xj_pose_err_true_values)) if min_xj_pose_err_true_values else float("nan"),
@@ -798,6 +835,8 @@ class RBPFEvaluator:
 
             "mean_trans_err_mu_sm": float(np.mean(trans_err_mu_sm_values)) if trans_err_mu_sm_values else float("nan"),
             "mean_rot_err_mu_sm": float(np.mean(rot_err_mu_sm_values)) if rot_err_mu_sm_values else float("nan"),
+            "rmse_trans_err_sm_true": float(np.sqrt(np.mean(np.square(trans_err_sm_true_values)))) if trans_err_sm_true_values else float("nan"),
+            "rmse_rot_err_sm_true": float(np.sqrt(np.mean(np.square(rot_err_sm_true_values)))) if rot_err_sm_true_values else float("nan"),
             
             "rmse_trans_err_mu_sm": float(np.sqrt(np.mean(np.square(trans_err_mu_sm_values)))) if trans_err_mu_sm_values else float("nan"),
             "rmse_rot_err_mu_sm": float(np.sqrt(np.mean(np.square(rot_err_mu_sm_values)))) if rot_err_mu_sm_values else float("nan"),

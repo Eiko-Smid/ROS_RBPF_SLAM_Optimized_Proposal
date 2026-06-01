@@ -76,14 +76,10 @@ def rank_model_probs():
 
 
 def test():
-    MEASUREMENT_STDDEV = 0.03
-    max_sensor_range=10.0 + MEASUREMENT_STDDEV 
+    ratio = 3.0
+    test = min(ratio, 1.0)
 
-    print(max_sensor_range)
-
-    MEASUREMENT_STDDEV = None
-    max_sensor_range=10.0 + MEASUREMENT_STDDEV 
-    print(max_sensor_range)
+    print(f"test: {test}")
 
 
 
