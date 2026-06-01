@@ -253,6 +253,9 @@ class PlaybackRunnerScanMatching:
                 n_map_points_extracted=(
                     None if is_initialization_step else scan_match_info.get("map_points_count")
                 ),
+                n_map_points_used=(
+                    None if is_initialization_step else icp_info.get("n_points_true_data")
+                ),
                 t_ogm=rbpf_sc_only_info.get("timing_ogm_update"),
                 t_scan_matching=scan_match_info.get("time_duration_scan_matching"),
                 t_prediction=scan_match_info.get("time_duration_prediction"),

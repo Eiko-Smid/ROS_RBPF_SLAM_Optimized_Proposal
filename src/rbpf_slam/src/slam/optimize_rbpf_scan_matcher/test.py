@@ -34,8 +34,18 @@ def analyze_rolling_mean():
     plt.show()
 
 
+def test():
+    ratio = 3.0
+    test = min(ratio, 1.0)
+
+    print(f"test: {test}")
+
+
+
+
 def main():
-    analyze_rolling_mean()
+    # analyze_rolling_mean()
+    test()
 
 
 if __name__ == "__main__":

@@ -583,6 +583,11 @@ class RBPF:
             scan_matcher=particle.scan_matcher,
         )
 
+        # Pass through raw scan matcher diagnostics; evaluator owns metric computation.
+        if prop_metrics is None:
+            prop_metrics = {}
+        prop_metrics["scan_matcher_info"] = particle.scan_matcher.get_info()
+
         return new_particle, scan_match_failed, scan_match_fallback_failed, prop_metrics
 
 

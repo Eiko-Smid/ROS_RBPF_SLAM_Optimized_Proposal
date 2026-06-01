@@ -54,8 +54,11 @@ class RankedRunConverterScanMatching:
             "max_acceptable_mean_error",
 
             "scan_match_failed_count",
+            "scan_match_fallback_failed_count",
             "icp_failed_count",
             "icp_success_rate",
+            "median_extracted_map_points",
+            "median_map_point_keep_ratio",
 
             # ICP error metrics
             "mean_icp_iterations",
@@ -117,6 +120,7 @@ class RankedRunConverterScanMatching:
             "mean_step_duration_ms",
 
             "n_steps",
+            "used_meas_model",
         ]
         metadata_columns = ["map", "dataset_id", "parameter_tag", "parameter_hash"]
         ordered_columns = legacy_columns + metadata_columns
@@ -132,6 +136,7 @@ class RankedRunConverterScanMatching:
                     "dataset_id": run.dataset_id,
                     "parameter_tag": run.parameter_tag,
                     "parameter_hash": run.parameter_hash,
+                    "used_meas_model": getattr(params, "used_meas_model", None),
                     "seed": run.seed,
 
                     # Grid parameters: playback sampling
@@ -162,8 +167,11 @@ class RankedRunConverterScanMatching:
 
                     "n_steps": summary.n_steps,
                     "scan_match_failed_count": summary.scan_match_failed_count,
+                    "scan_match_fallback_failed_count": summary.scan_match_fallback_failed_count,
                     "icp_failed_count": summary.icp_failed_count,
                     "icp_success_rate": summary.icp_success_rate,
+                    "median_extracted_map_points": summary.median_extracted_map_points,
+                    "median_map_point_keep_ratio": summary.median_map_point_keep_ratio,
                     "mean_icp_iterations": summary.mean_icp_iterations,
                     "count_too_few_points": summary.count_too_few_points,
                     "count_too_few_corresp": summary.count_too_few_corresp,
@@ -206,9 +214,7 @@ class RankedRunConverterScanMatching:
                     "mean_timing_sm_scan_match_update_pose_ms": cls._ms(summary.mean_timing_sm_scan_match_update_pose_s),
                     "mean_timing_sm_map_extension_ms": cls._ms(summary.mean_timing_sm_map_extension_s),
                     "mean_timing_sm_map_update_ms": cls._ms(summary.mean_timing_sm_map_update_s),
-                    "mean_step_duration_ms": cls._ms(summary.mean_step_duration),
-
-                    
+                    "mean_step_duration_ms": cls._ms(summary.mean_step_duration),                    
                 }
             )
 
@@ -223,8 +229,16 @@ class ResultAggregatorScanMatching:
         except TypeError:
             return df.groupby(by)
 
+    
+    @staticmethod
+    def _place_col_after_col(df: pd.DataFrame, col: str, col_after: str) -> pd.DataFrame:
+        extract_col = df.pop(col)
+        df.insert(df.columns.get_loc(col_after) + 1, col, extract_col)
+        return df
+    
+
     def rank_by_score(self, ranked_run_df: pd.DataFrame, score_col: str, ascending: bool = True) -> pd.DataFrame:
-        ranked_df = ranked_run_df.sort_values(by=score_col, ascending=ascending).reset_index(drop=True)
+        ranked_df: pd.DataFrame = ranked_run_df.sort_values(by=score_col, ascending=ascending).reset_index(drop=True)
 
         if "rank" in ranked_df.columns:
             ranked_df = ranked_df.drop(columns=["rank"])
@@ -232,16 +246,23 @@ class ResultAggregatorScanMatching:
         ranked_df.insert(0, "rank", ranked_df.index + 1)
         return ranked_df
 
+
     def aggregate_by_dataset_and_param(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
         required_cols = {
             "dataset_id",
+            "map",
             "seed",
+            "n_steps",
             "score",
             "rmse_corr_trans_err",
             "rmse_corr_rot_err_deg",
-            "scan_match_success_rate",
+            "scan_match_failed_count",
+            "scan_match_fallback_failed_count",
+            "median_extracted_map_points",
+            "median_map_point_keep_ratio",
             "parameter_tag",
             "parameter_hash",
+            "used_meas_model",
         }
         missing = sorted(col for col in required_cols if col not in ranked_run_df.columns)
         if missing:
@@ -250,19 +271,69 @@ class ResultAggregatorScanMatching:
             )
 
         agg_df = self._groupby(ranked_run_df, ["dataset_id", "parameter_hash"]).agg(
+            # General info
+            map=("map", "first"),
             parameter_tag=("parameter_tag", "first"),
+            used_meas_model=("used_meas_model", "first"),
             n_runs=("score", "size"),
             n_seeds=("seed", "nunique"),
+            total_n_steps=("n_steps", "sum"),
+
+            # Scan matcher info
+            total_scan_match_failed_count=("scan_match_failed_count", "sum"),
+            total_scan_match_fallback_failed_count=("scan_match_fallback_failed_count", "sum"),
+            median_extracted_map_points=("median_extracted_map_points", "median"),
+            median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
+
+            # Score metrics
             mean_score=("score", "mean"),
             worst_score=("score", "max"),
             std_score=("score", "std"),
+
+            # Pose errors
             mean_rmse_corr_trans_err=("rmse_corr_trans_err", "mean"),
             worst_rmse_corr_trans_err=("rmse_corr_trans_err", "max"),
             mean_rmse_corr_rot_err_deg=("rmse_corr_rot_err_deg", "mean"),
-            worst_rmse_corr_rot_err_deg=("rmse_corr_rot_err_deg", "max"),
-            mean_scan_match_success_rate=("scan_match_success_rate", "mean"),
-            worst_scan_match_success_rate=("scan_match_success_rate", "min"),
+            worst_rmse_corr_rot_err_deg=("rmse_corr_rot_err_deg", "max"),            
         ).reset_index()
+
+        # Place map name directly after dataset id
+        agg_df = self._place_col_after_col(
+            df=agg_df,
+            col="map",
+            col_after="dataset_id",
+        )
+
+        n_steps = agg_df["total_n_steps"]
+        agg_df["scan_match_failed_rate"] = agg_df["total_scan_match_failed_count"] / n_steps
+        agg_df["scan_match_fallback_failed_rate"] = agg_df["total_scan_match_fallback_failed_count"] / n_steps
+        agg_df["mean_scan_match_success_rate"] = 1.0 - agg_df["scan_match_failed_rate"]
+        agg_df["worst_scan_match_success_rate"] = agg_df["mean_scan_match_success_rate"]
+
+        # Place scan match fallback rates directly after scan match counts
+        agg_df = self._place_col_after_col(
+            df=agg_df,
+            col="scan_match_failed_rate",
+            col_after="scan_match_failed_count",
+        )
+
+        agg_df = self._place_col_after_col(
+            df=agg_df,
+            col="scan_match_fallback_failed_rate",
+            col_after="scan_match_fallback_failed_count",
+        )
+
+        agg_df = self._place_col_after_col(
+            df=agg_df,
+            col="mean_scan_match_success_rate",
+            col_after="scan_match_fallback_failed_rate",
+        )
+
+        agg_df = self._place_col_after_col(
+            df=agg_df,
+            col="worst_scan_match_success_rate",
+            col_after="mean_scan_match_success_rate",
+        )
 
         agg_df["std_score"] = agg_df["std_score"].fillna(0.0)
         agg_df["dataset_param_score"] = (
@@ -273,14 +344,28 @@ class ResultAggregatorScanMatching:
 
         return self.rank_by_score(agg_df, "dataset_param_score", ascending=True)
 
+
     def aggregate_by_params(self, agg_dataset_param_df: pd.DataFrame) -> pd.DataFrame:
-        required_cols = {"dataset_param_score", "dataset_id", "parameter_hash", "parameter_tag"}
+        required_cols = {
+            "dataset_param_score",
+            "dataset_id",
+            "parameter_hash",
+            "parameter_tag",
+            "used_meas_model",
+            "mean_rmse_corr_trans_err",
+            "worst_rmse_corr_trans_err",
+            "mean_rmse_corr_rot_err_deg",
+            "worst_rmse_corr_rot_err_deg",
+            "mean_scan_match_success_rate",
+            "worst_scan_match_success_rate",
+        }
         missing = sorted(col for col in required_cols if col not in agg_dataset_param_df.columns)
         if missing:
             raise ValueError("aggregate_by_params missing required columns: " + ", ".join(missing))
 
         agg_param_df = self._groupby(agg_dataset_param_df, ["parameter_hash"]).agg(
             parameter_tag=("parameter_tag", "first"),
+            used_meas_model=("used_meas_model", "first"),
             n_datasets=("dataset_id", "nunique"),
             n_results=("dataset_param_score", "size"),
             mean_score=("dataset_param_score", "mean"),
@@ -302,6 +387,7 @@ class ResultAggregatorScanMatching:
         )
 
         return self.rank_by_score(agg_param_df, "global_score", ascending=True)
+
 
     def build_ranked_parameter_overview(
         self,

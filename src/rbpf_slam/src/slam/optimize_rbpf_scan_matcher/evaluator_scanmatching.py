@@ -54,6 +54,8 @@ class StepResultScanMatching:
     n_valid_measurements_filter: Optional[int]
     n_valid_measurements_map_update: Optional[int]
     n_map_points_extracted: Optional[int]
+    n_map_points_used: Optional[int]
+    map_point_keep_ratio: Optional[float]
     
     t_ogm: Optional[float]
     t_scan_matching: Optional[float]
@@ -81,8 +83,11 @@ class RunSummaryScanMatching:
     n_particles: int
 
     scan_match_failed_count: int
+    scan_match_fallback_failed_count: int
     icp_success_rate: float
     scan_match_success_rate: float
+    median_extracted_map_points: float
+    median_map_point_keep_ratio: float
     mean_icp_iterations: float
     mean_icp_err: float
     mean_best_trans_norm: float
@@ -203,6 +208,7 @@ class ScanMatchingEvaluator:
         n_valid_measurements_filter: Optional[int],
         n_valid_measurements_map_update: Optional[int],
         n_map_points_extracted: Optional[int],
+        n_map_points_used: Optional[int],
         t_ogm: Optional[float],
         t_scan_matching: Optional[float],
         t_prediction: Optional[float],
@@ -232,6 +238,7 @@ class ScanMatchingEvaluator:
         best_rot_abs = None
         pred_to_corr_trans_err = None
         pred_to_corr_rot_err = None
+        map_point_keep_ratio = None
 
         # Baseline odometry-only error against ground truth.
         if raw_odom_pose_t is not None and true_pose_t is not None:
@@ -262,6 +269,9 @@ class ScanMatchingEvaluator:
             if tf.size >= 3 and np.all(np.isfinite(tf[:3])):
                 best_trans_norm = float(np.linalg.norm(tf[:2]))
                 best_rot_abs = float(abs(tf[2]))
+
+        if n_map_points_extracted is not None and n_map_points_used is not None:
+            map_point_keep_ratio = float(n_map_points_used) / float(max(int(n_map_points_extracted), 1))
 
         # If scan matching failed before ICP started, these diagnostics are not meaningful.
         pre_icp_failure = bool(scan_match_failed) and (str(stop_reason) == "scan matcher failed before icp")
@@ -304,6 +314,8 @@ class ScanMatchingEvaluator:
                 int(n_valid_measurements_map_update) if n_valid_measurements_map_update is not None else None
             ),
             n_map_points_extracted=int(n_map_points_extracted) if n_map_points_extracted is not None else None,
+            n_map_points_used=int(n_map_points_used) if n_map_points_used is not None else None,
+            map_point_keep_ratio=float(map_point_keep_ratio) if map_point_keep_ratio is not None else None,
             t_ogm=float(t_ogm) if t_ogm is not None else None,
             t_scan_matching=float(t_scan_matching) if t_scan_matching is not None else None,
             t_prediction=float(t_prediction) if t_prediction is not None else None,
@@ -323,6 +335,12 @@ class ScanMatchingEvaluator:
         raw_odom_rot_err = [s.raw_odom_rot_err for s in step_results if s.raw_odom_rot_err is not None]
         corr_trans_err = [s.corr_trans_err for s in step_results if s.corr_trans_err is not None]
         corr_rot_err = [s.corr_rot_err for s in step_results if s.corr_rot_err is not None]
+        map_points_extracted = [
+            s.n_map_points_extracted for s in step_results if s.n_map_points_extracted is not None
+        ]
+        map_point_keep_ratios = [
+            s.map_point_keep_ratio for s in step_results if s.map_point_keep_ratio is not None
+        ]
         step_durations = [s.step_duration for s in step_results if s.step_duration is not None]
         update_particle_timings = [
             s.timing_update_particle for s in step_results if s.timing_update_particle is not None
@@ -353,6 +371,9 @@ class ScanMatchingEvaluator:
         )
 
         scan_match_failed_count = int(sum(1 for s in step_results if s.scan_match_failed))
+        scan_match_fallback_failed_count = int(
+            sum(1 for s in step_results if s.stop_reason == "scan matcher failed before icp")
+        )
         
         n_steps = len(step_results)
 
@@ -416,8 +437,15 @@ class ScanMatchingEvaluator:
 
             # ICP metrics            
             scan_match_failed_count=scan_match_failed_count,
+            scan_match_fallback_failed_count=scan_match_fallback_failed_count,
             icp_success_rate=icp_success_rate,
             scan_match_success_rate=scan_match_success_rate,
+            median_extracted_map_points=(
+                float(np.median(map_points_extracted)) if map_points_extracted else float("nan")
+            ),
+            median_map_point_keep_ratio=(
+                float(np.median(map_point_keep_ratios)) if map_point_keep_ratios else float("nan")
+            ),
             mean_icp_iterations=mean_icp_iterations,
             mean_icp_err=mean_icp_error,
             mean_best_trans_norm=mean_best_trans_norm,
