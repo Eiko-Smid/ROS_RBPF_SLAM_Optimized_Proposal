@@ -133,19 +133,16 @@
             <geometry>
                 <cylinder radius="${r_wheel}" length="${w_wheel}" />
             </geometry>
-            <surface>
-                <!--Reibung-->
+            <!-- <surface>
                 <friction>
-                    <ode>
-                        <!--Reibungskoeffizienten-->
+                    <ode>                     
                         <mu>1.0</mu>
                         <mu2>1.0</mu2>
-                        <!--Schlupf-->
                         <slip1>0.0</slip1>
                         <slip2>0.0</slip2>
                     </ode>
                 </friction>
-            </surface>                
+            </surface>                 -->
         </collision>
         <visual>
             <origin xyz="${pos_l_wheel}" rpy="${rot_wheel}" />
@@ -168,7 +165,7 @@
             <geometry>
                 <cylinder radius="${r_wheel}" length="${w_wheel}" />
             </geometry>
-            <surface>
+            <!-- <surface>
                 <friction>
                     <ode>
                         <mu>1.0</mu>
@@ -177,7 +174,7 @@
                         <slip2>0.0</slip2>
                     </ode>
                 </friction>
-            </surface>                
+            </surface>                 -->
         </collision>
         <visual>
             <origin xyz="${pos_r_wheel}" rpy="${rot_wheel}" />

@@ -71,8 +71,8 @@ from rbpf_slam.msg import WheelEncoder
 from rbpf_slam.msg import PoseErr2D
 
 
-TAG = "In this run we also record if we don't move! meas sttdev of 0.01."
-MAP_NAME = "turtle_bot3_map"
+TAG = "Run on new AWS indoor map with meas sttdev of 0.00. Increased robot friction of driving wheels to 3.0 and define 0.5 for caster wheels."
+MAP_NAME = "AWS_Robot_Maker_Small_House"
 NODE_NAME = "playback_node"
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 

@@ -26,7 +26,7 @@
     <arg name="laser_range_resolution" default="0.01"/>
     <arg name="laser_noise_type" default="gaussian"/>
     <arg name="laser_noise_mean" default="0.0"/>
-    <arg name="laser_noise_stddv" default="0.01"/>
+    <arg name="laser_noise_stddv" default="0.00"/>
 
     <!--Pass the parameters to ros parameter server-->
     <param name="spawn_x" value="$(arg spawn_x)"/>
