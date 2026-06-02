@@ -10,7 +10,7 @@ import pandas as pd
 import json
 
 from dataclasses import asdict, dataclass, is_dataclass
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional
 
 from pathlib import Path
 
@@ -55,7 +55,6 @@ overall runs. In order to achive this the code does the following steps:
       key value pair. 
       This way we got the score values from the scorer
     
-
 '''
 
 @dataclass
@@ -66,17 +65,18 @@ class OptmResultData:
 
 @dataclass
 class LoadedOptmResultData:
-    params: Dict[str, Any]
-    rank_scored_summary: pd.DataFrame
     param_path: Path
     rank_scored_summary_path: Path
+    params: Dict[str, Any]
+    rank_scored_summary: pd.DataFrame
+    
 
 
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results',
         param_filename='1779363559_test_params.json',
-        rank_scored_summary_filename='1779363559_testsummary_rank_scored.csv'
+        rank_scored_summary_filename='1779363559_test_summary_rank_scored.csv'
     ),
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results',
@@ -86,8 +86,63 @@ OPTM_RESULT_DATA_LIST = [
 ]
 
 
+# Mapping from RunScorer summary keys to columns in:
+# 1779363559_test_2_summary_rank_scored.csv
+# Value format: [column_name, is_angle]
+SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
+    "n_steps": ["n_steps", False],
+    "proposal_n_samples": ["n_samples_dir", False],
+    "rmse_translation_error": ["rmse_trans_error", False],
+    "rmse_rotation_error": ["rmse_rot_error_deg", True],
+    "drift_trans_err": ["drift_trans_err", False],
+    "drift_rot_err": ["drift_rot_err_deg", True],
+    "scan_match_failed_count": ["scan_match_failed_count", False],
+    "mean_best_weighted_xj_pose_err_true": ["mean_best_weighted_xj_pose_err_true", False],
+    "mean_mu_true_err_improves_over_sm_true": ["mean_mu_true_err_improves_over_sm_true", False],
+    "mean_best_xj_true_err_improves_over_sm_true": ["mean_best_xj_true_err_improves_over_sm_true", False],
+    "mean_min_xj_is_best_xj": ["mean_min_xj_is_best_xj", False],
+    "median_log_meas_range": ["median_log_meas_range", False],
+    "median_log_motion_range": ["median_log_motion_range", False],
+    "mean_xj_eff_meas": ["mean_xj_eff_meas", False],
+}
+
+
+def sim_col_switch(loaded_optm_data_list: List[LoadedOptmResultData]):
+    df = loaded_optm_data_list[1].rank_scored_summary
+
+    cols = list(df.columns)
+
+    col_a = "n_particles"
+    col_b = "parameter_hash"
+
+    idx_a = cols.index(col_a)
+    idx_b = cols.index(col_b)
+
+    cols[idx_a], cols[idx_b] = cols[idx_b], cols[idx_a]
+
+    loaded_optm_data_list[1].rank_scored_summary = df[cols]
+
+
+
 class LoadOptmResultData:
+    '''
+    Class to load the optimization result data. This includes the parameter file and the rank scored summary csv file.
+    '''
     def load(self, optm_res_data: OptmResultData) -> LoadedOptmResultData:
+        '''
+        Loads the given optimization result data. This includes the parameter file and the rank scored summary csv file.
+        Returns the loaded data and path information.
+        
+        Parameters
+        ----------
+        optm_res_data: OptmResultData
+            The optimization result data to load, including directory and file names for parameters and rank scored summary
+        
+        Returns
+        -------
+        LoadedOptmResultData
+            The loaded optimization result data, including the loaded parameters, rank scored summary dataframe and the paths
+        '''
         # Validate base dir
         base_dir = self._validate_dir(dir=optm_res_data.dir)
 
@@ -128,6 +183,9 @@ class LoadOptmResultData:
 
     @staticmethod
     def _validate_dir(dir: Union[str, Path]) -> Path:
+        '''
+        Checks if the given directory exists and is a directory. 
+        '''
         dir = Path(dir)
 
         if not dir.exists():
@@ -141,6 +199,10 @@ class LoadOptmResultData:
 
     @staticmethod
     def _validate_path(path: Union[str, Path], exp_file_type: Union[str, None] = None) -> Path:
+        '''
+        Checks if the given path exists and is a file. Optionally checks if the file type matches the expected file type if
+        provided.
+        '''
         path = Path(path)
         # Validate path
         if not path.exists():
@@ -155,30 +217,10 @@ class LoadOptmResultData:
         return path
 
 
-    # @staticmethod
-    # def check_equal_params(loaded_results: List[LoadedOptmResultData]):
-    #     '''
-    #     Checks if the loaded parameter files are equal. Returns True if they are equal, otherwise false.
-    #     '''
-    #     if len(loaded_results) < 2:
-    #         raise ValueError("Need at least two loaded results to compare params.")
-
-    #     reference_params = loaded_results[0].params
-    #     reference_path = loaded_results[0].param_path
-
-    #     different_param_files = []
-
-    #     for loaded_result in loaded_results[1:]:
-    #         if loaded_result.params != reference_params:
-    #             different_param_files.append(loaded_result.param_path)
-
-    #     if different_param_files:
-    #         return False
-
-    #     return True
-
-
 class ParamsDiffEstimator:
+    '''
+    Class to compare multiple parameter json files and check if they are equal. 
+    '''
     def check_equal_params(self, loaded_results: List[LoadedOptmResultData]) -> bool:
         if len(loaded_results) < 2:
             raise ValueError("Need at least two loaded results to compare params.")
@@ -217,8 +259,13 @@ class ParamsDiffEstimator:
 
         return True
     
+
     @staticmethod
     def compare_nested_params(reference: Any, other: Any, path: str = "") -> List[str]:
+        '''
+        Checks recursively if the given parameters are equal. If not it returns a list of differences with
+        the path to the different parameter and the values that differ. 
+        '''
         differences = []
 
         if isinstance(reference, dict) and isinstance(other, dict):
@@ -276,7 +323,81 @@ class ParamsDiffEstimator:
         return differences
 
 
-def load_data():
+
+class RankeScoredSummaryCombiner:
+    @staticmethod
+    def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
+        # Check if results exist
+        if len(loaded_results) == 0:
+            raise ValueError("No loaded results given.")
+
+        # Storage for cleaned dfs
+        cleaned_dfs: List[pd.DataFrame] = []
+
+        # Clean dfs
+        for loaded_result in loaded_results:
+            df = loaded_result.rank_scored_summary.copy()
+
+            if "score" in df.columns:
+                df = df.drop(columns=["score"])
+
+            cleaned_dfs.append(df)
+
+        # Extract reference df
+        reference_col = cleaned_dfs[0].columns
+        aligned_dfs: List[pd.DataFrame] = [cleaned_dfs[0]]
+
+        # Check if all dfs have the same columns and print differences
+        for i, df in enumerate(cleaned_dfs[1:], start=1):
+            current_col = df.columns
+
+            # Find missing and additional columns
+            missing_col = reference_col.difference(current_col)
+            additional_col = current_col.difference(reference_col)
+
+            # Define indicators
+            same_names = len(missing_col) == 0 and len(additional_col) == 0
+            same_order = list(current_col) == list(reference_col)
+
+            # Handle different or not equal column names
+            if not same_names:
+                print(f"\nColumn name mismatch in dataframe index {i}")
+
+                if len(missing_col) > 0:
+                    print("\nMissing columns compared to reference:")
+                    for col in missing_col:
+                        print(f"  - {col}")
+
+                if len(additional_col) > 0:
+                    print("\nAdditional columns compared to reference:")
+                    for col in additional_col:
+                        print(f"  - {col}")
+
+                return None
+
+            # handle column order missmatch but same column names
+            if not same_order:
+                print(f"\nColumn order mismatch in dataframe index {i}")
+                print("Same column names found. Reordering dataframe to match reference order.")
+
+                different_positions = [
+                    (pos, ref_col, cur_col)
+                    for pos, (ref_col, cur_col) in enumerate(zip(reference_col, current_col))
+                    if ref_col != cur_col
+                ]
+
+                print("\nDifferent column positions:")
+                for pos, ref_col, cur_col in different_positions:
+                    print(f"  - position {pos}: reference='{ref_col}', current='{cur_col}'")
+
+                df = df.loc[:, reference_col]
+
+            aligned_dfs.append(df)
+
+        return pd.concat(aligned_dfs, axis=0, ignore_index=True)
+
+
+def load_data() -> List[LoadedOptmResultData]:
     load_optm_res_data = LoadOptmResultData()
     loaded_optm_data_list = []
 
@@ -288,13 +409,67 @@ def load_data():
 
 
 
-def combine_summary_runs():
-    pass    
+def combine_summary_runs(
+        loaded_results: List[LoadedOptmResultData],
+        ranked_scpred_combiner: RankeScoredSummaryCombiner,
+) -> Optional[pd.DataFrame]:
+    summary_run = ranked_scpred_combiner.combine(loaded_results=loaded_results)
+
+    return summary_run
+
+
+def extract_and_convert_scorer_cols(
+        summary_run: pd.DataFrame,
+        col_mappings: Dict,
+) -> Dict[str, pd.Series]:
+    '''
+    Extracts the columns from the given summary run dataframe based on the given column mappings. Convert all 
+    columns makred as angle from rad to deg. Functions assumes that indicators are correct. Wrong column names will
+    raise key error. 
+
+    Parameters
+    ----------
+    summary_run: pd.DataFrame
+        The summary run dataframe to extract the columns from. This is the combined dataframe of all runs.
+    col_mappings: Dict
+        The column mappings to use for the extraction. The keys are the expected scorer summary keys and a list 
+        of [column_name, is_angle] where column_name is the name of the column in the dataframe and is_angle is
+        a boolean indicating if the column represents an angle.
+
+    Returns
+    -------
+    Dict[str, pd.Series]
+        A dictionary containing the extracted columns as pandas Series, where the keys are the expected scorer summary
+        keys and the values are the corresponding columns from the dataframe. 
+    '''
+    # get all pairs
+    summarys_dict = {}
+
+    for key, data in col_mappings.items():
+        col_name, is_angle_deg = data
+        try:
+            # Convert angle from rad to deg if it is angle
+            if is_angle_deg:
+                summary_run[col_name] = np.rad2deg(summary_run[col_name])
+            
+            # Extract column and add to dict
+            summarys_dict[key] = summary_run.loc[:, col_name]
+        
+        # Handle key errors
+        except KeyError:
+            raise KeyError(
+                f"Required column '{col_name}' for scorer key '{key}' "
+                f"does not exist in given dataframe."
+            )
+    
+    return summarys_dict
+
 
 
 def main():
     # Init 
     params_diff_estimator = ParamsDiffEstimator()
+    ranked_scpred_combiner = RankeScoredSummaryCombiner()
     
     # Load data
     loaded_optm_data_list = load_data()
@@ -315,10 +490,26 @@ def main():
             print("Exiting.")
             return
         
-    # Combine csv data
-    combine_summary_runs()
 
+    # Combine summary run dfs
+    summary_run = combine_summary_runs(
+        loaded_results=loaded_optm_data_list,
+        ranked_scpred_combiner=ranked_scpred_combiner
+    )
+
+    if summary_run is None:
+        raise ValueError("Could not combine summary dataframes due to column mismatches.")
+    else:
+        print("\nSuccessfully combined summary run dataframes:\n")
     
+    # Extract and convert scorer columns
+    summarys_dict = extract_and_convert_scorer_cols(
+        summary_run=summary_run,
+        col_mappings=SCORER_SUMMARY_DF_MAPPINGS,
+    )
+
+    print("\nSuccessfully extracted and converted scorer columns.")
+
 
 if __name__ == "__main__":
     main()
