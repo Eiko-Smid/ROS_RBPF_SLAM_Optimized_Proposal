@@ -863,6 +863,9 @@ class RBPFEvaluator:
                     "n_particles": self._extract_n_particles(params),
                     "sigma_measurement": self._extract_sigma_measurement(params),
                     "neff_threshold": self._extract_neff_threshold(params),
+                    # Keep both. TO many positions in code were "n_samples_dir" named and may be used
+                    "proposal_n_samples": self._extract_proposal_n_samples(params),
+                    "n_samples_dir": self._extract_proposal_n_samples(params),
                 }
             )
         return summary
@@ -895,4 +898,12 @@ class RBPFEvaluator:
         if hasattr(params, "particle_params") and hasattr(params.particle_params, "n_particles"):
             return float(params.particle_params.n_particles) / 2.0
 
+        return None
+
+
+    @staticmethod
+    def _extract_proposal_n_samples(params: ExperimentParams) -> Optional[int]:
+        if hasattr(params, "proposal_n_samples"):
+            value = params.proposal_n_samples
+            return int(value) if value is not None else None
         return None

@@ -486,14 +486,16 @@ from .aggregator import RankedRunConverter, ResultAggregator
             -> 2*72*3 = 864 runs in total
 
 
+        30.2 Second run on new AWS indoor map 
+
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_summary.csv'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_ptm_30_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_1_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_1_params.json'
 
 # OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_summary'
 # STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/1779363559_test_steps.csv'
@@ -508,8 +510,8 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-# SEED_LIST = [22, 23, 24, 56]
 SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -541,6 +543,14 @@ PLAYBACK_DATA_LIST = [
         playback_suffix="1779375646",
     )
 ]
+
+# PLAYBACK_DATA_LIST = [
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1780397517",
+#     )
+# ]
+
 
 
 def _to_jsonable(value):
@@ -907,6 +917,7 @@ def main():
     )
 
     # Load dataset and run tuning pipline
+    # TODO: Put for loop into optimizer. Then do tqdm bar over all -> Full progress bar !
     for playback_ds in PLAYBACK_DATA_LIST:
         # Load data
         print(f"\nLoading playback data:\nsuffix: {playback_ds.playback_suffix} \ndir: {playback_ds.playback_dir}")
