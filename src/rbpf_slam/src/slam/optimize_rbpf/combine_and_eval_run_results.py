@@ -14,6 +14,8 @@ from typing import Dict, Any, List, Union, Optional
 
 from pathlib import Path
 
+from .scorer import RunScorer
+from .aggregator import ResultAggregator
 
 '''
 This script will combine multiple run results together, evaluate them and find the best union parameter sets for the 
@@ -411,9 +413,9 @@ def load_data() -> List[LoadedOptmResultData]:
 
 def combine_summary_runs(
         loaded_results: List[LoadedOptmResultData],
-        ranked_scpred_combiner: RankeScoredSummaryCombiner,
+        ranked_scored_combiner: RankeScoredSummaryCombiner,
 ) -> Optional[pd.DataFrame]:
-    summary_run = ranked_scpred_combiner.combine(loaded_results=loaded_results)
+    summary_run = ranked_scored_combiner.combine(loaded_results=loaded_results)
 
     return summary_run
 
@@ -424,8 +426,8 @@ def extract_and_convert_scorer_cols(
 ) -> Dict[str, pd.Series]:
     '''
     Extracts the columns from the given summary run dataframe based on the given column mappings. Convert all 
-    columns makred as angle from rad to deg. Functions assumes that indicators are correct. Wrong column names will
-    raise key error. 
+    columns makred as angle from deg to rad. Stores extracted columns into new df. Functions assumes that indicators
+    are correct. Wrong column names will raise key error. 
 
     Parameters
     ----------
@@ -438,23 +440,23 @@ def extract_and_convert_scorer_cols(
 
     Returns
     -------
-    Dict[str, pd.Series]
-        A dictionary containing the extracted columns as pandas Series, where the keys are the expected scorer summary
-        keys and the values are the corresponding columns from the dataframe. 
+    pd.DataFrame
+        A dataframe containing the extracted columns, where the columns are the expected scorer summary
+        keys and the values are the corresponding columns from the original dataframe. 
     '''
-    # get all pairs
-    summarys_dict = {}
+    # Define df to store data
+    scorer_df = pd.DataFrame(index=summary_run.index)
 
     for key, data in col_mappings.items():
         col_name, is_angle_deg = data
-        try:
-            # Convert angle from rad to deg if it is angle
+        try:            
+            # Extract column and add to new df
+            scorer_df[key] = summary_run.loc[:, col_name]
+
+            # Transform angle from deg to rad if it is angle
             if is_angle_deg:
-                summary_run[col_name] = np.rad2deg(summary_run[col_name])
+                scorer_df[key] = np.deg2rad(scorer_df[key])
             
-            # Extract column and add to dict
-            summarys_dict[key] = summary_run.loc[:, col_name]
-        
         # Handle key errors
         except KeyError:
             raise KeyError(
@@ -462,14 +464,61 @@ def extract_and_convert_scorer_cols(
                 f"does not exist in given dataframe."
             )
     
-    return summarys_dict
+    return scorer_df
+
+
+def place_col_after_col(df: pd.DataFrame, col: str, col_after: str) -> pd.DataFrame:
+        extract_col = df.pop(col)
+        df.insert(df.columns.get_loc(col_after) + 1, col, extract_col)
+        return df
+
+
+def score_summary_runs(
+        scorer_df: pd.DataFrame,
+        run_scorer: RunScorer,
+) -> pd.Series:
+    score_series = scorer_df.apply(
+        lambda row: run_scorer.score(row.to_dict()),
+        axis=1,
+    )
+        
+    return score_series
+
+
+
+def build_summary_rank_scored(
+        summary_run_df: pd.DataFrame,
+        score_series: pd.Series,
+        result_aggregator: ResultAggregator,
+) -> pd.DataFrame:
+    # Add score series to summary run df
+    summary_rank_scored_df = summary_run_df.copy()
+    summary_rank_scored_df["score"] = score_series
+
+    # Move score column to begining of df
+    result_aggregator._place_col_after_col(
+        df=summary_rank_scored_df,
+        col="score",
+        col_after=summary_rank_scored_df.columns[0],
+    )
+
+    # rank df by score
+    summary_rank_scored_df = result_aggregator.rank_by_score(
+        ranked_run_df=summary_rank_scored_df,
+        score_col="score",
+    )
+
+    return summary_rank_scored_df
+
 
 
 
 def main():
     # Init 
     params_diff_estimator = ParamsDiffEstimator()
-    ranked_scpred_combiner = RankeScoredSummaryCombiner()
+    ranked_scored_combiner = RankeScoredSummaryCombiner()
+    run_scorer = RunScorer()
+    result_aggregator = ResultAggregator()
     
     # Load data
     loaded_optm_data_list = load_data()
@@ -494,7 +543,7 @@ def main():
     # Combine summary run dfs
     summary_run = combine_summary_runs(
         loaded_results=loaded_optm_data_list,
-        ranked_scpred_combiner=ranked_scpred_combiner
+        ranked_scored_combiner=ranked_scored_combiner
     )
 
     if summary_run is None:
@@ -503,12 +552,50 @@ def main():
         print("\nSuccessfully combined summary run dataframes:\n")
     
     # Extract and convert scorer columns
-    summarys_dict = extract_and_convert_scorer_cols(
+    scorer_df = extract_and_convert_scorer_cols(
         summary_run=summary_run,
         col_mappings=SCORER_SUMMARY_DF_MAPPINGS,
     )
 
     print("\nSuccessfully extracted and converted scorer columns.")
+
+    # score summary runs with scorer
+    scored_series = score_summary_runs(
+        scorer_df=scorer_df,
+        run_scorer=run_scorer,
+    )
+
+    print("\nSuccessfully scored summary runs.")
+    print("\nScored summary head:\n", scored_series.head())
+
+    # Build summary rank scored df
+    summary_rank_scored_df = build_summary_rank_scored(
+        summary_run_df=summary_run,
+        score_series=scored_series,
+        result_aggregator=result_aggregator,
+    )
+    print("\nSuccessfully built summary rank scored dataframe.")
+    print("\nSummary rank scored head:\n", summary_rank_scored_df.head())
+
+    sum_cols = summary_rank_scored_df.columns
+    print(f"\nlen summary rank scored columns: {len(sum_cols)}")
+    print("\nSummary rank scored columns:\n", sum_cols)
+
+    # Aggregate results
+    agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(summary_rank_scored_df)
+
+    # Aggregate and rank by parameters 
+    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
+
+    # build ranked param overview
+    # Therefore we must either create our own ranked_run_list and use result_aggregator.build_ranked_parameter_overview or
+    # define own method to do so
+
+
+    # Create parameter json file if needed
+
+    # Write results
+    
 
 
 if __name__ == "__main__":
