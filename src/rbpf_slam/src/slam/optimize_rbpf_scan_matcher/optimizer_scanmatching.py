@@ -231,7 +231,7 @@ class ScanMatchingOptimizer:
         # Measure ending time and print info
         end_time = time.perf_counter()
         optm_duration_s = end_time - start_time
-        print(f"Finished RBPF optimization: {total_n_runs}/{total_n_runs} runs in {optm_duration_s:.2f}s")
+        print(f"Finished Scan Matcher optimization: {total_n_runs}/{total_n_runs} runs in {optm_duration_s:.2f}s")
 
         # Sort runs by score (ascending order)
         ranked_runs.sort(key=lambda x: x.score)

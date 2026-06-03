@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 
 from .evaluator_scanmatching import RunSummaryScanMatching
 
@@ -37,22 +38,67 @@ TODO:
 
 
 class ScanMatchingScorer:
+    @staticmethod
+    def _require_metric(summary: RunSummaryScanMatching, name: str, allow_nan: bool = False) -> float:
+        if not hasattr(summary, name):
+            raise ValueError(f"Missing required score input '{name}'")
+
+        value = getattr(summary, name)
+        if value is None:
+            raise ValueError(f"Missing required score input '{name}'")
+
+        value_f = float(value)
+        if not allow_nan and math.isnan(value_f):
+            raise ValueError(f"Required score input '{name}' is NaN")
+        if math.isinf(value_f):
+            raise ValueError(f"Required score input '{name}' is infinite")
+        return value_f
+
+
+    @staticmethod
+    def _require_metric_any(summary: RunSummaryScanMatching, names: Tuple[str, ...]) -> float:
+        for name in names:
+            if hasattr(summary, name):
+                value = getattr(summary, name)
+                if value is None:
+                    continue
+                value_f = float(value)
+                if math.isnan(value_f):
+                    raise ValueError(f"Required score input '{name}' is NaN")
+                if math.isinf(value_f):
+                    raise ValueError(f"Required score input '{name}' is infinite")
+                return value_f
+
+        joined = ", ".join(names)
+        raise ValueError(f"Missing required score input; expected one of: {joined}")
+
+
     def score(self, summary: RunSummaryScanMatching) -> float:
         """
         Computes a score for scan-matching-only runs.
         Lower is better.
         """
-        rmse_corr_trans_err = float(summary.rmse_corr_trans_err) 
-        rmse_corr_rot_err_deg = math.degrees(float(summary.rmse_corr_rot_err)) 
+        rmse_corr_trans_err = self._require_metric(summary, "rmse_corr_trans_err")
+        rmse_corr_rot_err_deg = math.degrees(self._require_metric(summary, "rmse_corr_rot_err"))
 
-        max_corr_trans_err = float(summary.max_corr_trans_err)
-        max_corr_rot_err_deg = math.degrees(float(summary.max_corr_rot_err))
+        max_corr_trans_err = self._require_metric(summary, "max_corr_trans_err")
+        max_corr_rot_err_deg = math.degrees(self._require_metric(summary, "max_corr_rot_err"))
         
-        perc_95_corr_trans_err = float(summary.perc_95_corr_trans_err)
-        perc_95_corr_rot_err_deg = math.degrees(float(summary.perc_95_corr_rot_err))
+        perc_95_corr_trans_err = self._require_metric(summary, "perc_95_corr_trans_err")
+        perc_95_corr_rot_err_deg = math.degrees(self._require_metric(summary, "perc_95_corr_rot_err"))
         
-        max_rolling_rmse_corr_trans_error = float(summary.max_rolling_rmse_corr_trans_error)
-        max_rolling_rmse_corr_rot_error_deg = math.degrees(float(summary.max_rolling_rmse_corr_rot_error))
+        max_rolling_rmse_corr_trans_error = self._require_metric(
+            summary,
+            "max_rolling_rmse_corr_trans_error",
+            allow_nan=True,
+        )
+        max_rolling_rmse_corr_rot_error_deg = math.degrees(
+            self._require_metric(
+                summary,
+                "max_rolling_rmse_corr_rot_error",
+                allow_nan=True,
+            )
+        )
 
         # Ignore rolling terms when they are undefined (NaN), e.g., window larger than run length.
         rolling_trans_term = (
@@ -66,15 +112,14 @@ class ScanMatchingScorer:
             else 0.6 * (max_rolling_rmse_corr_rot_error_deg / 7.0)
         )
 
-        scan_match_failed_rate = 1 - float(
-            getattr(summary, "scan_match_success_rate", getattr(summary, "success_rate", 0.0))
-        )
+        scan_match_success_rate = self._require_metric_any(summary, ("scan_match_success_rate", "success_rate"))
+        scan_match_failed_rate = 1 - scan_match_success_rate
 
-        corr_worse_rate_trans = float(summary.corr_worse_rate_trans)
-        corr_worse_rate_rot = float(summary.corr_worse_rate_rot)
+        corr_worse_rate_trans = self._require_metric(summary, "corr_worse_rate_trans")
+        corr_worse_rate_rot = self._require_metric(summary, "corr_worse_rate_rot")
 
-        final_drift_trans = float(summary.final_drift_trans)
-        final_drift_rot_deg = math.degrees(float(summary.final_drift_rot))  
+        final_drift_trans = self._require_metric(summary, "final_drift_trans")
+        final_drift_rot_deg = math.degrees(self._require_metric(summary, "final_drift_rot"))
 
         allowed_fail_rate_icp = 0.03   
         icp_failure_term = (

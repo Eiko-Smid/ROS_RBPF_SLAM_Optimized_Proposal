@@ -95,9 +95,14 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
 '''
 
 
+# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
+
 OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary"
 SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
 PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
+
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -483,6 +488,8 @@ def main() -> None:
 
     # Aggregate results
     ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
+
+    # Rank results by score
     rank_scored_df = result_aggregator.rank_by_score(
         ranked_run_df=ranked_run_df,
         score_col="score",

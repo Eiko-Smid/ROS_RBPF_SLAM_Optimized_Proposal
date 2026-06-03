@@ -20,45 +20,20 @@ from .result_writer import ResultWriter
 
 
 '''
-This script will combine multiple run results together, evaluate them and find the best union parameter sets for the 
-overall runs. In order to achive this the code does the following steps:
+This script combines multiple run results together, evaluate them and find the best union parameter sets for the 
+overall runs. It does so by doing the following steps:
 
-1) Load parameters and make compare check
-    - Load the corresponding parameter sets for example "1779363559_test_params.json" and "1779363559_test_2_params.json"
-    - Check if the same params has been used
-    - If not mention this with a warning and asks user if he want to coninue
-    - This means the user can self design if he wanne go on or not (true, false) 
+    1. Load the summary ranked score csv files and the parameter json files from multiple runs.
+    2. Validate that the loaded data is consistent and has the same parameter sets.
+    3. Combine the summary ranked score csv files into one dataframe.
+    4. Extract the columns needed for the scorer from the combined summary ranked score dataframe and convert them to the correct format if needed.
+    5. Score the combined summary ranked score dataframe with the scorer and add the score as a new column to the dataframe.
+    6. Build a ranked summary dataframe based on the score column and rank the dataframe by score.
+    7. Aggregate the ranked summary dataframe by dataset and parameter set and compute the mean score for each parameter set and dataset.
+    8. Aggregate the ranked summary dataframe by parameter set and compute the mean score for each parameter set.
+    9. Build a ranked parameter overview dataframe by merging the aggregated parameter scores with the parameter json files and rank the dataframe by score.    
+    10. Write results to csv and json files
 
-2) Load the run result
-    - We define a list of files and load the data 
-    - Load the summary rank score data for example "1779363559_testsummary_rank_scored.csv" and "1779363559_test_2_summary_rank_scored.csv"    
-    - Store inside dfs. 
-
-3) Combine csv data (dfs)
-    Clean way:
-        - Define column mapping to current columns defined in "to_dataframe" except the score (will be computed in next step)
-        - We need one map for each file we loaded. But this will result into a massive map cause we have over 100 columns
-          in the score csv files. 
-        - Concatenate the dfs based on the given mappings
-
-    Dirty way:
-        - Test of all columns from "to_dataframe" exists except the score (will be computed in next step) in the loaded csv files.
-          if not then raise error.
-        - The columns are the same so we are able to concate the dfs by just concatenating them.
-      
-
-4) Extract info and run scorer
-    - Because it can be that the scorer changed between the two runs we need to ensure we score all the data with 
-      the same scorer. 
-    - SO we extract the columns of the dfs needed for the scorer. If not existing raise error
-    - We define a dict at the beginning. Each key will be the data the scorer expects and each value will be a list
-      containing the corresponding column names in the csv data of the files we loaded (2 files loaded -> 2 vals in list). 
-      Here we need to check if we have as many list elements as we have files loaded. This we we can map the columns to the expected
-      dat of the scorer
-    - Since our scorer expects a summary dict we can easily call the scorer for each dataset once with the key and corresponding
-      key value pair. 
-      This way we got the score values from the scorer
-    
 '''
 # Define data path
 COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_summary'
