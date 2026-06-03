@@ -677,7 +677,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         return
 
     axes = _grid_axes()
-    example_params = next(generate_param_grid(start_pose=dummy_pose, n_repeats=1), None)
+    example_experiment_params = next(generate_param_grid(start_pose=dummy_pose, n_repeats=1), None)
 
     payload = {
         "used_meas_model": USED_MEAS_MODEL,
@@ -688,7 +688,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
         "seed_list": SEED_LIST,
         "start_pose": dummy_pose,
         "grid_axes": axes,
-        "example_experiment_params": _to_jsonable(example_params) if example_params is not None else None,
+        "example_experiment_params": _to_jsonable(example_experiment_params) if example_experiment_params is not None else None,
     }
 
     with open(path, "w") as f:

@@ -16,6 +16,8 @@ from pathlib import Path
 
 from .scorer import RunScorer
 from .aggregator import ResultAggregator
+from .result_writer import ResultWriter
+
 
 '''
 This script will combine multiple run results together, evaluate them and find the best union parameter sets for the 
@@ -58,38 +60,52 @@ overall runs. In order to achive this the code does the following steps:
       This way we got the score values from the scorer
     
 '''
+# Define data path
+COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_summary'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_params.json'
+
 
 @dataclass
 class OptmResultData:
     dir: str
     param_filename: str
     rank_scored_summary_filename: str
+    ranked_param_overview_filename: str
 
 @dataclass
 class LoadedOptmResultData:
     param_path: Path
     rank_scored_summary_path: Path
+    ranked_param_overview_path: Path
     params: Dict[str, Any]
     rank_scored_summary: pd.DataFrame
+    ranked_param_overview: pd.DataFrame
     
-
 
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results',
-        param_filename='1779363559_test_params.json',
-        rank_scored_summary_filename='1779363559_test_summary_rank_scored.csv'
+        param_filename='proposal_optm_30_1_params.json',
+        rank_scored_summary_filename='proposal_optm_30_1_summary_rank_scored.csv',
+        ranked_param_overview_filename='proposal_optm_30_1_summary_ranked_param_overview.csv'
     ),
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results',
-        param_filename='1779363559_test_2_params.json',
-        rank_scored_summary_filename='1779363559_test_2_summary_rank_scored.csv'
+        param_filename='proposal_optm_30_2_params.json',
+        rank_scored_summary_filename='proposal_optm_30_2_summary_rank_scored.csv',
+        ranked_param_overview_filename='proposal_optm_30_2_summary_ranked_param_overview.csv'
     ),
 ]
 
+CSV_FLOAT_DECIMALS = 6
+OVERRIDE_EXISTING_RESULTS = False
 
-# Mapping from RunScorer summary keys to columns in:
-# 1779363559_test_2_summary_rank_scored.csv
+# Columns to delete
+COLS_TO_DEL_SUMMARY_RANKED_SCORED = ["score"]
+COLS_TO_DEL_PARAM_SUMMARY = ["rank", "global_score"]
+
+
+# Mapping from RunScorer summary keys to columns
 # Value format: [column_name, is_angle]
 SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
     "n_steps": ["n_steps", False],
@@ -110,6 +126,9 @@ SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
 
 
 def sim_col_switch(loaded_optm_data_list: List[LoadedOptmResultData]):
+    '''
+    Test function to switch two columns in the second loaded dataframe. 
+    '''
     df = loaded_optm_data_list[1].rank_scored_summary
 
     cols = list(df.columns)
@@ -126,63 +145,20 @@ def sim_col_switch(loaded_optm_data_list: List[LoadedOptmResultData]):
 
 
 
-class LoadOptmResultData:
-    '''
-    Class to load the optimization result data. This includes the parameter file and the rank scored summary csv file.
-    '''
-    def load(self, optm_res_data: OptmResultData) -> LoadedOptmResultData:
-        '''
-        Loads the given optimization result data. This includes the parameter file and the rank scored summary csv file.
-        Returns the loaded data and path information.
-        
-        Parameters
-        ----------
-        optm_res_data: OptmResultData
-            The optimization result data to load, including directory and file names for parameters and rank scored summary
-        
-        Returns
-        -------
-        LoadedOptmResultData
-            The loaded optimization result data, including the loaded parameters, rank scored summary dataframe and the paths
-        '''
-        # Validate base dir
-        base_dir = self._validate_dir(dir=optm_res_data.dir)
-
-        # Create file paths
-        param_path = base_dir / optm_res_data.param_filename
-        rank_summary_path = base_dir / optm_res_data.rank_scored_summary_filename
-
-        # Load data
-        params = self._load_params(param_path)
-        rank_scored_summary = self._load_rank_score_summary(rank_summary_path)
-
-        return LoadedOptmResultData(
-            params=params,
-            rank_scored_summary=rank_scored_summary,
-            param_path=param_path,
-            rank_scored_summary_path=rank_summary_path
-        )
-
-
+class FileLoader:
     @staticmethod
-    def _load_params(path: Union[str, Path]) -> Dict[str, Any]:
-        file_path = Path(path)
+    def load_json(path: Union[str, Path]):
+        path = FileLoader._validate_path(path, exp_file_type=".json")
 
-        LoadOptmResultData._validate_path(file_path)
-
-        with file_path.open("r", encoding="utf-8") as f:
+        with path.open("r", encoding="utf-8") as f:
             return json.load(f)
-        
 
     @staticmethod
-    def _load_rank_score_summary(path: Union[str, Path]) -> pd.DataFrame:
-        file_path = Path(path)
+    def load_csv(path: Union[str, Path]) -> pd.DataFrame:
+        path = FileLoader._validate_path(path, exp_file_type=".csv")
+        return pd.read_csv(path)
 
-        LoadOptmResultData._validate_path(file_path)
-
-        return pd.read_csv(file_path)
-
-
+    
     @staticmethod
     def _validate_dir(dir: Union[str, Path]) -> Path:
         '''
@@ -217,6 +193,53 @@ class LoadOptmResultData:
             raise ValueError(f"Expected file type {exp_file_type}, but got {path.suffix}")
 
         return path
+    
+
+
+class LoadOptmResultData:
+    '''
+    Class to load the optimization result data. This includes the parameter file and the rank scored summary csv file.
+    '''
+    def  __init__(self, file_loader: FileLoader):
+        self.file_loader = file_loader
+
+    def load(self, optm_res_data: OptmResultData) -> LoadedOptmResultData:
+        '''
+        Loads the given optimization result data. This includes the parameter file and the rank scored summary csv file.
+        Returns the loaded data and path information.
+        
+        Parameters
+        ----------
+        optm_res_data: OptmResultData
+            The optimization result data to load, including directory and file names for parameters and rank scored summary
+        
+        Returns
+        -------
+        LoadedOptmResultData
+            The loaded optimization result data, including the loaded parameters, rank scored summary dataframe and the paths
+        '''
+        # Validate base dir
+        base_dir = self.file_loader._validate_dir(dir=optm_res_data.dir)
+
+        # Create file paths
+        param_path = base_dir / optm_res_data.param_filename
+        rank_summary_path = base_dir / optm_res_data.rank_scored_summary_filename
+        ranked_param_overview_path = base_dir/ optm_res_data.ranked_param_overview_filename
+
+        # Load data
+        params = self.file_loader.load_json(param_path)
+        rank_scored_summary = self.file_loader.load_csv(rank_summary_path)
+        ranked_param_overview = self.file_loader.load_csv(ranked_param_overview_path)
+
+        return LoadedOptmResultData(
+            param_path=param_path,
+            rank_scored_summary_path=rank_summary_path,
+            ranked_param_overview_path=ranked_param_overview_path,
+            params=params,
+            rank_scored_summary=rank_scored_summary,
+            ranked_param_overview=ranked_param_overview,            
+        )
+
 
 
 class ParamsDiffEstimator:
@@ -328,29 +351,51 @@ class ParamsDiffEstimator:
 
 class RankeScoredSummaryCombiner:
     @staticmethod
-    def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
-        # Check if results exist
-        if len(loaded_results) == 0:
+    def combine(
+        df_list: List[pd.DataFrame],
+        cols_to_del: Optional[List[str]] = None,
+    ) -> Optional[pd.DataFrame]:
+        # Validate data
+        if len(df_list) == 0:
             raise ValueError("No loaded results given.")
+        
+        if len(df_list) == 1:
+            if isinstance(df_list[0], pd.DataFrame):
+                return df_list[0]
+            else:
+                raise ValueError("Expected a list of pandas DataFrames, but got a list with one element of type "
+                                 f"{type(df_list[0])}.")
 
         # Storage for cleaned dfs
         cleaned_dfs: List[pd.DataFrame] = []
 
-        # Clean dfs
-        for loaded_result in loaded_results:
-            df = loaded_result.rank_scored_summary.copy()
+        # Preprocess dfs
+        for df in df_list:
+            df_new = df.copy()
 
-            if "score" in df.columns:
-                df = df.drop(columns=["score"])
+            # Delete columns 
+            if cols_to_del is not None:
+                for col in cols_to_del:
+                    if col in df_new.columns:
+                        df_new = df_new.drop(columns=[col])
+                
+            cleaned_dfs.append(df_new)
+        
+        aligned_dfs = RankeScoredSummaryCombiner.check_and_corr_differences(cleaned_dfs)
 
-            cleaned_dfs.append(df)
+        return aligned_dfs
+        
 
+    @staticmethod
+    def check_and_corr_differences(df_list: List[pd.DataFrame]):
         # Extract reference df
-        reference_col = cleaned_dfs[0].columns
-        aligned_dfs: List[pd.DataFrame] = [cleaned_dfs[0]]
+        reference_col = df_list[0].columns
+
+        # Define storage for dfs
+        aligned_dfs: List[pd.DataFrame] = [df_list[0]]
 
         # Check if all dfs have the same columns and print differences
-        for i, df in enumerate(cleaned_dfs[1:], start=1):
+        for i, df in enumerate(df_list[1:], start=1):
             current_col = df.columns
 
             # Find missing and additional columns
@@ -399,8 +444,90 @@ class RankeScoredSummaryCombiner:
         return pd.concat(aligned_dfs, axis=0, ignore_index=True)
 
 
-def load_data() -> List[LoadedOptmResultData]:
-    load_optm_res_data = LoadOptmResultData()
+class RankeScoredSummaryCombinerCopy:
+    @staticmethod
+    def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
+        # Check if results exist
+        if len(loaded_results) == 0:
+            raise ValueError("No loaded results given.")
+
+        # Storage for cleaned dfs
+        cleaned_dfs: List[pd.DataFrame] = []
+
+        # Preprocess dfs
+        for loaded_result in loaded_results:
+            df = loaded_result.rank_scored_summary.copy()
+
+            if "score" in df.columns:
+                df = df.drop(columns=["score"])
+
+            cleaned_dfs.append(df)
+        
+        aligned_dfs = RankeScoredSummaryCombiner.check_and_corr_differences(cleaned_dfs)
+
+        return aligned_dfs
+        
+
+    @staticmethod
+    def check_and_corr_differences(df_list: List[pd.DataFrame]):
+        # Extract reference df
+        reference_col = df_list[0].columns
+
+        # Define storage for dfs
+        aligned_dfs: List[pd.DataFrame] = [df_list[0]]
+
+        # Check if all dfs have the same columns and print differences
+        for i, df in enumerate(df_list[1:], start=1):
+            current_col = df.columns
+
+            # Find missing and additional columns
+            missing_col = reference_col.difference(current_col)
+            additional_col = current_col.difference(reference_col)
+
+            # Define indicators
+            same_names = len(missing_col) == 0 and len(additional_col) == 0
+            same_order = list(current_col) == list(reference_col)
+
+            # Handle different or not equal column names
+            if not same_names:
+                print(f"\nColumn name mismatch in dataframe index {i}")
+
+                if len(missing_col) > 0:
+                    print("\nMissing columns compared to reference:")
+                    for col in missing_col:
+                        print(f"  - {col}")
+
+                if len(additional_col) > 0:
+                    print("\nAdditional columns compared to reference:")
+                    for col in additional_col:
+                        print(f"  - {col}")
+
+                return None
+
+            # handle column order missmatch but same column names
+            if not same_order:
+                print(f"\nColumn order mismatch in dataframe index {i}")
+                print("Same column names found. Reordering dataframe to match reference order.")
+
+                different_positions = [
+                    (pos, ref_col, cur_col)
+                    for pos, (ref_col, cur_col) in enumerate(zip(reference_col, current_col))
+                    if ref_col != cur_col
+                ]
+
+                print("\nDifferent column positions:")
+                for pos, ref_col, cur_col in different_positions:
+                    print(f"  - position {pos}: reference='{ref_col}', current='{cur_col}'")
+
+                df = df.loc[:, reference_col]
+
+            aligned_dfs.append(df)
+
+        return pd.concat(aligned_dfs, axis=0, ignore_index=True)
+
+
+def load_data(load_optm_res_data: LoadOptmResultData) -> List[LoadedOptmResultData]:
+    # Load optimization result data from previous runs 
     loaded_optm_data_list = []
 
     for optm_res_data in OPTM_RESULT_DATA_LIST:
@@ -410,12 +537,43 @@ def load_data() -> List[LoadedOptmResultData]:
     return loaded_optm_data_list
 
 
+def validate_data(loaded_optm_data_list: List[LoadedOptmResultData]):
+    '''
+    Validate if the loaded data has more than 1 element and if all data lists have same length. If not raise error. 
+    '''
+    params = [optm_data.params for optm_data in loaded_optm_data_list]
+    rank_scored_summarys = [optm_data.rank_scored_summary for optm_data in loaded_optm_data_list]
+    ranked_param_overviews = [optm_data.ranked_param_overview for optm_data in loaded_optm_data_list]
+    
+    len_params = len(params)
+    len_rank_scored_summarys = len(rank_scored_summarys)
+    len_ranked_param_overviews = len(ranked_param_overviews)
+
+    # Check if all data lists have the same length
+    if len_params != len_rank_scored_summarys or len_params != len_ranked_param_overviews:
+        raise ValueError(
+            f"Loaded data lists have different lengths: "
+            f"params={len_params}, rank_scored_summarys={len_rank_scored_summarys}, "
+            f"ranked_param_overviews={len_ranked_param_overviews}"
+        )
+
+    # check if the overall len is > 1
+    if len_params < 2:
+        raise ValueError(
+            f"Need at least two loaded results to compare and combine data, but got {len_params}."
+        )
+    
+
 
 def combine_summary_runs(
         loaded_results: List[LoadedOptmResultData],
         ranked_scored_combiner: RankeScoredSummaryCombiner,
 ) -> Optional[pd.DataFrame]:
-    summary_run = ranked_scored_combiner.combine(loaded_results=loaded_results)
+    # Combine summary run dataframes from loaded results
+    summary_run = ranked_scored_combiner.combine(
+        df_list=[loaded_result.rank_scored_summary for loaded_result in loaded_results],
+        cols_to_del=COLS_TO_DEL_SUMMARY_RANKED_SCORED,
+    )
 
     return summary_run
 
@@ -426,7 +584,7 @@ def extract_and_convert_scorer_cols(
 ) -> Dict[str, pd.Series]:
     '''
     Extracts the columns from the given summary run dataframe based on the given column mappings. Convert all 
-    columns makred as angle from deg to rad. Stores extracted columns into new df. Functions assumes that indicators
+    columns marked as angle from deg to rad. Stores extracted columns into new df. Functions assumes that indicators
     are correct. Wrong column names will raise key error. 
 
     Parameters
@@ -465,12 +623,6 @@ def extract_and_convert_scorer_cols(
             )
     
     return scorer_df
-
-
-def place_col_after_col(df: pd.DataFrame, col: str, col_after: str) -> pd.DataFrame:
-        extract_col = df.pop(col)
-        df.insert(df.columns.get_loc(col_after) + 1, col, extract_col)
-        return df
 
 
 def score_summary_runs(
@@ -512,20 +664,114 @@ def build_summary_rank_scored(
 
 
 
+def build_summary_ranked_param_overview(
+        loaded_optm_data_list: List[LoadedOptmResultData],
+        ranked_scored_combiner: RankeScoredSummaryCombiner,
+        agg_param_df: pd.DataFrame,
+        result_aggregator: ResultAggregator,
+):
+    # Combine summary ranked runs
+    summray_ranked_param_dfs = [data.ranked_param_overview for data in loaded_optm_data_list]
+    comb_summary_ranked_params_df = ranked_scored_combiner.combine(
+        df_list=summray_ranked_param_dfs,
+        cols_to_del=COLS_TO_DEL_PARAM_SUMMARY,
+    )
+
+    print("\nCombined summary ranked param overview head:\n", comb_summary_ranked_params_df.head())
+
+    # Keep only unique parameter sets
+    unique_comb_sum_ranked_params_df: pd.DataFrame = comb_summary_ranked_params_df.drop_duplicates(subset=["parameter_hash"])
+    print("\nUnique combined summary ranked param overview head:\n", unique_comb_sum_ranked_params_df.head())
+
+    # Build ranked summary param run
+    final_param_summary_ranked_df = unique_comb_sum_ranked_params_df.merge(
+        agg_param_df[["parameter_hash", "global_score"]],
+        on="parameter_hash",
+        how="inner"
+    )
+
+    # Rank by score 
+    final_param_summary_ranked_df = result_aggregator.rank_by_score(
+        ranked_run_df=final_param_summary_ranked_df,
+        score_col="global_score",
+    )
+
+    # Place score column after directly rank
+    final_param_summary_ranked_df = ResultAggregator._place_col_after_col(
+        df=final_param_summary_ranked_df,
+        col="global_score",
+        col_after=final_param_summary_ranked_df.columns[0],
+    )
+    print("\n\nFinal param summary:\n", final_param_summary_ranked_df.head())
+
+    return final_param_summary_ranked_df
+    
+
+
+def write_results(
+    result_writer: ResultWriter,
+    summary_rank_scored_df: pd.DataFrame,
+    agg_dataset_param_df: pd.DataFrame,
+    agg_param_df: pd.DataFrame,
+    param_summary_ranked_df: pd.DataFrame,
+    param_json,
+):
+    # Define storage paths
+    ranked_scored_path = COMB_OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
+    agg_dataset_param_path = COMB_OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
+    agg_param_path = COMB_OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
+    ranked_param_overview_path = COMB_OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
+    param_json_path = PARAMETER_OVERVIEW_PATH
+
+    # Write results
+    result_writer.write_dataframe_csv(
+        path=ranked_scored_path,
+        df=summary_rank_scored_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,        
+    )
+
+    result_writer.write_dataframe_csv(
+        path=agg_dataset_param_path,
+        df=agg_dataset_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,        
+    )
+
+    result_writer.write_dataframe_csv(
+        path=agg_param_path,
+        df=agg_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,        
+    )
+
+    result_writer.write_dataframe_csv(
+        path=ranked_param_overview_path,
+        df=param_summary_ranked_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,        
+    )
+
+    # Write json params
+    with open(param_json_path, "w") as json_file:
+        json.dump(param_json, json_file, indent=4)
+    
 
 def main():
     # Init 
+    file_loader = FileLoader()
+    optm_result_loader = LoadOptmResultData(file_loader=file_loader)
     params_diff_estimator = ParamsDiffEstimator()
     ranked_scored_combiner = RankeScoredSummaryCombiner()
     run_scorer = RunScorer()
     result_aggregator = ResultAggregator()
+    result_writer = ResultWriter()
     
     # Load data
-    loaded_optm_data_list = load_data()
-    for loaded_data in loaded_optm_data_list:
-        print(f"Loaded data from {loaded_data.param_path} and {loaded_data.rank_scored_summary_path}")
-        # print(f"Params: {loaded_data.params}")
-        # print(f"Rank scored summary head:\n{loaded_data.rank_scored_summary.head()}\n\n")
+    loaded_optm_data_list = load_data(optm_result_loader)
+    
+    # Validate data
+    validate_data(loaded_optm_data_list)
 
     # Check if params are equal
     if params_diff_estimator.check_equal_params(loaded_optm_data_list):
@@ -575,11 +821,8 @@ def main():
         result_aggregator=result_aggregator,
     )
     print("\nSuccessfully built summary rank scored dataframe.")
-    print("\nSummary rank scored head:\n", summary_rank_scored_df.head())
-
-    sum_cols = summary_rank_scored_df.columns
-    print(f"\nlen summary rank scored columns: {len(sum_cols)}")
-    print("\nSummary rank scored columns:\n", sum_cols)
+    # print("\nSummary rank scored head:\n", summary_rank_scored_df.head())
+    print(f"Shape of unioned summary ranked score df: {summary_rank_scored_df.shape}")
 
     # Aggregate results
     agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(summary_rank_scored_df)
@@ -587,15 +830,27 @@ def main():
     # Aggregate and rank by parameters 
     agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
 
-    # build ranked param overview
-    # Therefore we must either create our own ranked_run_list and use result_aggregator.build_ranked_parameter_overview or
-    # define own method to do so
+    print(f"\nfinal summary ranked result:\n{agg_param_df.head()}")
 
+    # Build ranked param overview
+    param_summary_ranked_df = build_summary_ranked_param_overview(
+        loaded_optm_data_list=loaded_optm_data_list,
+        ranked_scored_combiner=ranked_scored_combiner,
+        agg_param_df=agg_param_df,
+        result_aggregator=result_aggregator,
+    )
 
-    # Create parameter json file if needed
+    print(f"\nSuccessfully created ranked parameter overview.")
 
-    # Write results
-    
+    # Write results to csv
+    write_results(
+        result_writer=result_writer,
+        summary_rank_scored_df=summary_rank_scored_df,
+        agg_dataset_param_df=agg_dataset_param_df,
+        agg_param_df=agg_param_df,
+        param_summary_ranked_df=param_summary_ranked_df,
+        param_json=loaded_optm_data_list[0].params, 
+    )
 
 
 if __name__ == "__main__":
