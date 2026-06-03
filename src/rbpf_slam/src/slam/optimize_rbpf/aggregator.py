@@ -287,6 +287,7 @@ class ResultAggregator:
             "seed",
             "map",
             "n_steps",
+            "measurement_stddev",
             "score",
             "rmse_trans_error",
             "rmse_rot_error_deg",
@@ -330,6 +331,7 @@ class ResultAggregator:
             n_seeds=("seed", "nunique"),
 
             total_n_steps=("n_steps", "sum"),
+            measurement_stddev=("measurement_stddev", "first"),
 
             # Metrics for score computation
             mean_score=("score", "mean"),
@@ -437,6 +439,7 @@ class ResultAggregator:
             "used_meas_model",
 
             "total_n_steps",
+            "measurement_stddev",
 
             "mean_rmse_trans_err_sm_true",
             "worst_rmse_trans_err_sm_true",
@@ -491,7 +494,8 @@ class ResultAggregator:
             n_datasets=("dataset_id", "nunique"),
             n_results=("dataset_param_score", "size"),
 
-            total_n_steps=("total_n_steps", "sum"),            
+            total_n_steps=("total_n_steps", "sum"),    
+            measurement_stddev=("measurement_stddev", "first"),        
             
             # Metrics for score computation
             mean_score=("dataset_param_score", "mean"),

@@ -166,7 +166,7 @@ class ResultAggregatorScanMatching:
             "dataset_id",
             "parameter_hash",
             "measurement_stddev",
-            "tag",
+            # "tag",
             "map",
             "parameter_tag",
             "score",
@@ -178,6 +178,11 @@ class ResultAggregatorScanMatching:
             "median_map_point_keep_ratio",
             "rmse_corr_trans_err",
             "rmse_corr_rot_err_deg",
+            "perc_95_corr_trans_err",
+            "perc_95_corr_rot_err",
+            "corr_worse_rate_trans",
+            "corr_worse_rate_rot",
+
         }
         missing = sorted(col for col in required_cols if col not in ranked_run_df.columns)
         if missing:
@@ -188,13 +193,13 @@ class ResultAggregatorScanMatching:
         agg_df = self._groupby(ranked_run_df, ["dataset_id", "parameter_hash"])
         agg_df: pd.DataFrame = agg_df.agg(
             # General info
-            measurement_stddev=("measurement_stddev", "first"),
-            tag=("tag", "first"),
+            # tag=("tag", "first"),
             map=("map", "first"),
             parameter_tag=("parameter_tag", "first"),
             n_runs=("score", "size"),
             n_seeds=("seed", "nunique"),
             total_n_steps=("n_steps", "sum"),
+            measurement_stddev=("measurement_stddev", "first"),
 
             # Score metrics
             mean_score=("score", "mean"),
@@ -204,8 +209,21 @@ class ResultAggregatorScanMatching:
             # Scan matcher info
             total_scan_match_failed_count=("scan_match_failed_count", "sum"),
             total_scan_match_fallback_failed_count=("scan_match_fallback_failed_count", "sum"),
+            
             median_extracted_map_points=("median_extracted_map_points", "median"),
             median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
+            
+            mean_perc_95_corr_trans_err=("perc_95_corr_trans_err", "mean"),
+            worst_perc_95_corr_trans_err=("perc_95_corr_trans_err", "max"),
+
+            mean_perc_95_corr_rot_err_deg=("perc_95_corr_rot_err", "mean"),
+            worst_perc_95_corr_rot_err_deg=("perc_95_corr_rot_err", "max"),
+            
+            mean_corr_worse_rate_trans=("corr_worse_rate_trans", "mean"),
+            worst_corr_worse_rate_trans=("corr_worse_rate_trans", "max"),
+
+            mean_corr_worse_rate_rot=("corr_worse_rate_rot", "mean"),
+            worst_corr_worse_rate_rot=("corr_worse_rate_rot", "max"),
 
             # Pose errors
             mean_rmse_corr_trans_err=("rmse_corr_trans_err", "mean"),
@@ -256,7 +274,7 @@ class ResultAggregatorScanMatching:
         required_cols = {
             "parameter_hash",
             "measurement_stddev",
-            "tag",
+            # "tag",
             "parameter_tag",
             "dataset_id",
             "dataset_param_score",
@@ -265,6 +283,15 @@ class ResultAggregatorScanMatching:
             "scan_match_fallback_failed_rate",
             "median_extracted_map_points",
             "median_map_point_keep_ratio",
+            "mean_perc_95_corr_trans_err",
+            "worst_perc_95_corr_trans_err",
+            "mean_perc_95_corr_rot_err_deg",
+            "worst_perc_95_corr_rot_err_deg",
+            "mean_corr_worse_rate_trans",
+            "worst_corr_worse_rate_trans",
+            "mean_corr_worse_rate_rot",
+            "worst_corr_worse_rate_rot",
+            
             "mean_rmse_corr_trans_err",
             "worst_rmse_corr_trans_err",
             "mean_rmse_corr_rot_err_deg",
@@ -277,12 +304,13 @@ class ResultAggregatorScanMatching:
         agg_param_df = self._groupby(agg_dataset_param_df, ["parameter_hash"])
         agg_param_df: pd.DataFrame = agg_param_df.agg(
             # General info 
-            measurement_stddev=("measurement_stddev", "first"),
-            tag=("tag", "first"),
+            
+            # tag=("tag", "first"),
             parameter_tag=("parameter_tag", "first"),
             n_datasets=("dataset_id", "nunique"),
             n_results=("dataset_param_score", "size"),
             total_n_steps=("total_n_steps", "sum"),
+            measurement_stddev=("measurement_stddev", "first"),
 
             # Metrics for score computation
             mean_score=("dataset_param_score", "mean"),
@@ -298,6 +326,15 @@ class ResultAggregatorScanMatching:
             
             median_extracted_map_points=("median_extracted_map_points", "median"),
             median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
+
+            mean_perc_95_corr_trans_err=("mean_perc_95_corr_trans_err", "mean"),
+            worst_perc_95_corr_trans_err=("worst_perc_95_corr_trans_err", "max"),
+            mean_perc_95_corr_rot_err_deg=("mean_perc_95_corr_rot_err_deg", "mean"),
+            worst_perc_95_corr_rot_err_deg=("worst_perc_95_corr_rot_err_deg", "max"),
+            mean_corr_worse_rate_trans=("mean_corr_worse_rate_trans", "mean"),
+            worst_corr_worse_rate_trans=("worst_corr_worse_rate_trans", "max"),
+            mean_corr_worse_rate_rot=("mean_corr_worse_rate_rot", "mean"),
+            worst_corr_worse_rate_rot=("worst_corr_worse_rate_rot", "max"),
             
             # Pose errors
             mean_rmse_corr_trans_err=("mean_rmse_corr_trans_err", "mean"),

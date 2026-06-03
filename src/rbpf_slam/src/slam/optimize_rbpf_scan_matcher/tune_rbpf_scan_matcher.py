@@ -90,26 +90,27 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
         3.2.5 Final run with best union params
 
 
-4. 
+4. Run over all three maps
+    - Now we do a grid search over all three maps with param grid and seeds
         
 '''
 
 
-# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
+OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_4_1_summary"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_4_1_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_4_1_params.json"
 
-OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_summary"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_params.json"
+# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_params.json"
 
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 25
+N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -121,7 +122,6 @@ MEASUREMENT_STDDEV = 0.03
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
-PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/"
 
 
 @dataclass
@@ -132,14 +132,27 @@ class PlaybackDataset:
 
 PLAYBACK_DATA_LIST = [
     PlaybackDataset(
-        playback_dir=PLAYBACK_DIR,
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
         playback_suffix="1779363559",
     ),
     PlaybackDataset(
-        playback_dir=PLAYBACK_DIR,
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
         playback_suffix="1779375646",
     ),
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+        playback_suffix="1780397517",
+    )
 ]
+
+# Load AWS map
+# PLAYBACK_DATA_LIST = [
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+#         playback_suffix="1780397517",
+#     )
+# ]
+
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -172,24 +185,32 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "every_nth_beam_map": [2],
 
         # OccupancyParams (OGM)
-        "increasing_probability": [0.7, 0.85],
-        "decreasing_probability": [0.3, 0.15],
+        "occupancy_prob_pairs": [
+            {
+                "increasing_probability": 0.7,
+                "decreasing_probability": 0.3,
+            },
+            {
+                "increasing_probability": 0.85,
+                "decreasing_probability": 0.15,
+            },
+        ],
         "min_log_odds": [-5.0],
         "max_log_odds": [5.0],
 
         # ScanMatcherParams
-        "occ_thres": [1.2],
-        "delta_r": [0.4],
-        "surface_radius_m": [0.2],
-        "min_free_ratio": [0.25],
+        "occ_thres": [0.8, 1.2, 1.4],
+        "delta_r": [0.3, 0.5, 0.7],
+        "surface_radius_m": [0.1, 0.2],
+        "min_free_ratio": [0.25, 0.4],
 
         # ICPParams
         "max_n_points": [400],
         "neighbors_pca": [10],
         "max_iterations": [5],
-        "max_correspondence_distance": [0.6],
+        "max_correspondence_distance": [0.35, 0.6],
         "min_corresp": [15],
-        "max_translation_jump": [0.3],
+        "max_translation_jump": [0.3, 0.5],
         "max_rotation_jump_deg": [45.0],
         "max_acceptable_mean_error": [0.15],
     }
@@ -269,15 +290,31 @@ def generate_param_grid(
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
 
     axes = _grid_axes()
-    increasing_probs = axes["increasing_probability"]
-    decreasing_probs = axes["decreasing_probability"]
-    if len(increasing_probs) != len(decreasing_probs):
-        raise ValueError(
-            "increasing_probability and decreasing_probability must have the same length "
-            "to be evaluated as paired values."
-        )
-    occupancy_prob_pairs = list(zip(increasing_probs, decreasing_probs))
 
+    occupancy_prob_sets = axes.get("occupancy_prob_pairs", [])
+    occupancy_prob_pairs = []
+
+    for i, prob_set in enumerate(occupancy_prob_sets):
+        if not isinstance(prob_set, dict):
+            raise TypeError(
+                f"occupancy_prob_pairs[{i}] must be a dict, got {type(prob_set)}"
+            )
+
+        try:
+            occupancy_prob_pairs.append(
+                (
+                    float(prob_set["increasing_probability"]),
+                    float(prob_set["decreasing_probability"]),
+                )
+            )
+        except KeyError as exc:
+            raise KeyError(
+                f"occupancy_prob_pairs[{i}] is missing required key: {exc}"
+            ) from exc
+
+    if not occupancy_prob_pairs:
+        raise ValueError("No occupancy probability pairs configured.")
+  
     wheel_separation = _compute_wheel_separation()
 
     for repeat_idx in range(1, n_repeats + 1):
@@ -431,7 +468,7 @@ def build_optimizer() -> ScanMatchingOptimizer:
 def main() -> None:
     ranked_run_list = []
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_seed.csv"
+    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
     agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
     ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
 
