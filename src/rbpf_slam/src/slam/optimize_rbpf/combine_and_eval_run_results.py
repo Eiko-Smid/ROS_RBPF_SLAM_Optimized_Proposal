@@ -35,6 +35,26 @@ overall runs. It does so by doing the following steps:
     10. Write results to csv and json files
 
 '''
+
+'''
+TODO
+
+1) Ensure unique rows in combine_summary_runs
+
+    - Currently it can happen that we got duplicate rows in the df
+    - If 2 loaded summary runs have the same playback id (map) and param grid was equal than they occur two times 
+    - This must be fixed
+
+
+2) Add possibility to exclude parameter ids (maps)
+    - maybe we wanne exclude a bad map (cafe) from the summary
+    - We shold add the possibility to do this at wish
+    - Define list of playback ids that should be excluded
+    - i list empty skip this
+    - Else delete those data rows
+
+'''
+
 # Define data path
 COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_summary'
 PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_params.json'
@@ -330,6 +350,9 @@ class RankeScoredSummaryCombiner:
         df_list: List[pd.DataFrame],
         cols_to_del: Optional[List[str]] = None,
     ) -> Optional[pd.DataFrame]:
+        '''
+        Combines all ranked summary dfs into one df. Ensures that resulting df has unique rows. 
+        '''
         # Validate data
         if len(df_list) == 0:
             raise ValueError("No loaded results given.")
@@ -363,6 +386,10 @@ class RankeScoredSummaryCombiner:
 
     @staticmethod
     def check_and_corr_differences(df_list: List[pd.DataFrame]):
+        '''
+        Checks if all dfs have the same columns. Also checks for column order. If columns are the same but order differ
+        the code automatically reorders all dfs to the reference dfs (first df) column order.
+        '''
         # Extract reference df
         reference_col = df_list[0].columns
 
@@ -544,6 +571,9 @@ def combine_summary_runs(
         loaded_results: List[LoadedOptmResultData],
         ranked_scored_combiner: RankeScoredSummaryCombiner,
 ) -> Optional[pd.DataFrame]:
+    '''
+    Combines all ranked summary dfs into one df. Ensures that resulting df has unique rows. 
+    '''
     # Combine summary run dataframes from loaded results
     summary_run = ranked_scored_combiner.combine(
         df_list=[loaded_result.rank_scored_summary for loaded_result in loaded_results],
@@ -618,6 +648,9 @@ def build_summary_rank_scored(
         score_series: pd.Series,
         result_aggregator: ResultAggregator,
 ) -> pd.DataFrame:
+    '''
+    Adds the given score series as a new column to the given summary run dataframe. Sorts the df by score.
+    '''
     # Add score series to summary run df
     summary_rank_scored_df = summary_run_df.copy()
     summary_rank_scored_df["score"] = score_series
@@ -789,7 +822,7 @@ def main():
     print("\nSuccessfully scored summary runs.")
     print("\nScored summary head:\n", scored_series.head())
 
-    # Build summary rank scored df
+    # Build summary rank scored df -> sorted by score
     summary_rank_scored_df = build_summary_rank_scored(
         summary_run_df=summary_run,
         score_series=scored_series,

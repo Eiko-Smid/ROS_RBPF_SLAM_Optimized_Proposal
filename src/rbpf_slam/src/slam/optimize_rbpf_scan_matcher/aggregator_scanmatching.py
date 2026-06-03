@@ -68,6 +68,7 @@ class RankedRunConverterScanMatching:
                     "scan_match_fallback_failed_count": summary.scan_match_fallback_failed_count,
                     "icp_failed_count": summary.icp_failed_count,
                     "icp_success_rate": summary.icp_success_rate,
+                    "scan_match_success_rate": summary.scan_match_success_rate,
                     "median_extracted_map_points": summary.median_extracted_map_points,
                     "median_map_point_keep_ratio": summary.median_map_point_keep_ratio,
 
@@ -94,6 +95,8 @@ class RankedRunConverterScanMatching:
                     "rmse_raw_odom_trans_err": summary.rmse_raw_odom_trans_err,
                     "rmse_pred_trans_err": summary.rmse_pred_trans_err,
                     "rmse_corr_trans_err": summary.rmse_corr_trans_err,
+                    "max_corr_trans_err": summary.max_corr_trans_err,
+                    "max_corr_rot_err": summary.max_corr_rot_err,
                     
                     # Rotational errors of raw odom, pred and corrected pose
                     "mean_raw_odom_rot_err_deg": cls._rad_to_deg(summary.mean_raw_odom_rot_err),

@@ -266,7 +266,7 @@ def write_parameter_overview(
     )
 
     payload = {
-        "playback_data_list": [asdict(ds) for ds in PLAYBACK_DATA_LIST],
+        # "playback_data_list": [asdict(ds) for ds in PLAYBACK_DATA_LIST],
         "measurement_stddev": MEASUREMENT_STDDEV,
         "n_playback_steps": N_PLAYBACK_STEPS,
         "n_optimization_repeats": n_repeats,
