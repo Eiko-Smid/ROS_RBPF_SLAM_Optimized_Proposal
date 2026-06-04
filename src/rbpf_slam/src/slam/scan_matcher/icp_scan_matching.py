@@ -445,6 +445,8 @@ class IterativeClosestPoint():
         self.n_points_true_data = None
         self.n_points_new_data = None
 
+        self.n_points_true_after_subsampling = None
+
         # Init stop condition
         self.stop_condition = ICPStopCondition(
             max_iterations=stop_params.get("max_iterations", 10),
@@ -553,6 +555,7 @@ class IterativeClosestPoint():
         self.info["max_acceptable_mean_error"] = self.max_acceptable_mean_error
         self.info["n_points_true_data"] = self.n_points_true_data
         self.info["n_points_new_data"] = self.n_points_new_data
+        self.info["n_points_true_after_subsampling"] = self.n_points_true_after_subsampling
         self.info["last_result_reason"] = self.last_result_reason
         self.info["stop_reason_counts"] = dict(self.reason_counts)
 
@@ -1268,6 +1271,9 @@ class IterativeClosestPoint():
             pointcloud=true_data_pointpairs,
             max_n_points=self.max_n_points
         )
+
+        # get number of points after downsampling for logging
+        self.n_points_true_after_subsampling = true_data_pointpairs.shape[0]
         
         # Train Nearest Neighbor with true data points 
         self.neighbor.fit(true_data_pointpairs)

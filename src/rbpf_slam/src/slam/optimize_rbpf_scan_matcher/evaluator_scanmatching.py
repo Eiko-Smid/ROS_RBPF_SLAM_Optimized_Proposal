@@ -12,6 +12,7 @@ Pose2D = Tuple[float, float, float]
 ROLLING_WINDOW = 20
 
 
+
 @dataclass
 class StepResultScanMatching:
     '''
@@ -83,7 +84,6 @@ class RunSummaryScanMatching:
     n_particles: int
 
     scan_match_failed_count: int
-    scan_match_fallback_failed_count: int
     icp_success_rate: float
     scan_match_success_rate: float
     median_extracted_map_points: float
@@ -327,6 +327,11 @@ class ScanMatchingEvaluator:
 
 
     def summarize_run(self, step_results: List[StepResultScanMatching], params: ExperimentParams) -> RunSummaryScanMatching:
+        # Test: map points to summary lists
+        # n_map_points_extracted_list = [s.n_map_points_extracted for s in step_results if s.n_map_points_extracted is not None]
+        n_map_points_used_list = [s.n_map_points_used for s in step_results if s.n_map_points_used is not None]
+
+
         trans_err = [s.trans_err for s in step_results if s.trans_err is not None]
         rot_err = [s.rot_err for s in step_results if s.rot_err is not None]
         pred_trans_err = [s.pred_trans_err for s in step_results if s.pred_trans_err is not None]
@@ -371,10 +376,6 @@ class ScanMatchingEvaluator:
         )
 
         scan_match_failed_count = int(sum(1 for s in step_results if s.scan_match_failed))
-        scan_match_fallback_failed_count = int(
-            sum(1 for s in step_results if s.stop_reason == "scan matcher failed before icp")
-        )
-        
         n_steps = len(step_results)
 
         if scan_match_failed_count:
@@ -437,7 +438,6 @@ class ScanMatchingEvaluator:
 
             # ICP metrics            
             scan_match_failed_count=scan_match_failed_count,
-            scan_match_fallback_failed_count=scan_match_fallback_failed_count,
             icp_success_rate=icp_success_rate,
             scan_match_success_rate=scan_match_success_rate,
             median_extracted_map_points=(

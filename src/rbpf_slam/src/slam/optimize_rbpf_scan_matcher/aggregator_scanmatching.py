@@ -65,7 +65,6 @@ class RankedRunConverterScanMatching:
 
                     "n_steps": summary.n_steps,
                     "scan_match_failed_count": summary.scan_match_failed_count,
-                    "scan_match_fallback_failed_count": summary.scan_match_fallback_failed_count,
                     "icp_failed_count": summary.icp_failed_count,
                     "icp_success_rate": summary.icp_success_rate,
                     "scan_match_success_rate": summary.scan_match_success_rate,
@@ -176,7 +175,6 @@ class ResultAggregatorScanMatching:
             "seed",
             "n_steps",
             "scan_match_failed_count",
-            "scan_match_fallback_failed_count",
             "median_extracted_map_points",
             "median_map_point_keep_ratio",
             "rmse_corr_trans_err",
@@ -211,7 +209,6 @@ class ResultAggregatorScanMatching:
 
             # Scan matcher info
             total_scan_match_failed_count=("scan_match_failed_count", "sum"),
-            total_scan_match_fallback_failed_count=("scan_match_fallback_failed_count", "sum"),
             
             median_extracted_map_points=("median_extracted_map_points", "median"),
             median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
@@ -244,19 +241,12 @@ class ResultAggregatorScanMatching:
 
         n_steps = agg_df["total_n_steps"]
         agg_df["scan_match_failed_rate"] = agg_df["total_scan_match_failed_count"] / n_steps
-        agg_df["scan_match_fallback_failed_rate"] = agg_df["total_scan_match_fallback_failed_count"] / n_steps
         
         
         agg_df = self._place_col_after_col(
             df=agg_df,
             col="scan_match_failed_rate",
             col_after="total_scan_match_failed_count",
-        )
-
-        agg_df = self._place_col_after_col(
-            df=agg_df,
-            col="scan_match_fallback_failed_rate",
-            col_after="total_scan_match_fallback_failed_count",
         )
 
         agg_df["std_score"] = agg_df["std_score"].fillna(0.0)
@@ -283,7 +273,6 @@ class ResultAggregatorScanMatching:
             "dataset_param_score",
             "total_n_steps",
             "scan_match_failed_rate",
-            "scan_match_fallback_failed_rate",
             "median_extracted_map_points",
             "median_map_point_keep_ratio",
             "mean_perc_95_corr_trans_err",
@@ -323,9 +312,6 @@ class ResultAggregatorScanMatching:
             # Scan matcher info
             mean_scan_match_failed_rate=("scan_match_failed_rate", "mean"),
             worst_scan_match_failed_rate=("scan_match_failed_rate", "max"),
-
-            mean_scan_match_fallback_failed_rate=("scan_match_fallback_failed_rate", "mean"),
-            worst_scan_match_fallback_failed_rate=("scan_match_fallback_failed_rate", "max"),
             
             median_extracted_map_points=("median_extracted_map_points", "median"),
             median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
