@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-import debugpy
-debugpy.listen(("localhost", 5678))
-print("Waiting for debugger attach...")
-debugpy.wait_for_client()
+# import debugpy
+# debugpy.listen(("localhost", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
 
 import numpy as np
 import pandas as pd
@@ -56,8 +56,8 @@ TODO
 '''
 
 # Define data path
-COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_test_1_summary'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_test_1_params.json'
+COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_test_3_summary'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_test_3_params.json'
 
 
 @dataclass
@@ -80,15 +80,15 @@ class LoadedOptmResultData:
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
-        param_filename='sm_test_1_params.json',
-        rank_scored_summary_filename='sm_test_1_summary_rank_scored.csv',
-        ranked_param_overview_filename='sm_test_1_summary_ranked_param_overview.csv'
+        param_filename='sm_test_3_params.json',
+        rank_scored_summary_filename='sm_test_3_summary_rank_scored.csv',
+        ranked_param_overview_filename='sm_test_3_summary_ranked_param_overview.csv'
     ),
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
         param_filename='sm_test_2_params.json',
-        rank_scored_summary_filename='sm_test_2_summary_rank_scored.csv',
-        ranked_param_overview_filename='sm_test_2_summary_ranked_param_overview.csv'
+        rank_scored_summary_filename='sm_test_1_summary_rank_scored.csv',
+        ranked_param_overview_filename='sm_test_1_summary_ranked_param_overview.csv'
     ),
 ]
 
@@ -98,6 +98,10 @@ OVERRIDE_EXISTING_RESULTS = False
 # Columns to delete
 COLS_TO_DEL_SUMMARY_RANKED_SCORED = ["score"]
 COLS_TO_DEL_PARAM_SUMMARY = ["rank", "global_score"]
+
+FILTER_DUPL_BY_COL = ["dataset_id", "parameter_hash", "seed"]
+FILTER_COL = "dataset_id"
+FILTER_PLAYBACK_IDS = ["1779375646"]
 
 
 # Mapping from ScanMatchingScorer summary keys to columns
@@ -565,6 +569,50 @@ def combine_summary_runs(
     return summary_run
 
 
+def filter_playback(
+    df: pd.DataFrame,
+    filter_dupl_by_cols: Optional[List[str]] = None,
+    filter_col: Optional[str] = None,
+    filter_values: Optional[List[str]] = None,
+):
+    '''
+    Erase duplicate rows and filter the given df by the given playback ids in the given column. If filter_col or filter_values is None, 
+    the original df is returned. All rows with a value in filter_col that is in filter_values are deleted.
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        The dataframe to filter.
+    filter_dupl_by_cols: List[str]
+        The column names to filter duplicates by. If None, no duplicate filtering is applied.
+    filter_col: str
+        The column name to filter by. If None, no filtering is applied.
+    filter_values: List[str]
+        The values to filter by. All rows with a value in filter_col that is in this list are deleted. 
+        If None, no filtering is applied.
+
+    Returns
+    -------
+    pd.DataFrame        
+        The filtered dataframe.
+    ''' 
+    # Erase duplicate rows
+    filtered_df: pd.DataFrame = df.copy()
+
+    if filter_dupl_by_cols is not None:
+        filtered_df = filtered_df.drop_duplicates(
+            subset=filter_dupl_by_cols
+        ).reset_index(drop=True)
+    else:
+        filtered_df = filtered_df.drop_duplicates().reset_index(drop=True)
+
+    # Filter all columns that have a value in filter_col 
+    if filter_col is not None and filter_values is not None:        
+        filtered_df = filtered_df[~filtered_df[filter_col].isin(filter_values)].reset_index(drop=True)
+
+    return filtered_df
+
+
 def extract_and_convert_scorer_cols(
         summary_run: pd.DataFrame,
         col_mappings: Dict,
@@ -712,11 +760,11 @@ def build_summary_ranked_param_overview(
         cols_to_del=COLS_TO_DEL_PARAM_SUMMARY,
     )
 
-    print("\nCombined summary ranked param overview head:\n", comb_summary_ranked_params_df.head())
+    # print("\nCombined summary ranked param overview head:\n", comb_summary_ranked_params_df.head())
 
     # Keep only unique parameter sets
     unique_comb_sum_ranked_params_df: pd.DataFrame = comb_summary_ranked_params_df.drop_duplicates(subset=["parameter_hash"])
-    print("\nUnique combined summary ranked param overview head:\n", unique_comb_sum_ranked_params_df.head())
+    # print("\nUnique combined summary ranked param overview head:\n", unique_comb_sum_ranked_params_df.head())
 
     # Build ranked summary param run
     final_param_summary_ranked_df = unique_comb_sum_ranked_params_df.merge(
@@ -737,7 +785,7 @@ def build_summary_ranked_param_overview(
         col="global_score",
         col_after=final_param_summary_ranked_df.columns[0],
     )
-    print("\n\nFinal param summary:\n", final_param_summary_ranked_df.head())
+    # print("\n\nFinal param summary:\n", final_param_summary_ranked_df.head())
 
     return final_param_summary_ranked_df
     
@@ -792,6 +840,7 @@ def write_results(
         json.dump(param_json, json_file, indent=4)
     
 
+
 def main():
     # Init 
     file_loader = FileLoader()
@@ -830,16 +879,20 @@ def main():
     if summary_run is None:
         raise ValueError("Could not combine summary dataframes due to column mismatches.")
     else:
-        print("\nSuccessfully combined summary run dataframes:\n")
+        print("\nSuccessfully combined summary run dataframes:")
     
-    # Extract and convert scorer columns
-    # scorer_df = extract_and_convert_scorer_cols(
-    #     summary_run=summary_run,
-    #     col_mappings=SCORER_SUMMARY_DF_MAPPINGS,
-    # )
+    
+    # Filter certain datasets
+    filtered_summary_df = filter_playback(
+        df=summary_run,
+        # filter_dupl_by_cols=FILTER_DUPL_BY_COL,
+        # filter_col=FILTER_COL,
+        # filter_values=FILTER_PLAYBACK_IDS,
+    )
 
+    # Prepare scorer
     summary_list = prepare_scorer(
-        summary_run_df=summary_run,
+        summary_run_df=filtered_summary_df,
         col_mappings=SCORER_SUMMARY_DF_MAPPINGS
     )
 
@@ -852,17 +905,15 @@ def main():
     )
 
     print("\nSuccessfully scored summary runs.")
-    print("\nScored summary head:\n", scored_series.head())
 
     # Build summary rank scored df -> sorted by score
     summary_rank_scored_df = build_summary_rank_scored(
-        summary_run_df=summary_run,
+        summary_run_df=filtered_summary_df,
         score_series=scored_series,
         result_aggregator=result_aggregator,
     )
     print("\nSuccessfully built summary rank scored dataframe.")
-    # print("\nSummary rank scored head:\n", summary_rank_scored_df.head())
-    print(f"Shape of unioned summary ranked score df: {summary_rank_scored_df.shape}")
+    
 
     # Aggregate results
     agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(summary_rank_scored_df)

@@ -101,9 +101,9 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
 # SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_4_1_trace_steps.csv"
 # PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_4_1_params.json"
 
-OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_summary"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_2_params.json"
+OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_3_summary"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_3_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_3_params.json"
 
 
 CSV_FLOAT_DECIMALS = 6
@@ -131,20 +131,20 @@ class PlaybackDataset:
     playback_suffix: str
 
 
-# PLAYBACK_DATA_LIST = [
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
-#         playback_suffix="1779363559",
-#     ),
-#     # PlaybackDataset(
-#     #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
-#     #     playback_suffix="1779375646",
-#     # ),
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
-#         playback_suffix="1780397517",
-#     )
-# ]
+PLAYBACK_DATA_LIST = [
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+        playback_suffix="1779363559",
+    ),
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+        playback_suffix="1779375646",
+    )#,
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+    #     playback_suffix="1780397517",
+    # )
+]
 
 # # Load turtle bot map
 # PLAYBACK_DATA_LIST = [
@@ -155,12 +155,12 @@ class PlaybackDataset:
 # ]
 
 # Load AWS map
-PLAYBACK_DATA_LIST = [
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
-        playback_suffix="1780397517",
-    )
-]
+# PLAYBACK_DATA_LIST = [
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+#         playback_suffix="1780397517",
+#     )
+# ]
 
 
 
