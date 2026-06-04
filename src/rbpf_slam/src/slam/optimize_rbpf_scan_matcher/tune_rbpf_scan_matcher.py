@@ -32,6 +32,7 @@ from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
 from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggregatorScanMatching
 
+
 '''
 1. Test final pipeline
     1.1 Test of final tuning pipeline for scan-matching-only mode on 100 steps 

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any, List, Optional, Tuple
 
 import math
@@ -154,6 +154,10 @@ class RunSummaryScanMatching:
     icp_total_runs: int = 0
     icp_success_count: int = 0
     icp_failed_count: int = 0
+
+    @classmethod
+    def init_with_none(cls) -> "RunSummaryScanMatching":
+        return cls(**{field.name: None for field in fields(cls)})
 
 
 class ScanMatchingEvaluator:

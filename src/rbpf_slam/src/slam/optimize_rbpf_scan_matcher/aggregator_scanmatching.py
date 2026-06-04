@@ -95,7 +95,7 @@ class RankedRunConverterScanMatching:
                     "rmse_pred_trans_err": summary.rmse_pred_trans_err,
                     "rmse_corr_trans_err": summary.rmse_corr_trans_err,
                     "max_corr_trans_err": summary.max_corr_trans_err,
-                    "max_corr_rot_err": summary.max_corr_rot_err,
+                    "max_corr_rot_err_deg": cls._rad_to_deg(summary.max_corr_rot_err),
                     
                     # Rotational errors of raw odom, pred and corrected pose
                     "mean_raw_odom_rot_err_deg": cls._rad_to_deg(summary.mean_raw_odom_rot_err),

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
-# import debugpy
-# debugpy.listen(("localhost", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
+import debugpy
+debugpy.listen(("localhost", 5678))
+print("Waiting for debugger attach...")
+debugpy.wait_for_client()
 
 import numpy as np
 import pandas as pd
 import json
 
-from dataclasses import asdict, dataclass, is_dataclass
-from typing import Dict, Any, List, Union, Optional
+from dataclasses import asdict, dataclass, is_dataclass, fields
+from typing import Dict, Any, List, Union, Optional, Tuple
 
 from pathlib import Path
 
 from .scorer_scanmatching import ScanMatchingScorer as RunScorer
 from .aggregator_scanmatching import ResultAggregatorScanMatching as ResultAggregator
-from . result_writer_scanmatching import ResultWriterScanMatching as ResultWriter
-
+from .result_writer_scanmatching import ResultWriterScanMatching as ResultWriter
+from .evaluator_scanmatching import RunSummaryScanMatching
 
 '''
 This script combines multiple run results together, evaluate them and find the best union parameter sets for the 
@@ -80,9 +80,9 @@ class LoadedOptmResultData:
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
-        param_filename='sm_test_params.json',
-        rank_scored_summary_filename='sm_test_summary_rank_scored.csv',
-        ranked_param_overview_filename='sm_test_summary_ranked_param_overview.csv'
+        param_filename='sm_test_1_params.json',
+        rank_scored_summary_filename='sm_test_1_summary_rank_scored.csv',
+        ranked_param_overview_filename='sm_test_1_summary_ranked_param_overview.csv'
     ),
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
@@ -102,6 +102,7 @@ COLS_TO_DEL_PARAM_SUMMARY = ["rank", "global_score"]
 
 # Mapping from ScanMatchingScorer summary keys to columns
 # Value format: [column_name, is_angle]
+# We transform the angles from deg to rad in this scipt. For simpicity we keep the "_deg" in the column names!
 SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
     "rmse_corr_trans_err": ["rmse_corr_trans_err", False],
     "rmse_corr_rot_err": ["rmse_corr_rot_err_deg", True],
@@ -112,7 +113,7 @@ SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
     "max_rolling_rmse_corr_trans_error": ["max_rolling_rmse_corr_trans_error", False],
     "max_rolling_rmse_corr_rot_error": ["max_rolling_rmse_corr_rot_error", True],
     # ScanMatchingScorer accepts either scan_match_success_rate or success_rate.
-    "success_rate": ["icp_success_rate", False],
+    "scan_match_success_rate": ["icp_success_rate", False],
     "corr_worse_rate_trans": ["corr_worse_rate_trans", False],
     "corr_worse_rate_rot": ["corr_worse_rate_rot", False],
     "final_drift_trans": ["final_drift_trans", False],
@@ -611,16 +612,61 @@ def extract_and_convert_scorer_cols(
     return scorer_df
 
 
+def prepare_scorer(
+    summary_run_df: pd.DataFrame,
+    col_mappings: Dict,
+):
+    summary_list = []
+
+    valid_fields = {field.name for field in fields(RunSummaryScanMatching)}
+    
+    for i in range(summary_run_df.shape[0]):
+        # Init summary with none vals
+        summary = RunSummaryScanMatching.init_with_none()
+
+        for key, data in col_mappings.items():
+            col_name, is_angle_deg = data
+
+            # Check if data exists
+            if key not in valid_fields:
+                raise ValueError(
+                    f"Mapping key '{key}' is not a valid RunSummaryScanMatching field."
+                )
+            
+            if col_name not in summary_run_df.columns:
+                raise ValueError(
+                    f"Column '{col_name}' not found in summary_run_df."
+                )
+        
+            value = summary_run_df.loc[i, col_name]
+
+            # Convert tio rad if its an angle
+            if is_angle_deg:
+                value = np.deg2rad(value)
+            
+            # Set attribute
+            setattr(summary, key, value)
+
+        summary_list.append(summary)
+    
+    return summary_list
+
+
+
 def score_summary_runs(
-        scorer_df: pd.DataFrame,
+        summary_list: List[RunSummaryScanMatching],
         run_scorer: RunScorer,
 ) -> pd.Series:
-    score_series = scorer_df.apply(
-        lambda row: run_scorer.score(row.to_dict()),
-        axis=1,
-    )
+    
+    score_list = []
+
+    for summary in summary_list:
+        score = run_scorer.score(summary)
+        score_list.append(score)
+
+    series = pd.Series(score_list)
         
-    return score_series
+    return series    
 
 
 
@@ -787,16 +833,21 @@ def main():
         print("\nSuccessfully combined summary run dataframes:\n")
     
     # Extract and convert scorer columns
-    scorer_df = extract_and_convert_scorer_cols(
-        summary_run=summary_run,
-        col_mappings=SCORER_SUMMARY_DF_MAPPINGS,
+    # scorer_df = extract_and_convert_scorer_cols(
+    #     summary_run=summary_run,
+    #     col_mappings=SCORER_SUMMARY_DF_MAPPINGS,
+    # )
+
+    summary_list = prepare_scorer(
+        summary_run_df=summary_run,
+        col_mappings=SCORER_SUMMARY_DF_MAPPINGS
     )
 
     print("\nSuccessfully extracted and converted scorer columns.")
 
     # score summary runs with scorer
     scored_series = score_summary_runs(
-        scorer_df=scorer_df,
+        summary_list=summary_list,
         run_scorer=run_scorer,
     )
 
