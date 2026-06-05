@@ -45,3 +45,5 @@ maps/*~
 
 # Delete venv from git history, as it is not needed and can be large. --- IGNORE ---
 .venv
+
+optimize_rbpf_scan_matcher_copy/

@@ -171,10 +171,10 @@ class PlaybackRunnerScanMatching:
         every_nth_scan_filter = max(1, int(params.every_nth_scan_filter))
         every_nth_scan_map = max(1, int(params.every_nth_scan_map))
 
-        print(
-            f"Running scan-matching-only mode with params: {params.tag} "
-            f"(every_nth_scan_filter={every_nth_scan_filter}, every_nth_scan_map={every_nth_scan_map})"
-        )
+        # print(
+        #     f"Running scan-matching-only mode with params: {params.tag} "
+        #     f"(every_nth_scan_filter={every_nth_scan_filter}, every_nth_scan_map={every_nth_scan_map})"
+        # )
 
         # Process playback data 
         for step_idx, step in enumerate(steps):

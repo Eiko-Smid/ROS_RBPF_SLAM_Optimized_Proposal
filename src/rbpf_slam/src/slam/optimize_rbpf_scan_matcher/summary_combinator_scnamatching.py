@@ -56,8 +56,8 @@ TODO
 '''
 
 # Define data path
-COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_4_1_summary'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_test_4_1_params.json'
+COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_4_2_summary'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_4_2_params.json'
 
 
 @dataclass
@@ -80,15 +80,15 @@ class LoadedOptmResultData:
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
-        param_filename='sm_4_1_params.json',
-        rank_scored_summary_filename='_sm_4_1_summary_rank_scored_update_del_later.csv',
-        ranked_param_overview_filename='sm_4_1_summary_ranked_param_overview.csv'
+        param_filename='sm_4_2_params.json',
+        rank_scored_summary_filename='sm_4_2_summary_rank_scored.csv',
+        ranked_param_overview_filename='sm_4_2_summary_ranked_param_overview.csv'
     ),
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
-        param_filename='sm_4_1_params.json',
-        rank_scored_summary_filename='_sm_4_1_summary_rank_scored_update_del_later.csv',
-        ranked_param_overview_filename='sm_4_1_summary_ranked_param_overview.csv'
+        param_filename='sm_4_2_params.json',
+        rank_scored_summary_filename='sm_4_2_summary_rank_scored.csv',
+        ranked_param_overview_filename='sm_4_2_summary_ranked_param_overview.csv'
     ),
 ]
 

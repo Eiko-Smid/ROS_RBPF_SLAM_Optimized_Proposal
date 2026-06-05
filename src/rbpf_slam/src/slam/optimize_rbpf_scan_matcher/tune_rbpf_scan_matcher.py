@@ -102,21 +102,26 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
 
 5. Adapt grid resolution (0.1 -> 0.05 m)
 
-    5.1 256 bi grid search
+    5.1 256 param grid search
 
+        - Results are stable
+        - But not better than with 0.1 m grid resolution
+
+    
+    5.2 Try to search iin other param scpae area to find better global optimum 
 
 
 
 '''
 
 
-# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_1_summary"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_1_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_1_params.json"
+OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_summary"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_params.json"
 
-OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_summary"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_params.json"
+# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_params.json"
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
@@ -125,10 +130,10 @@ KEEP_STEP_RESULTS = False
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50
+N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -242,19 +247,44 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
-# Adapting the map build and extraction part before changing icp params
-def _grid_axes() -> Dict[str, List[Union[float, int]]]:
-    return {
-        # Playback sampling
-        "every_nth_beam_filter": [4],
-        "every_nth_beam_map": [1, 2],
+# Different search space for 0.05 m grid resolution 
+# def _grid_axes():
+#     return {
+#         "every_nth_beam_filter": [2, 4],
+#         "every_nth_beam_map": [1, 2],
 
-        # OccupancyParams (OGM)
+#         "occupancy_prob_pairs": [
+#             {
+#                 "increasing_probability": 0.85,
+#                 "decreasing_probability": 0.15,
+#             },
+#         ],
+#         "min_log_odds": [-5.0],
+#         "max_log_odds": [5.0],
+
+#         "occ_thres": [1.4],
+#         "delta_r": [0.6],
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.3, 0.4],
+
+#         "max_n_points": [800, 1200],
+#         "neighbors_pca": [8, 10],
+#         "max_iterations": [5, 9],
+#         "max_correspondence_distance": [0.3, 0.4],
+#         "min_corresp": [15, 25],
+#         "max_translation_jump": [0.5],
+#         "max_rotation_jump_deg": [45.0],
+#         "max_acceptable_mean_error": [0.15],
+#     }
+
+
+# Fine tuning for 0.05 m grid resolution 
+def _grid_axes():
+    return {
+        "every_nth_beam_filter": [2, 3, 4],
+        "every_nth_beam_map": [2],
+
         "occupancy_prob_pairs": [
-            # {
-            #     "increasing_probability": 0.7,
-            #     "decreasing_probability": 0.3,
-            # },
             {
                 "increasing_probability": 0.85,
                 "decreasing_probability": 0.15,
@@ -263,22 +293,21 @@ def _grid_axes() -> Dict[str, List[Union[float, int]]]:
         "min_log_odds": [-5.0],
         "max_log_odds": [5.0],
 
-        # ScanMatcherParams
-        "occ_thres": [0.8],
-        "delta_r": [0.5],
-        "surface_radius_m": [0.2],
-        "min_free_ratio": [0.3],
+        "occ_thres": [1.4],
+        "delta_r": [0.6],
+        "surface_radius_m": [0.2, 0.4],
+        "min_free_ratio": [0.2, 0.4],
 
-        # ICPParams
-        "max_n_points": [400, 800],
-        "neighbors_pca": [10, 20],
-        "max_iterations": [5],
-        "max_correspondence_distance": [0.5],
-        "min_corresp": [15],
+        "max_n_points": [1200, 1400],
+        "neighbors_pca": [4, 6, 8],
+        "max_iterations": [5, 7],
+        "max_correspondence_distance": [0.3, 0.35, 0.4],
+        "min_corresp": [25],
         "max_translation_jump": [0.5],
         "max_rotation_jump_deg": [45.0],
         "max_acceptable_mean_error": [0.15],
     }
+
 
 # def _grid_axes() -> Dict[str, List[Union[float, int]]]:
 #     return {
