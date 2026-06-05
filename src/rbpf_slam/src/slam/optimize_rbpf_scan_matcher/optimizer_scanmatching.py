@@ -23,6 +23,9 @@ from .evaluator_scanmatching import RunSummaryScanMatching, StepResultScanMatchi
 
 # Declare glöobal var to store playabck data for each worker process.
 _WORKER_PLAYBACK_DATA = None
+_WORKER_RUNNER = None
+_WORKER_SCORER = None
+
 
 @dataclass
 class RankedRunScanMatching:
@@ -45,8 +48,22 @@ def _init_scan_matching_worker(playback_data: PlaybackData) -> None:
     This avoids sending the full playback data again for every single parameter job.
     """
     global _WORKER_PLAYBACK_DATA
-    _WORKER_PLAYBACK_DATA = playback_data
+    global _WORKER_RUNNER
+    global _WORKER_SCORER
 
+    # Define playback storage for worker
+    _WORKER_PLAYBACK_DATA = playback_data
+    
+    # Define runner and scorer object per worker
+    _WORKER_RUNNER = PlaybackRunnerScanMatching(
+        factory=RBPFFactory(),
+        evaluator=ScanMatchingEvaluator(),
+        raw_odom_propagator=RawOdometryPropagator(),
+    )  
+
+    _WORKER_SCORER = ScanMatchingScorer()
+
+    
 
 def _run_scan_matching_job(job: dict) -> RankedRunScanMatching:
     """
@@ -58,8 +75,16 @@ def _run_scan_matching_job(job: dict) -> RankedRunScanMatching:
     # Reference the global playback data storage
     global _WORKER_PLAYBACK_DATA
 
+    # Check if worker vars have been initialized
     if _WORKER_PLAYBACK_DATA is None:
         raise RuntimeError("Worker playback data has not been initialized.")
+    
+    if _WORKER_RUNNER is None:
+        raise RuntimeError("Worker runner has not been initialized.")
+
+    if _WORKER_SCORER is None:
+        raise RuntimeError("Worker scorer has not been initialized.")
+
 
     # Extract data to execute the job
     params: ExperimentParams = job["params"]
@@ -87,12 +112,12 @@ def _run_scan_matching_job(job: dict) -> RankedRunScanMatching:
     )
 
     # Create runner and scorer object to excute the job
-    runner = PlaybackRunnerScanMatching(
-        factory=RBPFFactory(),
-        evaluator=ScanMatchingEvaluator(),
-        raw_odom_propagator=RawOdometryPropagator(),
-    )
-    scorer = ScanMatchingScorer()
+    # runner = PlaybackRunnerScanMatching(
+    #     factory=RBPFFactory(),
+    #     evaluator=ScanMatchingEvaluator(),
+    #     raw_odom_propagator=RawOdometryPropagator(),
+    # )
+    # scorer = ScanMatchingScorer()
 
     # Generate parameter hash to identify the parameter set used for the job
     parameter_for_hash = ScanMatchingOptimizer.generate_params_for_hash(params)
@@ -100,8 +125,8 @@ def _run_scan_matching_job(job: dict) -> RankedRunScanMatching:
     param_hash = hashlib.sha256(param_json.encode()).hexdigest()[:12]
 
     # Run the runner and scorer for the job
-    run_result = runner.run(run_playback_data, params)
-    score = scorer.score(run_result.summary)
+    run_result = _WORKER_RUNNER.run(run_playback_data, params)
+    score = _WORKER_SCORER.score(run_result.summary)
 
     return RankedRunScanMatching(
         params=params,
@@ -114,7 +139,6 @@ def _run_scan_matching_job(job: dict) -> RankedRunScanMatching:
         parameter_tag=params.tag,
         parameter_hash=param_hash,
     )
-
 
 
 class ScanMatchingOptimizer:
