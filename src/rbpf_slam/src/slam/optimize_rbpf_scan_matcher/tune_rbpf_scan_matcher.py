@@ -100,7 +100,12 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
     4.2 With all needed metrics
 
 
-5. Adapt grid resolution (0.1 -> 0.05 m)
+5. Adapt grid resolution (0.1 -> 0.05 m)#
+
+    - All results are with the old deterministic subsampling of the map points
+    - We simply use every nth point in the list of map points. Since these are not necessarily located next togehter 
+      it could be that we sometimes erase many points close togehterr and sometimes not. 
+    - This should be foixed in the future with voxel/grid downsampling
 
     5.1 256 param grid search
 
@@ -110,6 +115,8 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
     
     5.2 Try to search iin other param scpae area to find better global optimum 
 
+
+    5.3 Try to fine tuner the params from before to find better local optimum
 
 
 '''
@@ -248,41 +255,10 @@ def _compute_wheel_separation() -> float:
 
 
 # Different search space for 0.05 m grid resolution 
-# def _grid_axes():
-#     return {
-#         "every_nth_beam_filter": [2, 4],
-#         "every_nth_beam_map": [1, 2],
-
-#         "occupancy_prob_pairs": [
-#             {
-#                 "increasing_probability": 0.85,
-#                 "decreasing_probability": 0.15,
-#             },
-#         ],
-#         "min_log_odds": [-5.0],
-#         "max_log_odds": [5.0],
-
-#         "occ_thres": [1.4],
-#         "delta_r": [0.6],
-#         "surface_radius_m": [0.2],
-#         "min_free_ratio": [0.3, 0.4],
-
-#         "max_n_points": [800, 1200],
-#         "neighbors_pca": [8, 10],
-#         "max_iterations": [5, 9],
-#         "max_correspondence_distance": [0.3, 0.4],
-#         "min_corresp": [15, 25],
-#         "max_translation_jump": [0.5],
-#         "max_rotation_jump_deg": [45.0],
-#         "max_acceptable_mean_error": [0.15],
-#     }
-
-
-# Fine tuning for 0.05 m grid resolution 
 def _grid_axes():
     return {
-        "every_nth_beam_filter": [2, 3, 4],
-        "every_nth_beam_map": [2],
+        "every_nth_beam_filter": [2, 4],
+        "every_nth_beam_map": [1, 2],
 
         "occupancy_prob_pairs": [
             {
@@ -295,18 +271,52 @@ def _grid_axes():
 
         "occ_thres": [1.4],
         "delta_r": [0.6],
-        "surface_radius_m": [0.2, 0.4],
-        "min_free_ratio": [0.2, 0.4],
+        "surface_radius_m": [0.2],
+        "min_free_ratio": [0.3, 0.4],
 
-        "max_n_points": [1200, 1400],
-        "neighbors_pca": [4, 6, 8],
-        "max_iterations": [5, 7],
-        "max_correspondence_distance": [0.3, 0.35, 0.4],
-        "min_corresp": [25],
+        "max_n_points": [800, 1200],
+        "downssample_grid_size": [0.1, 0.2],
+        "neighbors_pca": [8, 10],
+        "max_iterations": [5, 9],
+        "max_correspondence_distance": [0.3, 0.4],
+        "min_corresp": [15, 25],
         "max_translation_jump": [0.5],
         "max_rotation_jump_deg": [45.0],
         "max_acceptable_mean_error": [0.15],
     }
+
+
+# Fine tuning for 0.05 m grid resolution 
+# def _grid_axes():
+#     return {
+#         "every_nth_beam_filter": [2, 3, 4],
+#         "every_nth_beam_map": [2],
+
+#         "occupancy_prob_pairs": [
+#             {
+#                 "increasing_probability": 0.85,
+#                 "decreasing_probability": 0.15,
+#             },
+#         ],
+#         "min_log_odds": [-5.0],
+#         "max_log_odds": [5.0],
+
+#         "occ_thres": [1.4],
+#         "delta_r": [0.6],
+#         "surface_radius_m": [0.2, 0.4],
+#         "min_free_ratio": [0.2, 0.4],
+
+#         "max_n_points": [1200, 1400],
+#         "downssample_grid_size": [0.1, 0.2],
+
+#         "neighbors_pca": [4, 6, 8],
+#         "max_iterations": [5, 7],
+#         "max_correspondence_distance": [0.3, 0.35, 0.4],
+#         "min_corresp": [25],
+#         "max_translation_jump": [0.5],
+#         "max_rotation_jump_deg": [45.0],
+#         "max_acceptable_mean_error": [0.15],
+#     }
 
 
 # def _grid_axes() -> Dict[str, List[Union[float, int]]]:
@@ -431,6 +441,7 @@ def generate_param_grid(
             surface_radius_m,
             min_free_ratio,
             max_n_points,
+            downssample_grid_size,
             neighbors_pca,
             max_iterations,
             max_corr_dist,
@@ -449,6 +460,7 @@ def generate_param_grid(
             axes["surface_radius_m"],
             axes["min_free_ratio"],
             axes["max_n_points"],
+            axes["downssample_grid_size"],
             axes["neighbors_pca"],
             axes["max_iterations"],
             axes["max_correspondence_distance"],
@@ -461,6 +473,7 @@ def generate_param_grid(
             every_nth_filter = int(every_nth_filter)
             every_nth_map = int(every_nth_map)
             max_n_points = int(max_n_points)
+            downssample_grid_size = float(downssample_grid_size)
             neighbors_pca = int(neighbors_pca)
             max_iterations = int(max_iterations)
             min_corresp = int(min_corresp)
@@ -493,6 +506,7 @@ def generate_param_grid(
                 ),
                 icp_params=ICPParams(
                     max_n_points=max_n_points,
+                    downssample_grid_size=downssample_grid_size,
                     max_correspondence_distance=max_corr_dist,
                     neighbors_pca=neighbors_pca,
                     max_iterations=max_iterations,
@@ -546,7 +560,8 @@ def generate_param_grid(
                     f"ip{increasing_probability}_dp{decreasing_probability}_"
                     f"lomin{min_log_odds}_lomax{max_log_odds}_"
                     f"ot{occ_thres}_dr{delta_r}_sr{surface_radius_m}_mfr{min_free_ratio}_"
-                    f"mnp{max_n_points}_npca{neighbors_pca}_mi{max_iterations}_"
+                    f"mnp{max_n_points}_dsgs{downssample_grid_size}_"
+                    f"npca{neighbors_pca}_mi{max_iterations}_"
                     f"mcd{max_corr_dist}_mc{min_corresp}_mjt{max_jump_trans}_"
                     f"mjrd{max_jump_rot_deg}_mae{max_acceptable_mean_error}_"
                     f"rep{repeat_idx}"

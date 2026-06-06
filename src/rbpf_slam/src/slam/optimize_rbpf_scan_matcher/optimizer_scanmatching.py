@@ -171,6 +171,7 @@ class ScanMatchingOptimizer:
 
             # ICPParams
             "icp_max_n_points": exp_params.icp_params.max_n_points,
+            "downssample_grid_size": exp_params.icp_params.downssample_grid_size,
             "icp_max_correspondence_distance": exp_params.icp_params.max_correspondence_distance,
             "icp_neighbors_pca": exp_params.icp_params.neighbors_pca,
             "icp_max_iterations": exp_params.icp_params.max_iterations,

@@ -34,6 +34,7 @@ class ICPParams:
     Parameters for ICP algorithm
     '''
     max_n_points: int = 400
+    downssample_grid_size: float = 0.1
     max_correspondence_distance: float = 0.6
     neighbors_pca: int = 10
     max_iterations: int = 5
@@ -116,6 +117,7 @@ class ScanMatchFactory:
                 "max_translation_jump": icp_params.max_translation_jump,
                 "max_rotation_jump": icp_params.max_rotation_jump,
                 "max_acceptable_mean_error": icp_params.max_acceptable_mean_error,
+                "downssample_grid_size": icp_params.downssample_grid_size,
             },
             max_n_points=icp_params.max_n_points,
             max_correspondence_distance=icp_params.max_correspondence_distance,

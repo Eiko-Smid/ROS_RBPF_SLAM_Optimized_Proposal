@@ -69,6 +69,7 @@ class RankedRunConverterScanMatching:
                     "icp_success_rate": summary.icp_success_rate,
                     "scan_match_success_rate": summary.scan_match_success_rate,
                     "median_extracted_map_points": summary.median_extracted_map_points,
+                    "median_map_points_spartial_downsampled": summary.median_n_map_points_spartial_downsampled,
                     "median_map_point_keep_ratio": summary.median_map_point_keep_ratio,
 
                     # ICP error metrics

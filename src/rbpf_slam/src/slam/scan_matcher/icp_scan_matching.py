@@ -445,6 +445,7 @@ class IterativeClosestPoint():
         self.n_points_true_data = None
         self.n_points_new_data = None
 
+        self.n_points_true_after_spatial_downsampling = None
         self.n_points_true_after_subsampling = None
 
         # Init stop condition
@@ -469,6 +470,7 @@ class IterativeClosestPoint():
         self.max_acceptable_mean_error = float(
             stop_params.get("max_acceptable_mean_error", self.stop_condition.min_error * 5.0)
         )
+        self.downssample_grid_size = float(stop_params.get("downssample_grid_size", 0.1))
 
         # Add info storage
         self.info: dict = {}
@@ -553,9 +555,11 @@ class IterativeClosestPoint():
         self.info["max_translation_jump"] = self.max_translation_jump
         self.info["max_rotation_jump"] = self.max_rotation_jump
         self.info["max_acceptable_mean_error"] = self.max_acceptable_mean_error
+        self.info["downssample_grid_size"] = self.downssample_grid_size
         self.info["n_points_true_data"] = self.n_points_true_data
         self.info["n_points_new_data"] = self.n_points_new_data
         self.info["n_points_true_after_subsampling"] = self.n_points_true_after_subsampling
+        self.info["n_points_true_after_spatial_downsampling"] = self.n_points_true_after_spatial_downsampling
         self.info["last_result_reason"] = self.last_result_reason
         self.info["stop_reason_counts"] = dict(self.reason_counts)
 
@@ -1190,6 +1194,40 @@ class IterativeClosestPoint():
         return subsampled_pointcloud
 
 
+    def downsample_pointcloud_spatial(pointcloud: np.ndarray, grid_size: float) -> np.ndarray:
+        '''
+        Creates grid cells of size grid_size, finds the points that belong to the cells. If only one point
+        belongs to the cell than kleep one of the points. Returns the subsampled array
+        '''
+        # Convert points
+        pointcloud = np.asarray(pointcloud, dtype=float)
+
+        # Safety checks
+        if pointcloud.ndim != 2 or pointcloud.shape[0] != 2:
+            return np.empty((0, 2), dtype=float)
+        
+        if grid_size is None or grid_size <= 0.0:
+            return pointcloud
+        
+        n_points = pointcloud.shape[0]
+
+        if n_points == 0:
+            return pointcloud
+        
+        # Compute indices of grid for each point. Same logic as point to cell transformation in ogm
+        grid_indices = np.floor(pointcloud / grid_size).astype(np.int64)
+
+        # Find unique indices -> all other points will be erased
+        _, unique_indices = np.unique(grid_indices, axis=0, return_index=True)
+
+        # Extract all unique indices from pointcloud. Sorting unique_indices restores deterministic original pointcloud order,
+        # not geometric order.
+        sorted_subsampled_pointcloud = pointcloud[np.sort(unique_indices)]
+
+        return sorted_subsampled_pointcloud
+
+
+
     def find_transformation(
             self, 
             new_data_pointpairs: np.ndarray, 
@@ -1266,13 +1304,20 @@ class IterativeClosestPoint():
             ), extended=True)
 
 
+        # Downsample points with geometrically relavance      
+        true_pointcloud_downsampled_geometrically = self.downsample_pointcloud_spatial(
+            pointcloud=true_data_pointpairs,
+            grid_size=self.downssample_grid_size
+        )
+
         # Downsample true data points
         true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
-            pointcloud=true_data_pointpairs,
+            pointcloud=true_pointcloud_downsampled_geometrically,
             max_n_points=self.max_n_points
         )
 
         # get number of points after downsampling for logging
+        self.n_points_true_after_spatial_downsampling = true_pointcloud_downsampled_geometrically.shape[0]
         self.n_points_true_after_subsampling = true_data_pointpairs.shape[0]
         
         # Train Nearest Neighbor with true data points 
