@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Tuple
+from typing import Tuple, List
 
 from numba import njit
 import numpy as np
@@ -413,7 +413,14 @@ class IterativeClosestPoint():
         "Best mean error too large": "best_mean_err_too_large",
     }
 
-    def __init__(self, stop_params: dict, max_n_points:int=800, max_correspondence_distance= 2.0, n_neighbors: int = 10):
+    def __init__(
+        self, 
+        stop_params: dict, 
+        max_n_points:int=800, 
+        max_correspondence_distance= 2.0, 
+        n_neighbors: int = 10,
+        ctrl_params: List[bool] = [False]
+    ):
         '''
         Initializes the ICP scan matcher with the given stop parameters and maximum correspondence distance.
 
@@ -457,6 +464,9 @@ class IterativeClosestPoint():
             min_dtrans=stop_params.get("min_dtrans", 1e-4),
             min_drot=stop_params.get("min_drot", 1e-1)
         )
+
+        # init control params
+        self.skip_downsampling = ctrl_params[0]
 
         # Minimum data requirements (defaulted if not provided in stop_params)
         self.min_points = int(stop_params.get("min_points", 20))
@@ -1268,6 +1278,10 @@ class IterativeClosestPoint():
         mean_err = inf              # Mean of the Squared error  
         best_mean_error = np.inf    # Best mean error found
 
+        # Init info values
+        self.n_points_true_after_spatial_downsampling = None
+        self.n_points_true_after_subsampling = None
+
         # number of correspondences from best iteration
         n_corresp_best_iter = 0     
         
@@ -1304,17 +1318,19 @@ class IterativeClosestPoint():
             ), extended=True)
 
 
-        # Downsample points with geometrically relavance      
-        true_pointcloud_downsampled_geometrically = self.downsample_pointcloud_spatial(
-            pointcloud=true_data_pointpairs,
-            grid_size=self.downssample_grid_size
-        )
+        # Downsampling
+        if not self.skip_downsampling:
+            # Downsample points with geometrically relavance      
+            true_pointcloud_downsampled_geometrically = self.downsample_pointcloud_spatial(
+                pointcloud=true_data_pointpairs,
+                grid_size=self.downssample_grid_size
+            )
 
-        # Downsample true data points
-        true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
-            pointcloud=true_pointcloud_downsampled_geometrically,
-            max_n_points=self.max_n_points
-        )
+            # Downsample true data points
+            true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
+                pointcloud=true_pointcloud_downsampled_geometrically,
+                max_n_points=self.max_n_points
+            )
 
         # get number of points after downsampling for logging
         self.n_points_true_after_spatial_downsampling = true_pointcloud_downsampled_geometrically.shape[0]

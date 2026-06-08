@@ -55,7 +55,7 @@ class StepResultScanMatching:
     n_valid_measurements_filter: Optional[int]
     n_valid_measurements_map_update: Optional[int]
     n_map_points_extracted: Optional[int]
-    n_map_points_spartial_downsampled: Optional[int]
+    n_map_points_spartial_downsampling: Optional[int]
     n_map_points_used: Optional[int]
     map_point_keep_ratio: Optional[float]
     
@@ -88,7 +88,7 @@ class RunSummaryScanMatching:
     icp_success_rate: float
     scan_match_success_rate: float
     median_extracted_map_points: float
-    median_n_map_points_spartial_downsampled: float
+    meadian_n_map_points_spartial_downsampling: float
     median_map_point_keep_ratio: float
     mean_icp_iterations: float
     mean_icp_err: float
@@ -214,7 +214,7 @@ class ScanMatchingEvaluator:
         n_valid_measurements_filter: Optional[int],
         n_valid_measurements_map_update: Optional[int],
         n_map_points_extracted: Optional[int],
-        n_map_points_spartial_downsampled: Optional[int],
+        n_map_points_spartial_downsampling: Optional[int],
         n_map_points_used: Optional[int],
         t_ogm: Optional[float],
         t_scan_matching: Optional[float],
@@ -321,7 +321,7 @@ class ScanMatchingEvaluator:
                 int(n_valid_measurements_map_update) if n_valid_measurements_map_update is not None else None
             ),
             n_map_points_extracted=int(n_map_points_extracted) if n_map_points_extracted is not None else None,
-            n_map_points_spartial_downsampled=int(n_map_points_spartial_downsampled) if n_map_points_spartial_downsampled is not None else None,
+            n_map_points_spartial_downsampling=int(n_map_points_spartial_downsampling) if n_map_points_spartial_downsampling is not None else None,
             n_map_points_used=int(n_map_points_used) if n_map_points_used is not None else None,
             map_point_keep_ratio=float(map_point_keep_ratio) if map_point_keep_ratio is not None else None,
             t_ogm=float(t_ogm) if t_ogm is not None else None,
@@ -349,8 +349,8 @@ class ScanMatchingEvaluator:
         corr_trans_err = [s.corr_trans_err for s in step_results if s.corr_trans_err is not None]
         corr_rot_err = [s.corr_rot_err for s in step_results if s.corr_rot_err is not None]
 
-        n_map_points_spartial_downsampled_list = [
-            s.n_map_points_spartial_downsampled for s in step_results if s.n_map_points_spartial_downsampled is not None
+        n_map_points_spartial_downsampling_list = [
+            s.n_map_points_spartial_downsampling for s in step_results if s.n_map_points_spartial_downsampling is not None
         ]
         map_points_extracted = [
             s.n_map_points_extracted for s in step_results if s.n_map_points_extracted is not None
@@ -452,8 +452,8 @@ class ScanMatchingEvaluator:
             scan_match_failed_count=scan_match_failed_count,
             icp_success_rate=icp_success_rate,
             scan_match_success_rate=scan_match_success_rate,
-            meadian_n_map_points_spartial_downsampled=(
-                float(np.median(n_map_points_spartial_downsampled_list)) if n_map_points_spartial_downsampled_list else float("nan")
+            meadian_n_map_points_spartial_downsampling=(
+                float(np.median(n_map_points_spartial_downsampling_list)) if n_map_points_spartial_downsampling_list else float("nan")
             ),
             median_extracted_map_points=(
                 float(np.median(map_points_extracted)) if map_points_extracted else float("nan")

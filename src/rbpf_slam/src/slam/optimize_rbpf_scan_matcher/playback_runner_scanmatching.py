@@ -253,7 +253,7 @@ class PlaybackRunnerScanMatching:
                 n_map_points_extracted=(
                     None if is_initialization_step else scan_match_info.get("map_points_count")
                 ),
-                n_map_points_spartial_downsampled=(
+                n_map_points_spartial_downsampling=(
                     None if is_initialization_step else scan_match_info.get("n_points_true_after_spatial_downsampling")
                 ),
                 n_map_points_used=(

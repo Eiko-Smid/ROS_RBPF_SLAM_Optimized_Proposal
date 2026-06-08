@@ -122,13 +122,13 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
 '''
 
 
-OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_summary"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_params.json"
+# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_params.json"
 
-# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_summary"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_params.json"
+OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_summary"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_params.json"
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
@@ -151,6 +151,9 @@ USE_SEED_LIST_FOR_MEASUREMENT_NOISE = True
 MEASUREMENT_STDDEV = 0.03
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
+
+# Define icp control params
+ICP_CTRL_PARAMS = [False]
 
 
 @dataclass
@@ -442,6 +445,7 @@ def generate_param_grid(
             min_free_ratio,
             max_n_points,
             downssample_grid_size,
+            # ctrl_params,
             neighbors_pca,
             max_iterations,
             max_corr_dist,
@@ -461,6 +465,7 @@ def generate_param_grid(
             axes["min_free_ratio"],
             axes["max_n_points"],
             axes["downssample_grid_size"],
+            # axes["ctrl_params"],
             axes["neighbors_pca"],
             axes["max_iterations"],
             axes["max_correspondence_distance"],
@@ -474,6 +479,7 @@ def generate_param_grid(
             every_nth_map = int(every_nth_map)
             max_n_points = int(max_n_points)
             downssample_grid_size = float(downssample_grid_size)
+            ctrl_params = [bool(x) for x in ICP_CTRL_PARAMS]
             neighbors_pca = int(neighbors_pca)
             max_iterations = int(max_iterations)
             min_corresp = int(min_corresp)
@@ -507,6 +513,7 @@ def generate_param_grid(
                 icp_params=ICPParams(
                     max_n_points=max_n_points,
                     downssample_grid_size=downssample_grid_size,
+                    ctrl_params=list(ctrl_params),
                     max_correspondence_distance=max_corr_dist,
                     neighbors_pca=neighbors_pca,
                     max_iterations=max_iterations,
@@ -561,6 +568,7 @@ def generate_param_grid(
                     f"lomin{min_log_odds}_lomax{max_log_odds}_"
                     f"ot{occ_thres}_dr{delta_r}_sr{surface_radius_m}_mfr{min_free_ratio}_"
                     f"mnp{max_n_points}_dsgs{downssample_grid_size}_"
+                    f"cp{int(ctrl_params[0])}_"
                     f"npca{neighbors_pca}_mi{max_iterations}_"
                     f"mcd{max_corr_dist}_mc{min_corresp}_mjt{max_jump_trans}_"
                     f"mjrd{max_jump_rot_deg}_mae{max_acceptable_mean_error}_"

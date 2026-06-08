@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import List
 
 from ..scan_matcher.scan_matcher import ScanMatcher
 from ..scan_matcher.ogm_scan_matching import OGM
@@ -35,6 +36,7 @@ class ICPParams:
     '''
     max_n_points: int = 400
     downssample_grid_size: float = 0.1
+    ctrl_params: List[bool] = field(default_factory=lambda: [False]) 
     max_correspondence_distance: float = 0.6
     neighbors_pca: int = 10
     max_iterations: int = 5
@@ -122,6 +124,7 @@ class ScanMatchFactory:
             max_n_points=icp_params.max_n_points,
             max_correspondence_distance=icp_params.max_correspondence_distance,
             n_neighbors=icp_params.neighbors_pca,
+            ctrl_params=icp_params.ctrl_params,
         )
 
         # Init scan matcher
