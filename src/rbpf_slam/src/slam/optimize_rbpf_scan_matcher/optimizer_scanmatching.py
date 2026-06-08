@@ -428,12 +428,22 @@ class ScanMatchingOptimizer:
         if mp_context is not None:
             executor_kwargs["mp_context"] = mp_context
 
-        # Run wroker processes
-        with ProcessPoolExecutor(**executor_kwargs) as executor:
-            futures = [
-                executor.submit(_run_scan_matching_job, job)
-                for job in jobs
-            ]
+        # # Run wroker processes
+        # with ProcessPoolExecutor(**executor_kwargs) as executor:
+        #     futures = [
+        #         executor.submit(_run_scan_matching_job, job)
+        #         for job in jobs
+        #     ]
+
+        # # Measure progress
+        # with tqdm(
+        #     total=total_n_runs,
+        #     desc="Scan matching optimization parallel",
+        #     unit="run",
+        # ) as pbar:
+        #     for future in as_completed(futures):
+        #         ranked_runs.append(future.result())
+        #         pbar.update(1)
 
         # Measure progress
         with tqdm(
@@ -441,9 +451,25 @@ class ScanMatchingOptimizer:
             desc="Scan matching optimization parallel",
             unit="run",
         ) as pbar:
-            for future in as_completed(futures):
-                ranked_runs.append(future.result())
-                pbar.update(1)
+            pbar.refresh()
+
+            # Run wroker processes
+            with ProcessPoolExecutor(**executor_kwargs) as executor:
+                # futures = [
+                #     executor.submit(_run_rbpf_job, job)
+                #     for job in jobs
+                # ]
+                futures = []
+
+                for job in jobs:
+                    future = executor.submit(_run_scan_matching_job, job)
+                    futures.append(future)
+
+                for future in as_completed(futures):
+                    ranked_run = future.result()
+                    ranked_runs.append(ranked_run)
+                    pbar.update(1)
+
 
         # Compute optimization time and print 
         end_time = time.perf_counter()

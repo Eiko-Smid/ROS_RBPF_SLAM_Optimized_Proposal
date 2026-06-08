@@ -495,9 +495,7 @@ class IterativeClosestPoint():
             "best_transf_too_large": 0,
             "best_mean_err_too_large": 0,
         }
-        self.last_result_reason = None
-
-        
+        self.last_result_reason = None        
 
         # Store infos in members
         self.transformed_new_data_list = []
@@ -1204,39 +1202,62 @@ class IterativeClosestPoint():
         return subsampled_pointcloud
 
 
-    def downsample_pointcloud_spatial(pointcloud: np.ndarray, grid_size: float) -> np.ndarray:
-        '''
-        Creates grid cells of size grid_size, finds the points that belong to the cells. If only one point
-        belongs to the cell than kleep one of the points. Returns the subsampled array
-        '''
+    def downsample_pointcloud_spatial(self, pointcloud: np.ndarray, grid_size: float) -> np.ndarray:
+        """
+        Spatially downsamples a 2D point cloud.
+
+        The input point cloud must have shape (N, 2), where each row is one [x, y] point.
+
+        The method creates virtual grid cells of size grid_size in world coordinates. All points that fall into the same
+        grid cell are reduced to one representative point. The representative is the first original point found in that
+        grid cell.
+
+        Parameters
+        ----------
+        pointcloud : np.ndarray
+            Array of shape (N, 2), where N is the number of points.
+        grid_size : float
+            Size of one spatial grid cell in meters.
+
+        Returns
+        -------
+        np.ndarray
+            Downsampled point cloud of shape (M, 2), where M <= N.
+        """
         # Convert points
         pointcloud = np.asarray(pointcloud, dtype=float)
 
-        # Safety checks
-        if pointcloud.ndim != 2 or pointcloud.shape[0] != 2:
+        # Safety checks: valid point cloud must be (N, 2)
+        if pointcloud.ndim != 2 or pointcloud.shape[1] != 2:
             return np.empty((0, 2), dtype=float)
-        
+
+        # Disable downsampling if grid_size is invalid or intentionally set to 0
         if grid_size is None or grid_size <= 0.0:
             return pointcloud
-        
+
         n_points = pointcloud.shape[0]
 
         if n_points == 0:
             return pointcloud
-        
-        # Compute indices of grid for each point. Same logic as point to cell transformation in ogm
+
+        # Compute spatial grid index for each point
+        # Example: point [1.23, 2.47], grid_size=0.10 -> grid index [12, 24]
         grid_indices = np.floor(pointcloud / grid_size).astype(np.int64)
 
-        # Find unique indices -> all other points will be erased
-        _, unique_indices = np.unique(grid_indices, axis=0, return_index=True)
+        # Find first point index for each occupied grid cell
+        _, unique_indices = np.unique(
+            grid_indices,
+            axis=0,
+            return_index=True,
+        )
 
-        # Extract all unique indices from pointcloud. Sorting unique_indices restores deterministic original pointcloud order,
+        # Keep one original point per occupied spatial grid cell.
+        # Sorting unique_indices restores deterministic original pointcloud order,
         # not geometric order.
-        sorted_subsampled_pointcloud = pointcloud[np.sort(unique_indices)]
+        subsampled_pointcloud = pointcloud[np.sort(unique_indices)]
 
-        return sorted_subsampled_pointcloud
-
-
+        return subsampled_pointcloud
+    
 
     def find_transformation(
             self, 
@@ -1301,6 +1322,7 @@ class IterativeClosestPoint():
         # Santize pointclouds
         new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
         true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
+        true_pointcloud_downsampled_geometrically = None
 
         # Check if we have enough points for icp
         if (
@@ -1319,7 +1341,7 @@ class IterativeClosestPoint():
 
 
         # Downsampling
-        if not self.skip_downsampling:
+        if not self.skip_downsampling and true_data_pointpairs.shape[0] > self.max_n_points:
             # Downsample points with geometrically relavance      
             true_pointcloud_downsampled_geometrically = self.downsample_pointcloud_spatial(
                 pointcloud=true_data_pointpairs,
@@ -1333,8 +1355,22 @@ class IterativeClosestPoint():
             )
 
         # get number of points after downsampling for logging
-        self.n_points_true_after_spatial_downsampling = true_pointcloud_downsampled_geometrically.shape[0]
+        if true_pointcloud_downsampled_geometrically is not None:
+            self.n_points_true_after_spatial_downsampling = true_pointcloud_downsampled_geometrically.shape[0]
+
         self.n_points_true_after_subsampling = true_data_pointpairs.shape[0]
+
+        if true_data_pointpairs.shape[0] < self.min_points:
+            self.stop_condition.stop_reason = "Too few input points"
+            return self._finalize_result(ICPResult(
+                transformation=np.zeros((3,1)),
+                use_transformation=False,
+                reason="Too few input points",
+                mean_error=best_mean_error,
+                n_iterations=0,
+                n_correspondences=0
+            ), extended=True)
+
         
         # Train Nearest Neighbor with true data points 
         self.neighbor.fit(true_data_pointpairs)

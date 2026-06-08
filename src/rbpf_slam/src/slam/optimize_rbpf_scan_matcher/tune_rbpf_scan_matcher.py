@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-# import debugpy
-# debugpy.listen(("localhost", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
+import debugpy
+debugpy.listen(("localhost", 5678))
+print("Waiting for debugger attach...")
+debugpy.wait_for_client()
+
 
 import itertools
 import json
@@ -119,16 +120,33 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
     5.3 Try to fine tuner the params from before to find better local optimum
 
 
+6. After adding grid based subsampling of the map points
+
+    6.1 Run big grid search with 0.05 m grid resolution 
+        
+        Results:
+            - A bit better than 5.3 but not significantly better
+            - Seems like its more stable now cause icp failure rate got reduced
+
+    6.2 Fine tuning
+
+        Result:
+            - Did not improve over 6.1
+
+
+    6.3 Try icp without downsampling of the map points (keep all map points) 
+
+
 '''
 
 
-# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_summary"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_5_2_params.json"
+OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_6_3_summary"
+SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_6_3_trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_6_3_params.json"
 
-OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_summary"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_6_params.json"
+# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_params.json"
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
@@ -152,7 +170,7 @@ MEASUREMENT_STDDEV = 0.03
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
-# Define icp control params
+# Define icp control params [skip_subsampling]
 ICP_CTRL_PARAMS = [False]
 
 
@@ -257,11 +275,11 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
-# Different search space for 0.05 m grid resolution 
+# Define params for big grid search after newly implemented grid based subsampling
 def _grid_axes():
     return {
         "every_nth_beam_filter": [2, 4],
-        "every_nth_beam_map": [1, 2],
+        "every_nth_beam_map": [2],
 
         "occupancy_prob_pairs": [
             {
@@ -273,20 +291,54 @@ def _grid_axes():
         "max_log_odds": [5.0],
 
         "occ_thres": [1.4],
-        "delta_r": [0.6],
+        "delta_r": [0.4, 0.6],
         "surface_radius_m": [0.2],
         "min_free_ratio": [0.3, 0.4],
 
         "max_n_points": [800, 1200],
-        "downssample_grid_size": [0.1, 0.2],
-        "neighbors_pca": [8, 10],
-        "max_iterations": [5, 9],
+        "downssample_grid_size": [0.1],
+        "neighbors_pca": [6, 10],
+        "max_iterations": [5, 8],
         "max_correspondence_distance": [0.3, 0.4],
-        "min_corresp": [15, 25],
+        "min_corresp": [25],
         "max_translation_jump": [0.5],
         "max_rotation_jump_deg": [45.0],
         "max_acceptable_mean_error": [0.15],
     }
+
+    
+
+# grid based subsampling finetuning
+# def _grid_axes():
+#     return {
+#         "every_nth_beam_filter": [2, 3],
+#         "every_nth_beam_map": [2],
+
+#         "occupancy_prob_pairs": [
+#             {
+#                 "increasing_probability": 0.85,
+#                 "decreasing_probability": 0.15,
+#             },
+#         ],
+#         "min_log_odds": [-5.0],
+#         "max_log_odds": [5.0],
+
+#         "occ_thres": [1.4],
+#         "delta_r": [0.6],
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.35, 0.4, 0.45],
+
+#         "max_n_points": [800, 1200],
+#         "downssample_grid_size": [0.075, 0.1, 0.125],
+#         "neighbors_pca": [5, 6, 7, 8],
+#         "max_iterations": [5],
+#         "max_correspondence_distance": [0.35, 0.4, 0.45],
+#         "min_corresp": [25],
+
+#         "max_translation_jump": [0.5],
+#         "max_rotation_jump_deg": [45.0],
+#         "max_acceptable_mean_error": [0.15],
+#     }    
 
 
 # Fine tuning for 0.05 m grid resolution 
@@ -350,6 +402,8 @@ def _grid_axes():
 
 #         # ICPParams
 #         "max_n_points": [400],
+#         "downssample_grid_size": [0.1, 0.2],
+
 #         "neighbors_pca": [10],
 #         "max_iterations": [5],
 #         "max_correspondence_distance": [0.6],
