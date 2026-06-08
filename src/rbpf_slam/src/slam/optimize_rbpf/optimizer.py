@@ -1,3 +1,7 @@
+import os
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
 from dataclasses import dataclass
 from typing import Iterable, List, Optional
 import time
@@ -9,10 +13,21 @@ import numpy as np
 
 from tqdm import tqdm
 
-from .playback_runner import PlaybackRunner
+from .playback_runner import PlaybackRunner, RawOdometryPropagator
 from .scorer import RunScorer
 from .playback_defs import ExperimentParams, PlaybackData, StepData
+from .evaluator import RBPFEvaluator
 from ..infrastructure.playback_converter import PlaybackConverter
+
+
+from ..rbpf.rbpf import (
+    RBPFFactory
+)
+
+# Declare glöobal var to store playabck data for each worker process.
+_WORKER_PLAYBACK_DATA = None
+_WORKER_RUNNER = None
+_WORKER_SCORER = None
 
 
 @dataclass
@@ -27,6 +42,96 @@ class RankedRun:
     parameter_tag: Optional[str] = None      # Optional field to add the unique parameter combination (ID)
     parameter_hash: Optional[str] = None     # Optional field to add the unique parameter combination hash (ID)
 
+
+
+
+def _init_rbpf_worker(playback_data: PlaybackData) -> None:
+    """
+    Store playback data once per worker process.
+
+    This avoids sending the full playback data again for every single parameter job.
+    """
+    global _WORKER_PLAYBACK_DATA
+    global _WORKER_RUNNER
+    global _WORKER_SCORER
+
+    # Define playback storage for worker
+    _WORKER_PLAYBACK_DATA = playback_data
+    
+    # Define runner and scorer
+    _WORKER_RUNNER = PlaybackRunner(
+        factory=RBPFFactory(),
+        evaluator=RBPFEvaluator(),
+        raw_odom_propagator=RawOdometryPropagator(),
+    )
+
+    _WORKER_SCORER = RunScorer()
+
+
+def _run_rbpf_job(job: dict) -> RankedRun:
+    """
+    Run one independent rbpf optimization job.
+
+    One job = one parameter set + one seed + one dataset.
+    Each worker creates its own runner/scorer/RBPF/scan matcher.
+    """
+    # Reference the global playback data storage
+    global _WORKER_PLAYBACK_DATA
+
+    # Check if worker vars have been initialized
+    if _WORKER_PLAYBACK_DATA is None:
+        raise RuntimeError("Worker playback data has not been initialized.")
+    
+    if _WORKER_RUNNER is None:
+        raise RuntimeError("Worker runner has not been initialized.")
+
+    if _WORKER_SCORER is None:
+        raise RuntimeError("Worker scorer has not been initialized.")
+
+    # Extract data to execute the job
+    params: ExperimentParams = job["params"]
+    run_seed: Optional[int] = job["seed"]
+    dataset_id: Optional[str] = job["dataset_id"]
+    map_name: Optional[str] = job["map_name"]
+    use_seed_list_for_measurement_noise: bool = job["use_seed_list_for_measurement_noise"]
+    keep_step_results: bool = job["keep_step_results"]
+
+    # Define seed
+    if run_seed is not None:
+        np.random.seed(run_seed)
+
+    measurement_noise_seed = (
+        run_seed if use_seed_list_for_measurement_noise else None
+    )
+
+    run_playback_data = RBPFOptimizer._apply_measurement_noise_per_seed(
+        playback_data=_WORKER_PLAYBACK_DATA,
+        measurement_stddev=params.measurement_noise_stddev,
+        measurement_noise_seed=measurement_noise_seed,
+        min_range=params.sensor_params.min_sensor_range,
+        max_range=params.sensor_params.max_sensor_range,
+    )
+
+    # Generate parameter hash to identify the parameter set used for the job
+    parameter_for_hash = RBPFOptimizer.generate_params_for_hash(params)
+    param_json = json.dumps(parameter_for_hash, sort_keys=True)
+    param_hash = hashlib.sha256(param_json.encode()).hexdigest()[:12]
+
+    # Run the runner and scorer for the job
+    run_result = _WORKER_RUNNER.run(run_playback_data, params)
+    score = _WORKER_SCORER.score(run_result.summary)
+
+    return RankedRun(
+        params=params,
+        summary=run_result.summary,
+        score=score, 
+        step_results=run_result.step_results if keep_step_results else [],
+        seed=run_seed,
+        dataset_id=dataset_id,
+        map_name=map_name,
+        parameter_tag=params.tag,
+        parameter_hash=param_hash,
+    )
 
 
 class RBPFOptimizer:
@@ -328,6 +433,124 @@ class RBPFOptimizer:
         # Sort runs by score (ascending order)
         # ranked_runs.sort(key=lambda x: x.score)
         return ranked_runs
+
+
+    def optimize_parallel(
+        self,
+        playback_data: PlaybackData,
+        param_grid: Iterable[ExperimentParams],
+        seeds: Optional[Iterable[int]] = None,
+        dataset_id: Optional[str] = None,
+        map_name: Optional[str] = None,
+        use_seed_list_for_measurement_noise: bool = True,
+        max_workers: Optional[int] = None,
+        keep_step_results: bool = False,
+    ) -> List[RankedRun]:
+        # Convert params and seeds
+        params_list = list(param_grid)
+        seed_list = [int(s) for s in seeds] if seeds is not None else [None]
+
+        # Data safety check
+        if not seed_list:
+            seed_list = [None]
+
+        if not params_list:
+            print("No parameter combinations provided. Nothing to optimize.")
+            return [], None
+
+        # Compute number of runs
+        total_n_runs = len(params_list) * len(seed_list)
+
+        # Define number of workers to use
+        if max_workers is None:
+            cpu_count = os.cpu_count() or 1
+            max_workers = max(1, cpu_count - 1)
+
+        print(
+            f"Starting PARALLEL scan-matching optimization with "
+            f"{total_n_runs} run(s), max_workers={max_workers}..."
+        )
+
+        # Define storage for jobs that needs to be done by workers
+        jobs = []
+
+        # Define jobs
+        for params in params_list:
+            for run_seed in seed_list:
+                jobs.append(
+                    {
+                        "params": params,
+                        "seed": run_seed,
+                        "dataset_id": dataset_id,
+                        "map_name": map_name,
+                        "use_seed_list_for_measurement_noise": use_seed_list_for_measurement_noise,
+                        "keep_step_results": keep_step_results,
+                    }                    
+                )
+
+        # Measure starting time
+        start_time = time.perf_counter()
+        ranked_runs: List[RankedRun] = []
+
+        # Define mp start method 
+        if "fork" in mp.get_all_start_methods():
+            mp_context = mp.get_context("fork")
+        else:
+            mp_context = None
+
+        # Define arguments for ProcessPoolExecutor
+        executor_kwargs = {
+            "max_workers": max_workers,
+            # Init is called by executor for each worker process. We got one central storage for the playback data, 
+            # so we only need to send it once at the beginning of each worker process.
+            "initializer": _init_rbpf_worker,
+            # This is the argument for the init function. Define multiple ones here if u wanne extend init function
+            "initargs": (playback_data,),
+        }
+
+        if mp_context is not None:
+            executor_kwargs["mp_context"] = mp_context
+
+        # Measure progress
+        with tqdm(
+            total=total_n_runs,
+            desc="Scan matching optimization parallel",
+            unit="run",
+        ) as pbar:
+            pbar.refresh()
+
+            # Run wroker processes
+            with ProcessPoolExecutor(**executor_kwargs) as executor:
+                # futures = [
+                #     executor.submit(_run_rbpf_job, job)
+                #     for job in jobs
+                # ]
+                futures = []
+
+                for job in jobs:
+                    future = executor.submit(_run_rbpf_job, job)
+                    futures.append(future)
+
+                for future in as_completed(futures):
+                    ranked_run = future.result()
+                    ranked_runs.append(ranked_run)
+                    pbar.update(1)
+
+
+        # Compute optimization time and print 
+        end_time = time.perf_counter()
+        optm_duration_s = end_time - start_time
+
+        print(
+            f"Finished PARALLEL Scan Matcher optimization: "
+            f"{total_n_runs}/{total_n_runs} runs in {optm_duration_s:.2f}s"
+        )
+
+        # Sort individual ranked runs by score
+        ranked_runs.sort(key=lambda x: x.score)
+
+        return ranked_runs, optm_duration_s
+
 
 
 class ScanMatcherOptimizer(RBPFOptimizer):
