@@ -130,10 +130,10 @@ class PlaybackRunner:
         # Ensure valid scan downsampling values for filter/proposal and map update.
         every_nth_filter = max(1, int(params.every_nth_scan_filter))
         every_nth_map = max(1, int(params.every_nth_scan_map))
-        print(
-            f"Running RBPF with params: {params.tag} "
-            f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
-        )
+        # print(
+        #     f"Running RBPF with params: {params.tag} "
+        #     f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
+        # )
 
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()

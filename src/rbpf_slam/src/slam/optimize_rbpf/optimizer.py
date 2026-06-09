@@ -207,6 +207,14 @@ class RBPFOptimizer:
 
             # MeasurementModelParams
             "measurement_sigma_measurement": exp_params.measurement_model_params.sigma_hit,
+            "occ_thresh": exp_params.measurement_model_params.occ_thresh,
+            "sigma_hit": exp_params.measurement_model_params.sigma_hit,
+            "z_hit": exp_params.measurement_model_params.z_hit,
+            "z_rand": exp_params.measurement_model_params.z_rand,
+            "p_max_no_obstacle": exp_params.measurement_model_params.p_max_no_obstacle,
+            "p_max_obstacle": exp_params.measurement_model_params.p_max_obstacle,
+            "p_no_obstacle_for_hit": exp_params.measurement_model_params.p_no_obstacle_for_hit,
+            "beam_step": exp_params.measurement_model_params.beam_step,
 
             # ExperimentParams
             "every_nth_scan_filter": exp_params.every_nth_scan_filter,

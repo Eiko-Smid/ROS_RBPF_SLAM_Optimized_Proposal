@@ -495,26 +495,26 @@ from .aggregator import RankedRunConverter, ResultAggregator
         30.2 Second run on new AWS indoor map 
 
 
-30.1 Implemented Laser range finder model (ray tracing based)
+31 Implemented Laser range finder model (ray tracing based)
 
-    - Implemented new ray tracing measruement model in order to get better measurement probs 
+    - Implemented new ray tracing measurement model in order to get better measurement probabilities 
 
     
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_2_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_2_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_2_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_30_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_params.json'
 
-USED_MEAS_MODEL = "Old_NN_Based"
+USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
 
@@ -527,8 +527,9 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
+# SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -643,18 +644,27 @@ def _compute_wheel_separation() -> float:
 def _grid_axes() -> dict:
     return {
         # General rbpf params
-        "every_nth_beam_filter": [4],               # use every nth beam for proposal/scan matching
+        "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
         "n_particles": [1],                         # number of particles in the RBPF
-        "neff_threshold": [20],                     # Number of effective particles threshold for resampling
+        "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
         # measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        # Beam range finder measurement model params
+        "beam_occ_thresh": [1.4],
+        "beam_sigma_hit": [0.10, 0.15, 0.20, 0.25],
+        "beam_z_hit": [0.95],
+        "beam_z_rand": [0.05],
+        "beam_p_max_no_obstacle": [0.8],
+        "beam_p_max_obstacle": [0.02],
+        "beam_p_no_obstacle_for_hit": [0.005, 0.02],
+        "beam_step": [1, 2],
         
         # Motion model params
-        "sigma_xy_motion": [0.2],       # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.07],           # motion model uncertainty in theta direction [rad]
+        "sigma_xy_motion": [0.12, 0.18],               # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.04, 0.08],                  # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
         
@@ -664,15 +674,17 @@ def _grid_axes() -> dict:
         # so these three values are sampled together (no Cartesian product among them).
         "proposal_param_sets": [
             {
+                "proposal_sigma_xy": 0.02,      # # Proposal window size in x/y direction [m]
+                "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+                "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+            },
+
+            {
                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
             },
-            {
-                "proposal_sigma_xy": 0.1,
-                "proposal_sigma_theta": 0.06,
-                "n_samples_dir": 5,
-            },
+            
         ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
@@ -680,8 +692,63 @@ def _grid_axes() -> dict:
 
         # ScanMatcherParams (map extraction)
         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-        "min_free_ratio": [0.25],
+        "min_free_ratio": [0.4],
     }
+
+
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [1],                         # number of particles in the RBPF
+#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+
+#         # measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+#         # Beam range finder measurement model params
+#         "beam_occ_thresh": [1.4],
+#         "beam_sigma_hit": [0.15],
+#         "beam_z_hit": [0.95],
+#         "beam_z_rand": [0.05],
+#         "beam_p_max_no_obstacle": [0.8],
+#         "beam_p_max_obstacle": [0.02],
+#         "beam_p_no_obstacle_for_hit": [0.02],
+#         "beam_step": [1, 2],
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.18],               # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.08],                  # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.02,      # # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             },
+
+#             {
+#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             },
+            
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.4],
+#     }
 
 
 def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
@@ -761,6 +828,14 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
         raise ValueError("No proposal parameter sets configured.")
 
     meas_kernel_size = axes.get("meas_kernel_size", [1])
+    beam_occ_thresh = axes.get("beam_occ_thresh", [1.4])
+    beam_sigma_hit = axes.get("beam_sigma_hit", [0.15])
+    beam_z_hit = axes.get("beam_z_hit", [0.95])
+    beam_z_rand = axes.get("beam_z_rand", [0.05])
+    beam_p_max_no_obstacle = axes.get("beam_p_max_no_obstacle", [0.8])
+    beam_p_max_obstacle = axes.get("beam_p_max_obstacle", [0.02])
+    beam_p_no_obstacle_for_hit = axes.get("beam_p_no_obstacle_for_hit", [0.01])
+    beam_step = axes.get("beam_step", [1])
     proposal_alpha = axes.get("proposal_alpha", [1.0])
     proposal_beta = axes.get("proposal_beta", [1.0])
     surface_radius_m = axes.get("surface_radius_m", [0.1])
@@ -782,6 +857,14 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             neff_th,
             proposal_triplet,
             kernel_size,
+            beam_occ_th,
+            beam_sigma_h,
+            beam_z_h,
+            beam_z_r,
+            beam_p_max_no_occ,
+            beam_p_max_occ,
+            beam_p_no_occ_hit,
+            beam_step_size,
             alpha,
             beta,
             surface_r,
@@ -798,6 +881,14 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             neff_threshold,
             proposal_triplets,
             meas_kernel_size,
+            beam_occ_thresh,
+            beam_sigma_hit,
+            beam_z_hit,
+            beam_z_rand,
+            beam_p_max_no_obstacle,
+            beam_p_max_obstacle,
+            beam_p_no_obstacle_for_hit,
+            beam_step,
             proposal_alpha,
             proposal_beta,
             surface_radius_m,
@@ -822,13 +913,13 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 map_param=MapParameter(
                     map_width=10.0,
                     map_height=10.0,
-                    grid_resolution_m=0.1,
+                    grid_resolution_m=0.05,
                 ),
                 icp_params=ICPParams(
-                    max_n_points=400,
+                    max_n_points=1200,
                     downssample_grid_size=0.1,
-                    max_correspondence_distance=0.6,
-                    neighbors_pca=10,
+                    max_correspondence_distance=0.4,
+                    neighbors_pca=6,
                     max_iterations=5,
                     epsilon_rel=1e-3,
                     no_improvement_limit=3,
@@ -836,10 +927,10 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     min_dtrans=1e-3, 
                     min_drot=1e-2,
                     min_points=20,
-                    min_corresp=15,
+                    min_corresp=25,
                     min_hessian_rank=3,
                     max_hessian_condition=1e8,
-                    max_translation_jump=0.3,
+                    max_translation_jump=0.5,
                     max_rotation_jump=np.deg2rad(45.0),
                     max_acceptable_mean_error=0.15,
                 ),
@@ -847,8 +938,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     wheel_separation=wheel_separation,
                 ),
                 scan_matcher_params=ScanMatcherParams(
-                    occ_thres=1.2,
-                    delta_r=0.4,
+                    occ_thres=1.4,
+                    delta_r=0.6,
                     surface_radius_m=surface_r,
                     min_free_ratio=min_free,
                 ),
@@ -869,14 +960,14 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 #     sigma_measurement=sigma_meas,
                 # ),
                 measurement_model_params=BeamRangeFinderMeasModelParams(
-                    occ_thresh= 1.4,
-                    sigma_hit= 0.15,
-                    z_hit= 0.95,
-                    z_rand= 0.05,
-                    p_max_no_obstacle= 0.8,
-                    p_max_obstacle= 0.02,
-                    p_no_obstacle_for_hit= 0.01,
-                    beam_step= 1,
+                    occ_thresh=beam_occ_th,
+                    sigma_hit=beam_sigma_h,
+                    z_hit=beam_z_h,
+                    z_rand=beam_z_r,
+                    p_max_no_obstacle=beam_p_max_no_occ,
+                    p_max_obstacle=beam_p_max_occ,
+                    p_no_obstacle_for_hit=beam_p_no_occ_hit,
+                    beam_step=beam_step_size,
                 ),
                 every_nth_scan_filter=every_nth_filter,
                 every_nth_scan_map=every_nth_map,
@@ -894,6 +985,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
                     f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
+                    f"boct{beam_occ_th}_bsh{beam_sigma_h}_bzh{beam_z_h}_bzr{beam_z_r}_"
+                    f"bpnno{beam_p_max_no_occ}_bpno{beam_p_max_occ}_bpnh{beam_p_no_occ_hit}_bs{beam_step_size}_"
                     f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}"
                 ),
             )
