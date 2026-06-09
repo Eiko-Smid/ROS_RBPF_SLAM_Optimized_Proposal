@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-import debugpy
-debugpy.listen(("localhost", 5678))
-print("Waiting for debugger attach...")
-debugpy.wait_for_client()
+# import debugpy
+# debugpy.listen(("localhost", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
 
 
 import itertools
@@ -171,7 +171,7 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 # Define icp control params [skip_subsampling]
-ICP_CTRL_PARAMS = [False]
+ICP_CTRL_PARAMS = [True]
 
 
 @dataclass

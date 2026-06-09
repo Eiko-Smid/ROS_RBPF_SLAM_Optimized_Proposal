@@ -425,6 +425,111 @@ class ProposalEstimator:
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose    
 
 
+    def compute_proposal_params_range_finder_model(
+        self,
+        scan_match_pose: Pose2D,
+        particle: Particle,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+        motion_model: MotionModel,
+        measurement_model: MeasurementModel,
+        sigma_xy: float=1.0,
+        sigma_theta: float=1.0,
+        n_samples: int=3,
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D, float]:
+        '''
+        Proposal computation with deterministic sampling around scan match pose. Motion and measurement probabilities are 
+        computed in batch to speedup process. The old NN based measurment model is used here with clipped distances!
+        '''
+        # Define vars
+        norm = 0.0
+        mu = np.zeros(3)
+
+        samples, n_samples = self.sample_poses_deterministic(
+            pose=scan_match_pose,
+            sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
+            n_samples_dir=n_samples,
+        )
+
+        # Predict particle pose based on odometry and old particle pose 
+        dl, dr = odom
+        pred_pose = motion_model.predict_pose(
+            pose=particle.pose,
+            dl=dl,
+            dr=dr,
+        )
+       
+        # Compute measurement model likelihoods for each sample  
+        log_likelihoods = np.empty(shape=(samples.shape[0],))
+        for i, sample in enumerate(samples):
+            results = measurement_model.likelihood(
+                pose=sample,
+                measurements=measurements,
+                ogm=particle.scan_matcher.ogm,
+            )
+            log_likelihood = results.get("log_likelihood", -np.inf)
+
+            log_likelihoods[i] = log_likelihood
+            
+        # Convert log-likelihoods to probabilities in save manner
+        max_log_likelihood = np.max(log_likelihoods)
+
+        if not np.isfinite(max_log_likelihood):
+            mu = np.asarray(scan_match_pose, dtype=float)
+            cov = 1e-6 * np.eye(3)
+            weights = np.ones(samples.shape[0], dtype=float)
+            meas_probs = np.ones(samples.shape[0], dtype=float)
+            motion_probs = np.ones(samples.shape[0], dtype=float)
+            norm =  1e-12
+            log_eta = -np.inf
+            return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
+        else:
+            meas_probs = np.exp(log_likelihoods - max_log_likelihood)
+
+        # Compute motion probs
+        motion_probs = motion_model.motion_probability_batch(
+            x_new=samples,
+            x_prev=pred_pose,
+        )
+
+        # Compute weights 
+        weights = motion_probs * meas_probs
+        norm = np.sum(weights)                       
+
+        if (not np.isfinite(norm)) or norm <= 1e-12:
+            # Fallback when all sample weights collapse to zero/invalid values.
+            mu = np.asarray(scan_match_pose, dtype=float)
+            cov = 1e-6 * np.eye(3)
+            weights = np.ones(samples.shape[0], dtype=float)
+            meas_probs = np.ones(samples.shape[0], dtype=float)
+            motion_probs = np.ones(samples.shape[0], dtype=float)
+            norm =  1e-12
+            log_eta = -np.inf
+            return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
+        
+        # Compute log eta for success case
+        log_eta = max_log_likelihood + np.log(norm)
+
+        # Vectorize computation of mu and cov
+        # Compute mu
+        mu = np.sum(samples * weights[:, None], axis=0) / norm
+
+        # Compute covariance matrix
+        # Compute deviation from the mean
+        x_minus_mu = samples - mu
+        # Ensure valid angles
+        x_minus_mu[:, self.IDX_THETA] = np.arctan2(np.sin(x_minus_mu[:, self.IDX_THETA]), np.cos(x_minus_mu[:, self.IDX_THETA]))
+        # Compute noralized covariance
+        cov = (weights[:, None] * x_minus_mu).T @ x_minus_mu / norm
+
+        # Ensure covariance matrix is positive definite by adding small values to diagonal
+        cov += 1e-6 * np.eye(3)
+
+        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta 
+
+
+
     def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
         '''
         Sample a new pose from a Gaussian distribution with mean mu and covariance sigma. Ensures angles are normalized.
@@ -454,6 +559,7 @@ class ProposalEstimator:
         '''
 
         '''
+
         # Compute proposal parameters old variant (NN tree distances + clip)
         mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch_copy(
             scan_match_pose=scan_match_pose,
@@ -519,3 +625,46 @@ class ProposalEstimator:
         new_pose = mu 
         
         return new_pose, p_weight, info
+    
+
+    def estimate_proposal_range_finder(
+        self,
+        scan_match_pose: Pose2D,
+        particle: Particle,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+        motion_model: MotionModel,
+        measurement_model: MeasurementModel,
+        sigma_xy: float=1.0,
+        sigma_theta: float=1.0,
+        n_samples: int=3,
+    ):
+        # Compute proposal parameter with ray tracing 
+        mu, cov, norm, xjs, xj_weights, meas_probs, motion_probs, pred_pose, log_eta = self.compute_proposal_params_range_finder_model(
+            scan_match_pose=scan_match_pose,
+            particle=particle,
+            odom=odom,
+            measurements=measurements,
+            motion_model=motion_model,
+            measurement_model=measurement_model,
+            sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
+            n_samples=n_samples,
+        )
+
+        info = {
+            "prop_mu": mu,
+            "prop_cov_matrix": cov,
+            "scan_match_pose": np.asarray(scan_match_pose, dtype=float),
+            "pred_pose": np.asarray(pred_pose, dtype=float),
+            "xjs": xjs,
+            "xj_weights": xj_weights,
+            "motion_probs": motion_probs,
+            "meas_probs": meas_probs,
+        }
+
+        # Estimate new particle pose
+        # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
+        new_p_pose = mu
+
+        return new_p_pose, log_eta, info

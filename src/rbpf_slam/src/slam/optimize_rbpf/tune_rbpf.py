@@ -16,7 +16,13 @@ from .playback_defs import ExperimentParams, PlaybackData
 from ..infrastructure.playback_loader import PlaybackLoader
 from ..infrastructure.playback_converter import PlaybackConverter
 
-from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
+from ..rbpf.rbpf import (
+    RBPFFactory,
+    ParticleParams,
+    MotionModelParams,
+    MeasurementModelParams,
+    BeamRangeFinderMeasModelParams
+)
 from ..rbpf.scan_match_factory import (
     OccupancyParams,
     SensorParams,
@@ -488,6 +494,12 @@ from .aggregator import RankedRunConverter, ResultAggregator
 
         30.2 Second run on new AWS indoor map 
 
+
+30.1 Implemented Laser range finder model (ray tracing based)
+
+    - Implemented new ray tracing measruement model in order to get better measurement probs 
+
+    
 '''
 
 
@@ -852,8 +864,19 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     ctrl_motion_fac=ctrl_motion,
                     ctrl_turn_fac=ctrl_turn,
                 ),
-                measurement_model_params=MeasurementModelParams(
-                    sigma_measurement=sigma_meas,
+                # TODO: Adapt measurement model here!
+                # measurement_model_params=MeasurementModelParams(
+                #     sigma_measurement=sigma_meas,
+                # ),
+                measurement_model_params=BeamRangeFinderMeasModelParams(
+                    occ_thresh= 1.4,
+                    sigma_hit= 0.15,
+                    z_hit= 0.95,
+                    z_rand= 0.05,
+                    p_max_no_obstacle= 0.8,
+                    p_max_obstacle= 0.02,
+                    p_no_obstacle_for_hit= 0.01,
+                    beam_step= 1,
                 ),
                 every_nth_scan_filter=every_nth_filter,
                 every_nth_scan_map=every_nth_map,

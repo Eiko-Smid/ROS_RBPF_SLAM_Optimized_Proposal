@@ -25,7 +25,7 @@ class MeasurementModel(ABC):
         **kwargs,
     ) -> float:
         '''
-        Compute the likelihood of a pose given a set of measurements and a scan matcher.
+        Compute the likelihood of a pose given a set of measurements.
 
         Parameters:
         pose: Pose2D  

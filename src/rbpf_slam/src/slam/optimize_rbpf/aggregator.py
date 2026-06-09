@@ -73,7 +73,9 @@ class RankedRunConverter:
                 "every_nth_beam_filter": params.every_nth_scan_filter,
                 "every_nth_beam_map": params.every_nth_scan_map,
                 "n_particles": params.particle_params.n_particles,
-                "sigma_measurement": params.measurement_model_params.sigma_measurement,
+                # TODO: Adapt measurement model here!
+                # "sigma_measurement": params.measurement_model_params.sigma_measurement,
+                "sigma_measurement":params.measurement_model_params.sigma_hit,
                 "proposal_alpha": params.proposal_alpha,
                 "proposal_beta": params.proposal_beta,
                 "sigma_x_motion": params.motion_model_params.sigma_x,

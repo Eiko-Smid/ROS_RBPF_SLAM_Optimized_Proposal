@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..rbpf.scan_match_factory import OccupancyParams, SensorParams, MapParameter, ICPParams, RobotParams, ScanMatcherParams
-from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
+from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams, BeamRangeFinderMeasModelParams
 
 
 @dataclass
@@ -39,7 +39,9 @@ class ExperimentParams:
     scan_matcher_params: ScanMatcherParams
     particle_params: ParticleParams
     motion_model_params: MotionModelParams
-    measurement_model_params: MeasurementModelParams
+    # measurement_model_params: MeasurementModelParams
+    measurement_model_params: BeamRangeFinderMeasModelParams
+
     tag: str
     every_nth_scan_filter: int = 4
     every_nth_scan_map: int = 2

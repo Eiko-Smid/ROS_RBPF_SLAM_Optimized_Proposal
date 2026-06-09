@@ -160,7 +160,20 @@ class PlaybackRunner:
                 print("Debug here")
 
             # Run rbpf filter step
-            rbpf.step(
+            # rbpf.step(
+            #     odom=(step.dl, step.dr),
+            #     measurements_proposal=measurements_proposal,
+            #     measurements_map_update=measurements_map,
+            #     true_pose=step.true_pose,
+            #     proposal_sigma_xy=params.proposal_sigma_xy,
+            #     proposal_sigma_theta=params.proposal_sigma_theta,
+            #     proposal_n_samples=params.proposal_n_samples,
+            #     meas_kernel_size=params.meas_kernel_size,
+            #     gaussian_sigma=params.gaussian_sigma,
+            #     proposal_alpha=params.proposal_alpha,
+            #     proposal_beta=params.proposal_beta,
+            # )
+            rbpf.step_range_finder_model(
                 odom=(step.dl, step.dr),
                 measurements_proposal=measurements_proposal,
                 measurements_map_update=measurements_map,
@@ -168,10 +181,6 @@ class PlaybackRunner:
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
-                meas_kernel_size=params.meas_kernel_size,
-                gaussian_sigma=params.gaussian_sigma,
-                proposal_alpha=params.proposal_alpha,
-                proposal_beta=params.proposal_beta,
             )
 
             # Measure step duration
