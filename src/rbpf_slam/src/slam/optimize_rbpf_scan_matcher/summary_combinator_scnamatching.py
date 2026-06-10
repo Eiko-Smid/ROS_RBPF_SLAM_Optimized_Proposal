@@ -55,7 +55,7 @@ TODO
 
 '''
 
-# Define data path
+# Define data storage path
 COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_4_2_summary'
 PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/comb_optimization_results/sm_optm_4_2_params.json'
 
@@ -77,6 +77,7 @@ class LoadedOptmResultData:
     ranked_param_overview: pd.DataFrame
     
 
+# Define data to load
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results',
@@ -99,6 +100,7 @@ OVERRIDE_EXISTING_RESULTS = False
 COLS_TO_DEL_SUMMARY_RANKED_SCORED = ["score"]
 COLS_TO_DEL_PARAM_SUMMARY = ["rank", "global_score"]
 
+# Data to filter (exclude)
 FILTER_DUPL_BY_COL = ["dataset_id", "parameter_hash", "seed"]
 FILTER_COL = "dataset_id"
 FILTER_PLAYBACK_IDS = ["1779375646"]
@@ -106,7 +108,7 @@ FILTER_PLAYBACK_IDS = ["1779375646"]
 
 # Mapping from ScanMatchingScorer summary keys to columns
 # Value format: [column_name, is_angle]
-# We transform the angles from deg to rad in this scipt. For simpicity we keep the "_deg" in the column names!
+# We transform the angles from deg to rad in this script. For simpicity we keep the "_deg" in the column names!
 SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
     "rmse_corr_trans_err": ["rmse_corr_trans_err", False],
     "rmse_corr_rot_err": ["rmse_corr_rot_err_deg", True],
@@ -432,86 +434,86 @@ class RankeScoredSummaryCombiner:
         return pd.concat(aligned_dfs, axis=0, ignore_index=True)
 
 
-class RankeScoredSummaryCombinerCopy:
-    @staticmethod
-    def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
-        # Check if results exist
-        if len(loaded_results) == 0:
-            raise ValueError("No loaded results given.")
+# class RankeScoredSummaryCombinerCopy:
+#     @staticmethod
+#     def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
+#         # Check if results exist
+#         if len(loaded_results) == 0:
+#             raise ValueError("No loaded results given.")
 
-        # Storage for cleaned dfs
-        cleaned_dfs: List[pd.DataFrame] = []
+#         # Storage for cleaned dfs
+#         cleaned_dfs: List[pd.DataFrame] = []
 
-        # Preprocess dfs
-        for loaded_result in loaded_results:
-            df = loaded_result.rank_scored_summary.copy()
+#         # Preprocess dfs
+#         for loaded_result in loaded_results:
+#             df = loaded_result.rank_scored_summary.copy()
 
-            if "score" in df.columns:
-                df = df.drop(columns=["score"])
+#             if "score" in df.columns:
+#                 df = df.drop(columns=["score"])
 
-            cleaned_dfs.append(df)
+#             cleaned_dfs.append(df)
         
-        aligned_dfs = RankeScoredSummaryCombiner.check_and_corr_differences(cleaned_dfs)
+#         aligned_dfs = RankeScoredSummaryCombiner.check_and_corr_differences(cleaned_dfs)
 
-        return aligned_dfs
+#         return aligned_dfs
         
 
-    @staticmethod
-    def check_and_corr_differences(df_list: List[pd.DataFrame]):
-        # Extract reference df
-        reference_col = df_list[0].columns
+#     @staticmethod
+#     def check_and_corr_differences(df_list: List[pd.DataFrame]):
+#         # Extract reference df
+#         reference_col = df_list[0].columns
 
-        # Define storage for dfs
-        aligned_dfs: List[pd.DataFrame] = [df_list[0]]
+#         # Define storage for dfs
+#         aligned_dfs: List[pd.DataFrame] = [df_list[0]]
 
-        # Check if all dfs have the same columns and print differences
-        for i, df in enumerate(df_list[1:], start=1):
-            current_col = df.columns
+#         # Check if all dfs have the same columns and print differences
+#         for i, df in enumerate(df_list[1:], start=1):
+#             current_col = df.columns
 
-            # Find missing and additional columns
-            missing_col = reference_col.difference(current_col)
-            additional_col = current_col.difference(reference_col)
+#             # Find missing and additional columns
+#             missing_col = reference_col.difference(current_col)
+#             additional_col = current_col.difference(reference_col)
 
-            # Define indicators
-            same_names = len(missing_col) == 0 and len(additional_col) == 0
-            same_order = list(current_col) == list(reference_col)
+#             # Define indicators
+#             same_names = len(missing_col) == 0 and len(additional_col) == 0
+#             same_order = list(current_col) == list(reference_col)
 
-            # Handle different or not equal column names
-            if not same_names:
-                print(f"\nColumn name mismatch in dataframe index {i}")
+#             # Handle different or not equal column names
+#             if not same_names:
+#                 print(f"\nColumn name mismatch in dataframe index {i}")
 
-                if len(missing_col) > 0:
-                    print("\nMissing columns compared to reference:")
-                    for col in missing_col:
-                        print(f"  - {col}")
+#                 if len(missing_col) > 0:
+#                     print("\nMissing columns compared to reference:")
+#                     for col in missing_col:
+#                         print(f"  - {col}")
 
-                if len(additional_col) > 0:
-                    print("\nAdditional columns compared to reference:")
-                    for col in additional_col:
-                        print(f"  - {col}")
+#                 if len(additional_col) > 0:
+#                     print("\nAdditional columns compared to reference:")
+#                     for col in additional_col:
+#                         print(f"  - {col}")
 
-                return None
+#                 return None
 
-            # handle column order missmatch but same column names
-            if not same_order:
-                print(f"\nColumn order mismatch in dataframe index {i}")
-                print("Same column names found. Reordering dataframe to match reference order.")
+#             # handle column order missmatch but same column names
+#             if not same_order:
+#                 print(f"\nColumn order mismatch in dataframe index {i}")
+#                 print("Same column names found. Reordering dataframe to match reference order.")
 
-                different_positions = [
-                    (pos, ref_col, cur_col)
-                    for pos, (ref_col, cur_col) in enumerate(zip(reference_col, current_col))
-                    if ref_col != cur_col
-                ]
+#                 different_positions = [
+#                     (pos, ref_col, cur_col)
+#                     for pos, (ref_col, cur_col) in enumerate(zip(reference_col, current_col))
+#                     if ref_col != cur_col
+#                 ]
 
-                print("\nDifferent column positions:")
-                for pos, ref_col, cur_col in different_positions:
-                    print(f"  - position {pos}: reference='{ref_col}', current='{cur_col}'")
+#                 print("\nDifferent column positions:")
+#                 for pos, ref_col, cur_col in different_positions:
+#                     print(f"  - position {pos}: reference='{ref_col}', current='{cur_col}'")
 
-                df = df.loc[:, reference_col]
+#                 df = df.loc[:, reference_col]
 
-            aligned_dfs.append(df)
+#             aligned_dfs.append(df)
 
-        return pd.concat(aligned_dfs, axis=0, ignore_index=True)
+#         return pd.concat(aligned_dfs, axis=0, ignore_index=True)
 
 
 def load_data(load_optm_res_data: LoadOptmResultData) -> List[LoadedOptmResultData]:

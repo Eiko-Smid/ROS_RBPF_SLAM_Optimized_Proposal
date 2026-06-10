@@ -62,9 +62,10 @@ TODO
 
 '''
 
-# Define data path
-COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_summary'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_test_2_params.json'
+# Define data storage path
+COMB_OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_30_summary'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/comb_optimization_results/proposal_optm_30_params.json'
+
 
 
 @dataclass
@@ -84,6 +85,7 @@ class LoadedOptmResultData:
     ranked_param_overview: pd.DataFrame
     
 
+# Define data to load
 OPTM_RESULT_DATA_LIST = [
     OptmResultData(
         dir='/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results',
@@ -100,15 +102,24 @@ OPTM_RESULT_DATA_LIST = [
 ]
 
 CSV_FLOAT_DECIMALS = 6
+# Decide if existing results should be overwritten or not. If true existing files with the same name will be overwritten 
+# by the current results 
 OVERRIDE_EXISTING_RESULTS = False
 
 # Columns to delete
 COLS_TO_DEL_SUMMARY_RANKED_SCORED = ["score"]
 COLS_TO_DEL_PARAM_SUMMARY = ["rank", "global_score"]
 
+# Data to filter (exclude)
+FILTER_DUPL_BY_COL = ["dataset_id", "parameter_hash", "seed"]
+FILTER_COL = "dataset_id"
+FILTER_PLAYBACK_IDS = ["1779375646"]
+
+
 
 # Mapping from RunScorer summary keys to columns
 # Value format: [column_name, is_angle]
+# We transform the angles from deg to rad in this script. For simpicity we keep the "_deg" in the column names!
 SCORER_SUMMARY_DF_MAPPINGS: Dict[str, List[Union[str, bool]]] = {
     "n_steps": ["n_steps", False],
     "proposal_n_samples": ["n_samples_dir", False],
@@ -453,86 +464,86 @@ class RankeScoredSummaryCombiner:
         return pd.concat(aligned_dfs, axis=0, ignore_index=True)
 
 
-class RankeScoredSummaryCombinerCopy:
-    @staticmethod
-    def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
-        # Check if results exist
-        if len(loaded_results) == 0:
-            raise ValueError("No loaded results given.")
+# class RankeScoredSummaryCombinerCopy:
+#     @staticmethod
+#     def combine(loaded_results: List[LoadedOptmResultData]) -> Optional[pd.DataFrame]:
+#         # Check if results exist
+#         if len(loaded_results) == 0:
+#             raise ValueError("No loaded results given.")
 
-        # Storage for cleaned dfs
-        cleaned_dfs: List[pd.DataFrame] = []
+#         # Storage for cleaned dfs
+#         cleaned_dfs: List[pd.DataFrame] = []
 
-        # Preprocess dfs
-        for loaded_result in loaded_results:
-            df = loaded_result.rank_scored_summary.copy()
+#         # Preprocess dfs
+#         for loaded_result in loaded_results:
+#             df = loaded_result.rank_scored_summary.copy()
 
-            if "score" in df.columns:
-                df = df.drop(columns=["score"])
+#             if "score" in df.columns:
+#                 df = df.drop(columns=["score"])
 
-            cleaned_dfs.append(df)
+#             cleaned_dfs.append(df)
         
-        aligned_dfs = RankeScoredSummaryCombiner.check_and_corr_differences(cleaned_dfs)
+#         aligned_dfs = RankeScoredSummaryCombiner.check_and_corr_differences(cleaned_dfs)
 
-        return aligned_dfs
+#         return aligned_dfs
         
 
-    @staticmethod
-    def check_and_corr_differences(df_list: List[pd.DataFrame]):
-        # Extract reference df
-        reference_col = df_list[0].columns
+#     @staticmethod
+#     def check_and_corr_differences(df_list: List[pd.DataFrame]):
+#         # Extract reference df
+#         reference_col = df_list[0].columns
 
-        # Define storage for dfs
-        aligned_dfs: List[pd.DataFrame] = [df_list[0]]
+#         # Define storage for dfs
+#         aligned_dfs: List[pd.DataFrame] = [df_list[0]]
 
-        # Check if all dfs have the same columns and print differences
-        for i, df in enumerate(df_list[1:], start=1):
-            current_col = df.columns
+#         # Check if all dfs have the same columns and print differences
+#         for i, df in enumerate(df_list[1:], start=1):
+#             current_col = df.columns
 
-            # Find missing and additional columns
-            missing_col = reference_col.difference(current_col)
-            additional_col = current_col.difference(reference_col)
+#             # Find missing and additional columns
+#             missing_col = reference_col.difference(current_col)
+#             additional_col = current_col.difference(reference_col)
 
-            # Define indicators
-            same_names = len(missing_col) == 0 and len(additional_col) == 0
-            same_order = list(current_col) == list(reference_col)
+#             # Define indicators
+#             same_names = len(missing_col) == 0 and len(additional_col) == 0
+#             same_order = list(current_col) == list(reference_col)
 
-            # Handle different or not equal column names
-            if not same_names:
-                print(f"\nColumn name mismatch in dataframe index {i}")
+#             # Handle different or not equal column names
+#             if not same_names:
+#                 print(f"\nColumn name mismatch in dataframe index {i}")
 
-                if len(missing_col) > 0:
-                    print("\nMissing columns compared to reference:")
-                    for col in missing_col:
-                        print(f"  - {col}")
+#                 if len(missing_col) > 0:
+#                     print("\nMissing columns compared to reference:")
+#                     for col in missing_col:
+#                         print(f"  - {col}")
 
-                if len(additional_col) > 0:
-                    print("\nAdditional columns compared to reference:")
-                    for col in additional_col:
-                        print(f"  - {col}")
+#                 if len(additional_col) > 0:
+#                     print("\nAdditional columns compared to reference:")
+#                     for col in additional_col:
+#                         print(f"  - {col}")
 
-                return None
+#                 return None
 
-            # handle column order missmatch but same column names
-            if not same_order:
-                print(f"\nColumn order mismatch in dataframe index {i}")
-                print("Same column names found. Reordering dataframe to match reference order.")
+#             # handle column order missmatch but same column names
+#             if not same_order:
+#                 print(f"\nColumn order mismatch in dataframe index {i}")
+#                 print("Same column names found. Reordering dataframe to match reference order.")
 
-                different_positions = [
-                    (pos, ref_col, cur_col)
-                    for pos, (ref_col, cur_col) in enumerate(zip(reference_col, current_col))
-                    if ref_col != cur_col
-                ]
+#                 different_positions = [
+#                     (pos, ref_col, cur_col)
+#                     for pos, (ref_col, cur_col) in enumerate(zip(reference_col, current_col))
+#                     if ref_col != cur_col
+#                 ]
 
-                print("\nDifferent column positions:")
-                for pos, ref_col, cur_col in different_positions:
-                    print(f"  - position {pos}: reference='{ref_col}', current='{cur_col}'")
+#                 print("\nDifferent column positions:")
+#                 for pos, ref_col, cur_col in different_positions:
+#                     print(f"  - position {pos}: reference='{ref_col}', current='{cur_col}'")
 
-                df = df.loc[:, reference_col]
+#                 df = df.loc[:, reference_col]
 
-            aligned_dfs.append(df)
+#             aligned_dfs.append(df)
 
-        return pd.concat(aligned_dfs, axis=0, ignore_index=True)
+#         return pd.concat(aligned_dfs, axis=0, ignore_index=True)
 
 
 def load_data(load_optm_res_data: LoadOptmResultData) -> List[LoadedOptmResultData]:
@@ -590,6 +601,52 @@ def combine_summary_runs(
     return summary_run
 
 
+
+def filter_playback(
+    df: pd.DataFrame,
+    filter_dupl_by_cols: Optional[List[str]] = None,
+    filter_col: Optional[str] = None,
+    filter_values: Optional[List[str]] = None,
+):
+    '''
+    Erase duplicate rows and filter the given df by the given playback ids in the given column. If filter_col or filter_values is None, 
+    the original df is returned. All rows with a value in filter_col that is in filter_values are deleted.
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        The dataframe to filter.
+    filter_dupl_by_cols: List[str]
+        The column names to filter duplicates by. If None, no duplicate filtering is applied.
+    filter_col: str
+        The column name to filter by. If None, no filtering is applied.
+    filter_values: List[str]
+        The values to filter by. All rows with a value in filter_col that is in this list are deleted. 
+        If None, no filtering is applied.
+
+    Returns
+    -------
+    pd.DataFrame        
+        The filtered dataframe.
+    ''' 
+    # Erase duplicate rows
+    filtered_df: pd.DataFrame = df.copy()
+
+    if filter_dupl_by_cols is not None:
+        filtered_df = filtered_df.drop_duplicates(
+            subset=filter_dupl_by_cols
+        ).reset_index(drop=True)
+    else:
+        filtered_df = filtered_df.drop_duplicates().reset_index(drop=True)
+
+    # Filter all columns that have a value in filter_col 
+    if filter_col is not None and filter_values is not None:        
+        filtered_df = filtered_df[~filtered_df[filter_col].isin(filter_values)].reset_index(drop=True)
+
+    return filtered_df
+
+
+
 def extract_and_convert_scorer_cols(
         summary_run: pd.DataFrame,
         col_mappings: Dict,
@@ -597,7 +654,7 @@ def extract_and_convert_scorer_cols(
     '''
     Extracts the columns from the given summary run dataframe based on the given column mappings. Convert all 
     columns marked as angle from deg to rad. Stores extracted columns into new df. Functions assumes that indicators
-    are correct. Wrong column names will raise key error. 
+    are correct. Wrong column names will raise key error.
 
     Parameters
     ----------
@@ -635,6 +692,47 @@ def extract_and_convert_scorer_cols(
             )
     
     return scorer_df
+
+
+
+# def prepare_scorer(
+#     summary_run_df: pd.DataFrame,
+#     col_mappings: Dict,
+# ):
+#     summary_list = []
+
+#     valid_fields = {field.name for field in fields(RunS)}
+    
+#     for i in range(summary_run_df.shape[0]):
+#         # Init summary with none vals
+#         summary = RunSummaryScanMatching.init_with_none()
+
+#         for key, data in col_mappings.items():
+#             col_name, is_angle_deg = data
+
+#             # Check if data exists
+#             if key not in valid_fields:
+#                 raise ValueError(
+#                     f"Mapping key '{key}' is not a valid RunSummaryScanMatching field."
+#                 )
+            
+#             if col_name not in summary_run_df.columns:
+#                 raise ValueError(
+#                     f"Column '{col_name}' not found in summary_run_df."
+#                 )
+        
+#             value = summary_run_df.loc[i, col_name]
+
+#             # Convert tio rad if its an angle
+#             if is_angle_deg:
+#                 value = np.deg2rad(value)
+            
+#             # Set attribute
+#             setattr(summary, key, value)
+
+#         summary_list.append(summary)
+    
+#     return summary_list
 
 
 def score_summary_runs(
@@ -813,9 +911,24 @@ def main():
     else:
         print("\nSuccessfully combined summary run dataframes:\n")
     
+    # Filter certain columns and erase rows
+    filtered_summary_df = filter_playback(
+        df=summary_run,
+        filter_dupl_by_cols=FILTER_DUPL_BY_COL,
+        filter_col=FILTER_COL,
+        filter_values=FILTER_PLAYBACK_IDS,
+    )
+
+    # Prepare scorer
+    # summary_list = prepare_scorer(
+    #     summary_run_df=filtered_summary_df,
+    #     col_mappings=SCORER_SUMMARY_DF_MAPPINGS
+    # )
+
+
     # Extract and convert scorer columns
     scorer_df = extract_and_convert_scorer_cols(
-        summary_run=summary_run,
+        summary_run=filtered_summary_df,
         col_mappings=SCORER_SUMMARY_DF_MAPPINGS,
     )
 
@@ -832,7 +945,7 @@ def main():
 
     # Build summary rank scored df -> sorted by score
     summary_rank_scored_df = build_summary_rank_scored(
-        summary_run_df=summary_run,
+        summary_run_df=filtered_summary_df,
         score_series=scored_series,
         result_aggregator=result_aggregator,
     )

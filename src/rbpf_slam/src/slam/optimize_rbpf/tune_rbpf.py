@@ -499,6 +499,7 @@ from .aggregator import RankedRunConverter, ResultAggregator
 
     - Implemented new ray tracing measurement model in order to get better measurement probabilities 
 
+    31.1 
     
 '''
 
@@ -649,7 +650,7 @@ def _grid_axes() -> dict:
         "n_particles": [1],                         # number of particles in the RBPF
         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
-        # measurement model params
+        # Measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
         # Beam range finder measurement model params
