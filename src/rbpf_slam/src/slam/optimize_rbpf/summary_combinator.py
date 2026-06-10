@@ -53,6 +53,13 @@ TODO
     - i list empty skip this
     - Else delete those data rows
 
+3) Add excluder to exclude params from param overview 
+    - Would be nice to exclude some columns in the params comparsion. 
+    - This way we could combine results made from different measurement models
+    - Also when metrics have been added or removed in the code and we make a grid run, than this run is not 
+      comparable to the old runs with other params
+       
+
 '''
 
 # Define data path
@@ -717,12 +724,13 @@ def build_summary_ranked_param_overview(
 
 
 def write_results(
-    result_writer: ResultWriter,
+    
     summary_rank_scored_df: pd.DataFrame,
     agg_dataset_param_df: pd.DataFrame,
     agg_param_df: pd.DataFrame,
     param_summary_ranked_df: pd.DataFrame,
     param_json,
+    result_writer: ResultWriter,
 ):
     # Define storage paths
     ranked_scored_path = COMB_OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
