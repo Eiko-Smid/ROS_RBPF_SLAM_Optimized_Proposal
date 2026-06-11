@@ -9,6 +9,10 @@ from slam.rbpf.motion_model import MotionModel
 from slam.rbpf.measurement_model import MeasurementModel
 
 
+INVALID_LOG_LIKELIHOOD = -1.0e12
+FALLBACK_LOG_FLOOR = -80.0
+
+
 class ProposalEstimator:
     IDX_x=0
     IDX_y=1
@@ -468,7 +472,7 @@ class ProposalEstimator:
                 measurements=measurements,
                 ogm=particle.scan_matcher.ogm,
             )
-            log_likelihood = results.get("log_likelihood", -np.inf)
+            log_likelihood = results.get("log_likelihood", INVALID_LOG_LIKELIHOOD)
 
             log_likelihoods[i] = log_likelihood
             
@@ -482,7 +486,7 @@ class ProposalEstimator:
             meas_probs = np.ones(samples.shape[0], dtype=float)
             motion_probs = np.ones(samples.shape[0], dtype=float)
             norm =  1e-12
-            log_eta = -np.inf
+            log_eta = INVALID_LOG_LIKELIHOOD
             return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
         else:
             meas_probs = np.exp(log_likelihoods - max_log_likelihood)
@@ -505,7 +509,7 @@ class ProposalEstimator:
             meas_probs = np.ones(samples.shape[0], dtype=float)
             motion_probs = np.ones(samples.shape[0], dtype=float)
             norm =  1e-12
-            log_eta = -np.inf
+            log_eta = INVALID_LOG_LIKELIHOOD
             return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
         
         # Compute log eta for success case

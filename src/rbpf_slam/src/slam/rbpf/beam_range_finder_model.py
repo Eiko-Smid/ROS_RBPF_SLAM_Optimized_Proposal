@@ -2,11 +2,112 @@ from typing import List, Tuple
 
 import numpy as np
 from numba import njit
-from math import floor, sqrt, exp, log, pi
+from math import floor, sqrt, exp, log, pi, erf
 
 from .measurement_model import MeasurementModel
 from slam.infrastructure.defs import Pose2D
 from slam.scan_matcher.ogm_scan_matching import OGM
+
+
+# @njit
+# def _normal_cdf(x: float) -> float:
+#     """
+#     Standard normal CDF.
+#     Used for truncated Gaussian normalization.
+#     """
+#     return 0.5 * (1.0 + erf(x / sqrt(2.0)))
+
+
+@njit
+def _beam_model_prob(
+    z: float,
+    z_exp: float,
+    measured_max: bool,
+    max_sensor_range: float,
+    sigma_hit: float,
+    lambda_short: float,
+    w_hit: float,
+    w_short: float,
+    w_max: float,
+    w_rand: float,
+    eps: float,
+) -> float:
+    """
+    Probabilistic Robotics beam model:
+
+        p(z | x, m) =
+            w_hit   * p_hit
+          + w_short * p_short
+          + w_max   * p_max
+          + w_rand  * p_rand
+
+    Important naming:
+        max_sensor_range = physical laser max range
+        w_max            = mixture weight for max-range component
+    """
+
+    # Safety
+    if sigma_hit <= 0.0:
+        sigma_hit = 1e-6
+
+    if lambda_short <= 0.0:
+        lambda_short = 1e-6
+
+    # Clamp z into valid sensor range.
+    if z < 0.0:
+        z = 0.0
+
+    if z > max_sensor_range:
+        z = max_sensor_range
+
+    # ------------------------------------------------------------
+    # p_hit: Gaussian around expected measurement, truncated to [0, max_range]
+    # ------------------------------------------------------------
+    p_hit = 0.0
+
+    if z >= 0.0 and z <= max_sensor_range:
+        # Compute normalizer
+        gaussian_norm = 1.0 / (sigma_hit * sqrt(2.0 * pi))
+        # Compute likelihood for valid z
+        p_hit = gaussian_norm * exp(-0.5 * ((z - z_exp) / sigma_hit) ** 2)
+
+    # ------------------------------------------------------------
+    # p_short: unexpected obstacle before expected obstacle
+    # valid only for 0 <= z < z_exp
+    # ------------------------------------------------------------
+    p_short = 0.0
+
+    if z >= 0.0 and z < z_exp:
+        denom = 1.0 - exp(-lambda_short * z_exp)
+        if denom > eps:
+            eta_short = 1.0 / denom
+            p_short = eta_short * lambda_short * exp(-lambda_short * z)
+
+    # ------------------------------------------------------------
+    # p_max: max range / failure component
+    # point mass approximated by 1 if measured max, else 0
+    # ------------------------------------------------------------
+    p_max = 1.0 if measured_max else 0.0
+
+    # ------------------------------------------------------------
+    # p_rand: random measurement, uniform over [0, max_range]
+    # ------------------------------------------------------------
+    p_rand = 0.0
+    if z >= 0.0 and z < max_sensor_range:
+        p_rand = 1.0 / max_sensor_range
+
+    # Mixture
+    p = (
+        w_hit * p_hit
+        + w_short * p_short
+        + w_max * p_max
+        + w_rand * p_rand
+    )
+
+    if p < eps:
+        p = eps
+
+    return p
 
 
 @njit
@@ -17,6 +118,7 @@ def _raytrace_first_occupied_cell(
     end_i: int,
     end_j: int,
     occ_thresh: float,
+    free_thresh: float,
 ):
     """
     Bresenham raytracing from robot cell to beam endpoint.
@@ -24,13 +126,22 @@ def _raytrace_first_occupied_cell(
     Returns
     -------
     found : bool
-        True if an occupied cell was found along the ray.
+        True if occupied cell was found.
 
     hit_i, hit_j : int
         First occupied cell along ray.
 
     out_of_map : bool
-        True if ray left map before reaching endpoint.
+        True if ray left the map.
+
+    free_count : int
+        Number of known-free cells along the ray.
+
+    unknown_count : int
+        Number of unknown cells along the ray.
+
+    total_count : int
+        Number of evaluated cells along the ray, excluding robot start cell.
     """
 
     n_rows, n_cols = log_odds_map.shape
@@ -48,19 +159,35 @@ def _raytrace_first_occupied_cell(
 
     first_cell = True
 
-    while True:
-        # Stop if ray leaves map
-        if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
-            return False, -1, -1, True
+    free_count = 0
+    unknown_count = 0
+    total_count = 0
 
-        # Do not count the robot's own cell as obstacle
+    while True:
+        # Ray left map
+        if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
+            return False, -1, -1, True, free_count, unknown_count, total_count
+
+        # Do not evaluate robot's own cell
         if not first_cell:
-            if log_odds_map[cell_i, cell_j] >= occ_thresh:
-                return True, cell_i, cell_j, False
+            val = log_odds_map[cell_i, cell_j]
+            total_count += 1
+
+            # check if occupied cell has been found
+            if val >= occ_thresh:
+                return True, cell_i, cell_j, False, free_count, unknown_count, total_count
+
+            # Check if free cell has been found
+            elif val <= free_thresh:
+                free_count += 1
+
+            # Check if unknown cell has been found (when not occ and not free -> unknown)
+            else:
+                unknown_count += 1
 
         first_cell = False
 
-        # Stop if endpoint reached
+        # Endpoint reached
         if cell_i == end_i and cell_j == end_j:
             break
 
@@ -74,115 +201,152 @@ def _raytrace_first_occupied_cell(
             err += dx
             cell_i += sy
 
-    return False, -1, -1, False
+    return False, -1, -1, False, free_count, unknown_count, total_count
 
 
 @njit
 def raytracing_log_likelihood_numba(
+    # OGM params
     log_odds_map: np.ndarray,
+    shift_x: float,
+    shift_y: float,
+    occ_thresh: float,
+    free_thresh: float,
+    
+    grid_resolution: float,
+    
+    min_sensor_range: float,
+    max_sensor_range: float,
     measurements: np.ndarray,      # shape (N, 2): [range, bearing]
+    
     x: float,
     y: float,
     heading: float,
-    shift_x: float,
-    shift_y: float,
-    grid_resolution: float,
-    min_sensor_range: float,
-    max_sensor_range: float,
-    occ_thresh: float,
+    
+    # Occupancy classification
+    unknown_ratio_thresh: float,
+    known_free_ratio_thresh: float,
+
+    # Book beam model params
     sigma_hit: float,
-    z_hit: float,
-    z_rand: float,
-    p_max_no_obstacle: float,
-    p_max_obstacle: float,
-    p_no_obstacle_for_hit: float,
+    lambda_short: float,
+    w_hit: float,
+    w_short: float,
+    w_max: float,
+    w_rand: float,
+
+    # Default probs for special cases
+    p_unknown: float,
+    p_out_of_map: float,
+    p_unexpected_known_free: float,
+    p_pred_below_min: float,
+
+    # Numerical / scaling
+    alpha_meas: float,
     beam_step: int,
+    eps: float,
 ):
     """
-    Computes the raytracing measurement log-likelihood for one pose.
+    Beam Range Finder Model based on Probabilistic Robotics,
+    extended for occupancy-grid SLAM cases:
 
-    This is a beam-endpoint / expected-ray model:
-
-        1. For every measured beam:
-           - raytrace through the map from candidate pose
-           - find first occupied cell along that ray
-
-        2. Compare:
-           - measured range r_meas
-           - expected map range r_expected
-
-        3. Score with Gaussian likelihood.
+    - pose outside map
+    - invalid measurements
+    - max-range measurements
+    - expected map hit
+    - known-free no-hit rays
+    - unknown rays
+    - out-of-map rays
 
     Returns
     -------
     log_likelihood : float
-        Sum of log probabilities over beams.
-
     mean_abs_error : float
-        Mean absolute range error for beams where map hit and measurement hit exist.
-
     valid_beam_count : int
-        Number of beams used.
-
     map_hit_count : int
-        Number of beams where raytracing found an occupied cell.
-
     no_map_hit_count : int
-        Number of beams where raytracing found no occupied cell.
-
     out_of_map_count : int
-        Number of rays that left the map.
+    unknown_ray_count : int
+    known_free_ray_count : int
+    unexpected_known_free_count : int
+    skipped_beam_count : int
     """
+    # Init
+    log_likelihood = 0.0
 
+    valid_beam_count = 0
+    skipped_beam_count = 0
+
+    map_hit_count = 0
+    no_map_hit_count = 0
+    out_of_map_count = 0
+    unknown_ray_count = 0
+    known_free_ray_count = 0
+    unexpected_known_free_count = 0
+
+    abs_error_sum = 0.0
+    abs_error_count = 0
+
+    # Transform give postioin into grid cell and check for valid cell
     n_rows, n_cols = log_odds_map.shape
 
     pose_i = int(floor((y + shift_y) / grid_resolution))
     pose_j = int(floor((x + shift_x) / grid_resolution))
 
-    # Candidate pose outside map -> impossible pose
     if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
-        return -1.0e12, 0.0, 0, 0, 0, 0
+        return -1.0e12, 0.0, 0, 0, 0, 0, 0, 0, 0, 0
 
     if beam_step < 1:
         beam_step = 1
 
-    log_likelihood = 0.0
+    if max_sensor_range <= 0.0:
+        return -1.0e12, 0.0, 0, 0, 0, 0, 0, 0, 0, 0
 
-    valid_beam_count = 0
-    map_hit_count = 0
-    no_map_hit_count = 0
-    out_of_map_count = 0
+    if alpha_meas <= 0.0:
+        alpha_meas = 1.0
 
-    abs_error_sum = 0.0
-    abs_error_count = 0
+    # Normalize mixture weights
+    w_sum = w_hit + w_short + w_max + w_rand
+    if w_sum <= eps:
+        w_hit = 0.70
+        w_short = 0.10
+        w_max = 0.10
+        w_rand = 0.10
+        w_sum = 1.0
 
-    # Gaussian normalizer
-    gaussian_norm = 1.0 / (sigma_hit * sqrt(2.0 * pi))
-
-    # Small probability floor to avoid log(0)
-    eps = 1.0e-12
+    w_hit /= w_sum
+    w_short /= w_sum
+    w_max /= w_sum
+    w_rand /= w_sum
+    
 
     for k in range(0, measurements.shape[0], beam_step):
-
         r_meas = measurements[k, 0]
         bearing = measurements[k, 1]
 
-        # Ignore invalid too-close beams
+        # Skip invalid measurement
+        if np.isnan(r_meas):
+            skipped_beam_count += 1
+            continue
+
+        # Skip measurements below minimum range
         if r_meas <= min_sensor_range:
+            skipped_beam_count += 1
             continue
 
         valid_beam_count += 1
 
-        # Max-range / inf beams mean: no obstacle was measured
-        measured_no_hit = False
-        if (not np.isfinite(r_meas)) or r_meas >= max_sensor_range:
-            measured_no_hit = True
-            r_eff = max_sensor_range
-        else:
-            r_eff = r_meas
+        # Ensure valid max range measurements
+        measured_max = False
 
-        # Raytrace always to max range.
-        # We want to know what the map predicts as first obstacle.
+        if (not np.isfinite(r_meas)) or r_meas >= max_sensor_range:
+            measured_max = True
+            z = max_sensor_range
+        else:
+            z = r_meas
+
+        # Estimate raytracing position of beam by max sensor range raycasting.
+        # Compute reflecting grid cell
         phi = heading + bearing
 
         ray_end_x = x + max_sensor_range * np.cos(phi)
@@ -191,62 +355,145 @@ def raytracing_log_likelihood_numba(
         end_i = int(floor((ray_end_y + shift_y) / grid_resolution))
         end_j = int(floor((ray_end_x + shift_x) / grid_resolution))
 
-        found, hit_i, hit_j, out_of_map = _raytrace_first_occupied_cell(
+        (
+            found,
+            hit_i,
+            hit_j,
+            out_of_map,
+            free_count,
+            unknown_count,
+            total_count,
+        ) = _raytrace_first_occupied_cell(
             log_odds_map=log_odds_map,
             pose_i=pose_i,
             pose_j=pose_j,
             end_i=end_i,
             end_j=end_j,
             occ_thresh=occ_thresh,
+            free_thresh=free_thresh,
         )
 
+        # --------------------------------------------------------
+        # Ray leaves map -> map cannot predict reliably
+        # --------------------------------------------------------
         if out_of_map:
             out_of_map_count += 1
+            p = p_out_of_map
 
-        if found:
+        # --------------------------------------------------------
+        # Map predicts an occupied cell -> use full book beam model
+        # --------------------------------------------------------
+        elif found:
             map_hit_count += 1
 
-            # Convert hit cell center to world coordinates
+            # Transform reflecting cell to expected range
             hit_x = hit_j * grid_resolution - shift_x + grid_resolution / 2.0
             hit_y = hit_i * grid_resolution - shift_y + grid_resolution / 2.0
 
             dx = hit_x - x
             dy = hit_y - y
-            r_expected = sqrt(dx * dx + dy * dy)
+            z_exp = sqrt(dx * dx + dy * dy)
 
-            if measured_no_hit:
-                # Sensor says "nothing", map says "there is obstacle".
-                p = p_max_obstacle
+            if z_exp <= min_sensor_range:
+                # Handle case that expected measurement is below sensor minimum range
+                p = p_pred_below_min
+
             else:
-                # Sensor has finite hit and map has finite hit.
-                error = r_eff - r_expected
+                # Compute measurement likelihood with Laser Range Finder Model
+                p = _beam_model_prob(
+                    z=z,
+                    z_exp=z_exp,
+                    measured_max=measured_max,
+                    max_sensor_range=max_sensor_range,
+                    sigma_hit=sigma_hit,
+                    lambda_short=lambda_short,
+                    w_hit=w_hit,
+                    w_short=w_short,
+                    w_max=w_max,
+                    w_rand=w_rand,
+                    eps=eps,
+                )
 
-                p_hit = gaussian_norm * exp(-0.5 * (error / sigma_hit) ** 2)
-                p_rand = 1.0 / max_sensor_range
+                if not measured_max:
+                    abs_error_sum += abs(z - z_exp)
+                    abs_error_count += 1
 
-                p = z_hit * p_hit + z_rand * p_rand
-
-                abs_error_sum += abs(error)
-                abs_error_count += 1
-
+        # --------------------------------------------------------
+        # No map hit found before max range
+        # Need to distinguish known-free ray vs unknown ray.
+        # --------------------------------------------------------
         else:
             no_map_hit_count += 1
 
-            if measured_no_hit:
-                # Sensor says "nothing", map also says "nothing".
-                p = p_max_no_obstacle
-            else:
-                # Sensor saw an obstacle, but map has none along this ray.
-                p = p_no_obstacle_for_hit
+            unknown_ratio = 1.0
+            free_ratio = 0.0
 
+            if total_count > 0:
+                unknown_ratio = unknown_count / total_count
+                free_ratio = free_count / total_count
+
+            # ----------------------------------------------------
+            # Mostly unknown ray -> weak/neutral evidence
+            # ----------------------------------------------------
+            if unknown_ratio >= unknown_ratio_thresh:
+                unknown_ray_count += 1
+                p = p_unknown
+
+            # ----------------------------------------------------
+            # Mostly known-free ray.
+            # Map predicts no obstacle until max range.
+            # Treat expected range as max range.
+            # ----------------------------------------------------
+            elif free_ratio >= known_free_ratio_thresh:
+                known_free_ray_count += 1
+                z_exp = max_sensor_range
+
+                p = _beam_model_prob(
+                    z=z,
+                    z_exp=z_exp,
+                    measured_max=measured_max,
+                    max_sensor_range=max_sensor_range,
+                    sigma_hit=sigma_hit,
+                    lambda_short=lambda_short,
+                    w_hit=w_hit,
+                    w_short=w_short,
+                    w_max=w_max,
+                    w_rand=w_rand,
+                    eps=eps,
+                )
+
+                # If sensor saw finite obstacle in known-free map,
+                # this is an unexpected obstacle. Do not make it impossible.
+                if not measured_max:
+                    unexpected_known_free_count += 1
+                    if p < p_unexpected_known_free:
+                        p = p_unexpected_known_free
+
+            # ----------------------------------------------------
+            # Mixed free/unknown ray -> map prediction is weak
+            # ----------------------------------------------------
+            else:
+                unknown_ray_count += 1
+                p = p_unknown
+
+        # Ensure valid likelihood
         if p < eps:
             p = eps
 
+        # Transform to log space and accumulate log likelihoods
         log_likelihood += log(p)
+
+    # No valid beams -> neutral update, not particle death.
+    # This means: measurement gives no information.
+    if valid_beam_count <= 0:
+        return 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, skipped_beam_count
 
     mean_abs_error = 0.0
     if abs_error_count > 0:
         mean_abs_error = abs_error_sum / abs_error_count
+
+    # Weight estimated log likelihoods for certain cases (combination of measurement + motion probs, etc.)
+    log_likelihood *= alpha_meas
 
     return (
         log_likelihood,
@@ -255,75 +502,140 @@ def raytracing_log_likelihood_numba(
         map_hit_count,
         no_map_hit_count,
         out_of_map_count,
+        unknown_ray_count,
+        known_free_ray_count,
+        unexpected_known_free_count,
+        skipped_beam_count,
     )
 
 
 class BeamRangeFinderModel(MeasurementModel):
     """
-    Small Python wrapper around the Numba raytracing likelihood.
+    Probabilistic Robotics Beam Range Finder Model for occupancy-grid SLAM.
 
-    Expected OGM object fields:
-        ogm.log_odds_map
-        ogm.shift_x
-        ogm.shift_y
-        ogm.grid_resolution_m
-        ogm.min_sensor_range
-        ogm.max_sensor_range
+    Uses the book model:
+
+        p(z | x, m) =
+            w_hit   * p_hit
+          + w_short * p_short
+          + w_max   * p_max
+          + w_rand  * p_rand
+
+    plus extra handling for occupancy-grid-specific cases:
+
+        - pose outside map
+        - unknown map rays
+        - out-of-map rays
+        - known-free no-hit rays
+        - too-close/invalid beams
+
+    Important:
+        max_sensor_range is the physical laser range.
+        w_max is the mixture weight for the max-range component.
     """
 
     def __init__(
         self,
+
+        # Occupancy classification
         occ_thresh: float = 1.4,
+        free_thresh: float = -1.4,
+        unknown_ratio_thresh: float = 0.30,
+        known_free_ratio_thresh: float = 0.70,
+
+        # Book beam model parameters
         sigma_hit: float = 0.15,
-        z_hit: float = 0.95,
-        z_rand: float = 0.05,
-        p_max_no_obstacle: float = 0.8,
-        p_max_obstacle: float = 0.02,
-        p_no_obstacle_for_hit: float = 0.01,
+        w_hit: float = 0.70,      
+        w_short: float = 0.10,
+        lambda_short: float = 0.20,  
+        w_max: float = 0.10,
+        w_rand: float = 0.10,
+
+        # Default probs for special cases
+        p_unknown: float = 0.20,
+        p_out_of_map: float = 0.10,
+        p_unexpected_known_free: float = 0.03,
+        p_pred_below_min: float = 0.02,
+
+        # Numerical / scaling
+        alpha_meas: float = 0.10,
         beam_step: int = 2,
+        eps: float = 1e-12,
     ):
         self.occ_thresh = occ_thresh
+        self.free_thresh = free_thresh
+        self.unknown_ratio_thresh = unknown_ratio_thresh
+        self.known_free_ratio_thresh = known_free_ratio_thresh
+
         self.sigma_hit = sigma_hit
+        self.lambda_short = lambda_short
 
-        self.z_hit = z_hit
-        self.z_rand = z_rand
+        self.w_hit = w_hit
+        self.w_short = w_short
+        self.w_max = w_max
+        self.w_rand = w_rand
 
-        self.p_max_no_obstacle = p_max_no_obstacle
-        self.p_max_obstacle = p_max_obstacle
-        self.p_no_obstacle_for_hit = p_no_obstacle_for_hit
+        self.p_unknown = p_unknown
+        self.p_out_of_map = p_out_of_map
+        self.p_unexpected_known_free = p_unexpected_known_free
+        self.p_pred_below_min = p_pred_below_min
 
+        self.alpha_meas = alpha_meas
         self.beam_step = beam_step
+        self.eps = eps
 
 
-    def likelihood(self, pose: Pose2D, measurements: List[Tuple[float, float]], ogm: OGM) -> dict:
+    def likelihood(
+        self,
+        pose: Pose2D,
+        measurements: List[Tuple[float, float]],
+        ogm: OGM,
+    ) -> dict:
         """
+        Computes log likelihood for one candidate pose.
+
         Parameters
         ----------
-        pose : tuple
-            (x, y, heading)
+        pose:
+            (x, y, theta)
 
-        measurements : array-like
-            Shape (N, 2), each row = (range, bearing)
+        measurements:
+            List/array of (range, bearing)
 
-        ogm : OGM
-            occupancy grid map object.
+        ogm:
+            Occupancy grid map.
 
         Returns
         -------
-        dict
-            Contains log likelihood and diagnostics.
+        dict with:
+            log_likelihood
+            mean_abs_error
+            valid_beam_count
+            map_hit_count
+            no_map_hit_count
+            out_of_map_count
+            unknown_ray_count
+            known_free_ray_count
+            unexpected_known_free_count
+            skipped_beam_count
         """
 
         measurements_np = np.asarray(measurements, dtype=np.float64)
 
+        # Empty scan -> neutral update.
+        # No measurement information means no weight change.
         if measurements_np.size == 0:
             return {
-                "log_likelihood": -1.0e12,
+                "log_likelihood": 0.0,
                 "mean_abs_error": 0.0,
                 "valid_beam_count": 0,
                 "map_hit_count": 0,
                 "no_map_hit_count": 0,
                 "out_of_map_count": 0,
+                "unknown_ray_count": 0,
+                "known_free_ray_count": 0,
+                "unexpected_known_free_count": 0,
+                "skipped_beam_count": 0,
             }
 
         x, y, heading = pose
@@ -335,69 +647,87 @@ class BeamRangeFinderModel(MeasurementModel):
             map_hit_count,
             no_map_hit_count,
             out_of_map_count,
+            unknown_ray_count,
+            known_free_ray_count,
+            unexpected_known_free_count,
+            skipped_beam_count,
         ) = raytracing_log_likelihood_numba(
             log_odds_map=ogm.return_log_odds_map(),
+            
+            shift_x=ogm.shift_x,
+            shift_y=ogm.shift_y,
+            occ_thresh=self.occ_thresh,
+            free_thresh=self.free_thresh,
+            grid_resolution=ogm.grid_resolution_m,
+            
+            min_sensor_range=ogm.min_sensor_range,
+            max_sensor_range=ogm.max_sensor_range,
             measurements=measurements_np,
+
             x=x,
             y=y,
             heading=heading,
-            shift_x=ogm.shift_x,
-            shift_y=ogm.shift_y,
-            grid_resolution=ogm.grid_resolution_m,
-            min_sensor_range=ogm.min_sensor_range,
-            max_sensor_range=ogm.max_sensor_range,
-            occ_thresh=self.occ_thresh,
+            
+            unknown_ratio_thresh=self.unknown_ratio_thresh,
+            known_free_ratio_thresh=self.known_free_ratio_thresh,
+
             sigma_hit=self.sigma_hit,
-            z_hit=self.z_hit,
-            z_rand=self.z_rand,
-            p_max_no_obstacle=self.p_max_no_obstacle,
-            p_max_obstacle=self.p_max_obstacle,
-            p_no_obstacle_for_hit=self.p_no_obstacle_for_hit,
+            lambda_short=self.lambda_short,
+            w_hit=self.w_hit,
+            w_short=self.w_short,
+            w_max=self.w_max,
+            w_rand=self.w_rand,
+
+            p_unknown=self.p_unknown,
+            p_out_of_map=self.p_out_of_map,
+            p_unexpected_known_free=self.p_unexpected_known_free,
+            p_pred_below_min=self.p_pred_below_min,
+
+            alpha_meas=self.alpha_meas,
             beam_step=self.beam_step,
+            eps=self.eps,
         )
 
         return {
-            "log_likelihood": log_likelihood,
-            "mean_abs_error": mean_abs_error,
-            "valid_beam_count": valid_beam_count,
-            "map_hit_count": map_hit_count,
-            "no_map_hit_count": no_map_hit_count,
-            "out_of_map_count": out_of_map_count,
+            "log_likelihood": float(log_likelihood),
+            "mean_abs_error": float(mean_abs_error),
+            "valid_beam_count": int(valid_beam_count),
+            "map_hit_count": int(map_hit_count),
+            "no_map_hit_count": int(no_map_hit_count),
+            "out_of_map_count": int(out_of_map_count),
+            "unknown_ray_count": int(unknown_ray_count),
+            "known_free_ray_count": int(known_free_ray_count),
+            "unexpected_known_free_count": int(unexpected_known_free_count),
+            "skipped_beam_count": int(skipped_beam_count),
         }
 
 
-    # def likelihood(
-    #     self,
-    #     pose: Pose2D,
-    #     measurements: List[Tuple[float, float]],
-    #     scan_matcher,
-    #     neighbor,
-    # ) -> float:
-    #     '''
-    #     Gmapping version of likelihood computation
-    #     '''
-        
-    #     return float(1.0)
-
-    
     def likelihood_batch(
         self,
         poses: np.ndarray,
         measurements: List[Tuple[float, float]],
         scan_matcher,
-        neighbor,
+        neighbor=None,
     ) -> np.ndarray:
-        '''
-        Gmapping variant of lieklihood computation.
+        """
+        Compatibility helper.
 
-        TODO: 
-        If used later on we need to make the compuation of the max_distances dependend on grid resolution. 
-        max_distance = np.sqrt(2.0) * (kernel_size + 0.5) * resolution
-        
-        '''
-        # Compute no git lieklihood for punishment
-        
-        return np.full(poses.shape[0], 1e-9)
+        Returns log likelihoods for all poses.
+        This is not used in your current range-finder proposal path,
+        but keeping it avoids interface surprises.
+        """
+
+        values = np.empty(poses.shape[0], dtype=np.float64)
+
+        for i in range(poses.shape[0]):
+            result = self.likelihood(
+                pose=(poses[i, 0], poses[i, 1], poses[i, 2]),
+                measurements=measurements,
+                ogm=scan_matcher.ogm,
+            )
+            values[i] = result["log_likelihood"]
+
+        return values
 
 
     def likelihood_batch_copy(
@@ -405,29 +735,51 @@ class BeamRangeFinderModel(MeasurementModel):
         poses: np.ndarray,
         measurements: List[Tuple[float, float]],
         scan_matcher,
-        neighbor,
+        neighbor=None,
     ) -> np.ndarray:
-        '''
-        Classic NN based computation of measurement likelihood. We use the NN from the scan matcher and compute the
-        likelihood for every given pose based on the distance between the measurement endpoints and the nearest neighbor
-        in the map points. 
-        '''
-        return np.full(poses.shape[0], 1e-9)
-    
+        """
+        Compatibility wrapper.
+        """
+        return self.likelihood_batch(
+            poses=poses,
+            measurements=measurements,
+            scan_matcher=scan_matcher,
+            neighbor=neighbor,
+        )
+
 
     def gmapping_likelihood(
         self,
         pose: Pose2D,
         measurements: Tuple[float, float],
-        ogm: OGM,        
+        ogm: OGM,
         usable_range: float,
-        kernel_size: int=1,
-        fullness_threshold: float=1.2,
-        free_threshold: float=1.2,
-        gaussian_sigma: float=0.05,
-        free_cell_ratio: float=np.sqrt(2.0),
+        kernel_size: int = 1,
+        fullness_threshold: float = 1.2,
+        free_threshold: float = 1.2,
+        gaussian_sigma: float = 0.05,
+        free_cell_ratio: float = np.sqrt(2.0),
     ) -> Tuple[float, float, int]:
-        
+        """
+        Compatibility stub for older code paths.
 
-        return 1.0, 1.0, 1
+        Returns
+        -------
+        score, log_likelihood, matched_count
+        """
 
+        result = self.likelihood(
+            pose=pose,
+            measurements=measurements,
+            ogm=ogm,
+        )
+
+        log_likelihood = result["log_likelihood"]
+        matched_count = result["valid_beam_count"]
+
+        # Score is not used meaningfully here; return exp only safely for small values.
+        score = 0.0
+        if log_likelihood > -700.0:
+            score = float(np.exp(log_likelihood))
+
+        return score, log_likelihood, matched_count

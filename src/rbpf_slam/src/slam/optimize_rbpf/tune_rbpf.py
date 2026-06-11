@@ -505,22 +505,22 @@ from .aggregator import RankedRunConverter, ResultAggregator
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_1_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_2_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_2_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_2_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_2_params.json'
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
-NUMBER_OF_WORKERS = 4
+NUMBER_OF_WORKERS = 4                                      
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
 
@@ -528,8 +528,8 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22, 56]
+# SEED_LIST = [22, 23, 56]
+SEED_LIST = [22, 56]
 # SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
@@ -642,6 +642,165 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [1],                         # number of particles in the RBPF
+#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+
+#         # Measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Beam range finder measurement model params
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         "beam_model_param_sets": [
+#             {
+#                 # M1: baseline balanced model
+#                 "beam_w_hit": 0.7,
+#                 "beam_w_short": 0.1,
+#                 "beam_lambda_short": 0.2,
+#                 "beam_w_max": 0.1,
+#                 "beam_w_rand": 0.1,
+#             },
+#             # M2: trust normal wall hits more
+#             {
+#                 "beam_w_hit": 0.8,
+#                 "beam_w_short": 0.05,
+#                 "beam_lambda_short": 0.2,
+#                 "beam_w_max": 0.1,
+#                 "beam_w_rand": 0.05,
+#             },
+#               # M3: more tolerant against unexpected/new obstacles
+#             {
+#                 "beam_w_hit": 0.6,
+#                 "beam_w_short": 0.2,
+#                 "beam_lambda_short": 0.2,
+#                 "beam_w_max": 0.1,
+#                 "beam_w_rand": 0.1,
+#             },
+#             # M4: stronger max-range/no-return component
+#             {
+#                 "beam_w_hit": 0.6,
+#                 "beam_w_short": 0.1,
+#                 "beam_lambda_short": 0.2,
+#                 "beam_w_max": 0.2,
+#                 "beam_w_rand": 0.1,
+#             },
+#              # M5: noisier/random-tolerant model
+#             {
+#                 "beam_w_hit": 0.6,
+#                 "beam_w_short": 0.1,
+#                 "beam_lambda_short": 0.2,
+#                 "beam_w_max": 0.1,
+#                 "beam_w_rand": 0.2,
+#             },
+#         ],
+
+#         "beam_extra_param_sets": [
+#             {
+#             # baseline
+#                 "beam_sigma_hit": 0.15,
+#                 "beam_alpha_meas": 0.1,
+#                 "beam_p_unknown": 0.2,
+#                 "beam_p_out_of_map": 0.1,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             # sharper hit model, still tempered
+#             {
+#                 "beam_sigma_hit": 0.1,
+#                 "beam_alpha_meas": 0.1,
+#                 "beam_p_unknown": 0.2,
+#                 "beam_p_out_of_map": 0.1,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             # softer hit model
+#             {
+#                 "beam_sigma_hit": 0.2,
+#                 "beam_alpha_meas": 0.1,
+#                 "beam_p_unknown": 0.2,
+#                 "beam_p_out_of_map": 0.1,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             # Weight measruement model lower
+#             {
+#                 "beam_sigma_hit": 0.15,
+#                 "beam_alpha_meas": 0.05,
+#                 "beam_p_unknown": 0.2,
+#                 "beam_p_out_of_map": 0.1,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             # Weight measruement model higher
+#             {
+#                 "beam_sigma_hit": 0.15,
+#                 "beam_alpha_meas": 0.2,
+#                 "beam_p_unknown": 0.2,
+#                 "beam_p_out_of_map": 0.1,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             # more neutral unknown handling
+#             {
+#                 "beam_sigma_hit": 0.15,
+#                 "beam_alpha_meas": 0.1,
+#                 "beam_p_unknown": 0.4,
+#                 "beam_p_out_of_map": 0.2,
+#                 "beam_p_unexpected_known_free": 0.05,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#         ],
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.12, 0.18],               # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.04, 0.08],                  # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.02,      # # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             },
+
+#             {
+#                 "proposal_sigma_xy": 0.05,
+#                 "proposal_sigma_theta": 0.02,
+#                 "n_samples_dir": 3,
+#             },
+            
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.4],
+#     }
+
+
+
 def _grid_axes() -> dict:
     return {
         # General rbpf params
@@ -653,15 +812,36 @@ def _grid_axes() -> dict:
         # Measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
         # Beam range finder measurement model params
         "beam_occ_thresh": [1.4],
-        "beam_sigma_hit": [0.10, 0.15, 0.20, 0.25],
-        "beam_z_hit": [0.95],
-        "beam_z_rand": [0.05],
-        "beam_p_max_no_obstacle": [0.8],
-        "beam_p_max_obstacle": [0.02],
-        "beam_p_no_obstacle_for_hit": [0.005, 0.02],
-        "beam_step": [1, 2],
+        "beam_free_thresh": [-1.4],
+        "beam_unknown_thresh": [0.3],
+        "beam_known_free_ratio_thresh": [0.7],
+
+        "beam_model_param_sets": [
+            {
+                # M1: baseline balanced model
+                "beam_w_hit": 0.7,
+                "beam_w_short": 0.1,
+                "beam_lambda_short": 0.2,
+                "beam_w_max": 0.1,
+                "beam_w_rand": 0.1,
+            }           
+        ],
+
+        "beam_extra_param_sets": [
+            {
+            # baseline
+                "beam_sigma_hit": 0.15,
+                "beam_alpha_meas": 0.1,
+                "beam_p_unknown": 0.2,
+                "beam_p_out_of_map": 0.1,
+                "beam_p_unexpected_known_free": 0.03,
+                "beam_p_pred_below_min": 0.02,
+                "beam_step": 2,
+            }           
+        ],
         
         # Motion model params
         "sigma_xy_motion": [0.12, 0.18],               # motion model uncertainty in x and y direction [m]
@@ -678,14 +858,7 @@ def _grid_axes() -> dict:
                 "proposal_sigma_xy": 0.02,      # # Proposal window size in x/y direction [m]
                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-            },
-
-            {
-                "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
-                "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
-                "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-            },
-            
+            }
         ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
@@ -696,60 +869,6 @@ def _grid_axes() -> dict:
         "min_free_ratio": [0.4],
     }
 
-
-# def _grid_axes() -> dict:
-#     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [1],                         # number of particles in the RBPF
-#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
-
-#         # measurement model params
-#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-#         # Beam range finder measurement model params
-#         "beam_occ_thresh": [1.4],
-#         "beam_sigma_hit": [0.15],
-#         "beam_z_hit": [0.95],
-#         "beam_z_rand": [0.05],
-#         "beam_p_max_no_obstacle": [0.8],
-#         "beam_p_max_obstacle": [0.02],
-#         "beam_p_no_obstacle_for_hit": [0.02],
-#         "beam_step": [1, 2],
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.18],               # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.08],                  # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
-#             {
-#                 "proposal_sigma_xy": 0.02,      # # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             },
-
-#             {
-#                 "proposal_sigma_xy": 0.05,      # # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.02,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             },
-            
-#         ],
-#         # TODO: Delete proposal values when no longer needed later on
-#         "proposal_alpha": [1.0],
-#         "proposal_beta": [1.0],
-
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-#         "min_free_ratio": [0.4],
-#     }
 
 
 def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
@@ -830,13 +949,29 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
 
     meas_kernel_size = axes.get("meas_kernel_size", [1])
     beam_occ_thresh = axes.get("beam_occ_thresh", [1.4])
-    beam_sigma_hit = axes.get("beam_sigma_hit", [0.15])
-    beam_z_hit = axes.get("beam_z_hit", [0.95])
-    beam_z_rand = axes.get("beam_z_rand", [0.05])
-    beam_p_max_no_obstacle = axes.get("beam_p_max_no_obstacle", [0.8])
-    beam_p_max_obstacle = axes.get("beam_p_max_obstacle", [0.02])
-    beam_p_no_obstacle_for_hit = axes.get("beam_p_no_obstacle_for_hit", [0.01])
-    beam_step = axes.get("beam_step", [1])
+    beam_free_thresh = axes.get("beam_free_thresh", [0.8])
+    beam_unknown_thresh = axes.get("beam_unknown_thresh", [0.5])
+    beam_known_free_ratio_thresh = axes.get("beam_known_free_ratio_thresh", [0.4])
+
+    beam_model_param_sets = axes.get("beam_model_param_sets", [])
+    beam_extra_param_sets = axes.get("beam_extra_param_sets", [])
+    if not beam_model_param_sets:
+        raise ValueError("No beam model parameter sets configured.")
+    if not beam_extra_param_sets:
+        raise ValueError("No beam extra parameter sets configured.")
+
+    for i, beam_model_set in enumerate(beam_model_param_sets):
+        if not isinstance(beam_model_set, dict):
+            raise TypeError(
+                f"beam_model_param_sets[{i}] must be a dict, got {type(beam_model_set)}"
+            )
+
+    for i, beam_extra_set in enumerate(beam_extra_param_sets):
+        if not isinstance(beam_extra_set, dict):
+            raise TypeError(
+                f"beam_extra_param_sets[{i}] must be a dict, got {type(beam_extra_set)}"
+            )
+
     proposal_alpha = axes.get("proposal_alpha", [1.0])
     proposal_beta = axes.get("proposal_beta", [1.0])
     surface_radius_m = axes.get("surface_radius_m", [0.1])
@@ -859,13 +994,11 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             proposal_triplet,
             kernel_size,
             beam_occ_th,
-            beam_sigma_h,
-            beam_z_h,
-            beam_z_r,
-            beam_p_max_no_occ,
-            beam_p_max_occ,
-            beam_p_no_occ_hit,
-            beam_step_size,
+            beam_free_th,
+            beam_unknown_ratio_th,
+            beam_known_free_ratio_th,
+            beam_model_set,
+            beam_extra_set,
             alpha,
             beta,
             surface_r,
@@ -883,19 +1016,40 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             proposal_triplets,
             meas_kernel_size,
             beam_occ_thresh,
-            beam_sigma_hit,
-            beam_z_hit,
-            beam_z_rand,
-            beam_p_max_no_obstacle,
-            beam_p_max_obstacle,
-            beam_p_no_obstacle_for_hit,
-            beam_step,
+            beam_free_thresh,
+            beam_unknown_thresh,
+            beam_known_free_ratio_thresh,
+            beam_model_param_sets,
+            beam_extra_param_sets,
             proposal_alpha,
             proposal_beta,
             surface_radius_m,
             min_free_ratio,
         ):
             sigma_xy, sigma_theta, samples_dir = proposal_triplet
+
+            measurement_model_params = BeamRangeFinderMeasModelParams(
+                occ_thresh=beam_occ_th,
+                free_thresh=beam_free_th,
+                unknown_ratio_thresh=beam_unknown_ratio_th,
+                known_free_ratio_thresh=beam_known_free_ratio_th,
+
+                sigma_hit=beam_extra_set["beam_sigma_hit"],
+                w_hit=beam_model_set["beam_w_hit"],
+                w_short=beam_model_set["beam_w_short"],
+                lambda_short=beam_model_set["beam_lambda_short"],
+                w_max=beam_model_set["beam_w_max"],
+                w_rand=beam_model_set["beam_w_rand"],
+                
+                p_unknown=beam_extra_set["beam_p_unknown"],
+                p_out_of_map=beam_extra_set["beam_p_out_of_map"],
+                p_unexpected_known_free=beam_extra_set["beam_p_unexpected_known_free"],
+                p_pred_below_min=beam_extra_set["beam_p_pred_below_min"],
+                
+                alpha_meas=beam_extra_set["beam_alpha_meas"],
+                beam_step=beam_extra_set["beam_step"],
+                eps=1e-12,
+            )
 
             # Define experiment params for each run
             yield ExperimentParams(
@@ -956,20 +1110,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     ctrl_motion_fac=ctrl_motion,
                     ctrl_turn_fac=ctrl_turn,
                 ),
-                # TODO: Adapt measurement model here!
-                # measurement_model_params=MeasurementModelParams(
-                #     sigma_measurement=sigma_meas,
-                # ),
-                measurement_model_params=BeamRangeFinderMeasModelParams(
-                    occ_thresh=beam_occ_th,
-                    sigma_hit=beam_sigma_h,
-                    z_hit=beam_z_h,
-                    z_rand=beam_z_r,
-                    p_max_no_obstacle=beam_p_max_no_occ,
-                    p_max_obstacle=beam_p_max_occ,
-                    p_no_obstacle_for_hit=beam_p_no_occ_hit,
-                    beam_step=beam_step_size,
-                ),
+                measurement_model_params=measurement_model_params,
                 every_nth_scan_filter=every_nth_filter,
                 every_nth_scan_map=every_nth_map,
                 neff_threshold=neff_th,
@@ -986,8 +1127,13 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
                     f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
-                    f"boct{beam_occ_th}_bsh{beam_sigma_h}_bzh{beam_z_h}_bzr{beam_z_r}_"
-                    f"bpnno{beam_p_max_no_occ}_bpno{beam_p_max_occ}_bpnh{beam_p_no_occ_hit}_bs{beam_step_size}_"
+                    f"boct{beam_occ_th}_bfr{beam_free_th}_buth{beam_unknown_ratio_th}_bkfr{beam_known_free_ratio_th}_"
+                    f"bsh{beam_extra_set['beam_sigma_hit']}_bwh{beam_model_set['beam_w_hit']}_"
+                    f"bws{beam_model_set['beam_w_short']}_bls{beam_model_set['beam_lambda_short']}_"
+                    f"bwm{beam_model_set['beam_w_max']}_bwr{beam_model_set['beam_w_rand']}_"
+                    f"bpun{beam_extra_set['beam_p_unknown']}_bpoom{beam_extra_set['beam_p_out_of_map']}_"
+                    f"bpukf{beam_extra_set['beam_p_unexpected_known_free']}_bppbm{beam_extra_set['beam_p_pred_below_min']}_"
+                    f"bam{beam_extra_set['beam_alpha_meas']}_bs{beam_extra_set['beam_step']}_"
                     f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}"
                 ),
             )

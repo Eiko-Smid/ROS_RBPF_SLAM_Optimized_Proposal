@@ -206,15 +206,26 @@ class RBPFOptimizer:
             "motion_ctrl_turn_fac": exp_params.motion_model_params.ctrl_turn_fac,
 
             # MeasurementModelParams
-            "measurement_sigma_measurement": exp_params.measurement_model_params.sigma_hit,
             "occ_thresh": exp_params.measurement_model_params.occ_thresh,
+            "free_thresh": exp_params.measurement_model_params.free_thresh,
+            "unknown_ratio_thresh": exp_params.measurement_model_params.unknown_ratio_thresh,
+            "known_free_ratio_thresh": exp_params.measurement_model_params.known_free_ratio_thresh,
+            
             "sigma_hit": exp_params.measurement_model_params.sigma_hit,
-            "z_hit": exp_params.measurement_model_params.z_hit,
-            "z_rand": exp_params.measurement_model_params.z_rand,
-            "p_max_no_obstacle": exp_params.measurement_model_params.p_max_no_obstacle,
-            "p_max_obstacle": exp_params.measurement_model_params.p_max_obstacle,
-            "p_no_obstacle_for_hit": exp_params.measurement_model_params.p_no_obstacle_for_hit,
+            "w_hit": exp_params.measurement_model_params.w_hit,
+            "w_short": exp_params.measurement_model_params.w_short,
+            "lambda_short": exp_params.measurement_model_params.lambda_short,
+            "w_max": exp_params.measurement_model_params.w_max,
+            "w_rand": exp_params.measurement_model_params.w_rand,
+            
+            "p_unknown": exp_params.measurement_model_params.p_unknown,
+            "p_out_of_map": exp_params.measurement_model_params.p_out_of_map,
+            "p_unexpected_known_free": exp_params.measurement_model_params.p_unexpected_known_free,
+            "p_pred_below_min": exp_params.measurement_model_params.p_pred_below_min,
+            
+            "alpha_meas": exp_params.measurement_model_params.alpha_meas,
             "beam_step": exp_params.measurement_model_params.beam_step,
+            "eps": exp_params.measurement_model_params.eps,
 
             # ExperimentParams
             "every_nth_scan_filter": exp_params.every_nth_scan_filter,

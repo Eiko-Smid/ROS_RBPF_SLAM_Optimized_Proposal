@@ -156,8 +156,8 @@ class PlaybackRunner:
             #     (r, b) for r, b in measurements_map if np.isfinite(r) and not np.isnan(r)
             # ]
 
-            if step_idx == 517:
-                print("Debug here")
+            # if step_idx == 517:
+            #     print("Debug here")
 
             # Run rbpf filter step
             # rbpf.step(

@@ -1368,7 +1368,7 @@ class OGM:
 
     def transform_point_to_grid_cell(self, point: Tuple[float, float]) -> Tuple[int, int]:
         '''Transforms an (x, y) point to the array access indices (i, j for row, column). '''
-        x,y = point
+        x, y = point
         x_shifted= x + self.shift_x
         y_shifted= y + self.shift_y
         i= floor(y_shifted/self.grid_resolution_m)

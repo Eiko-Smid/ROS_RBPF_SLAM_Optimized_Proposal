@@ -27,6 +27,9 @@ from .scan_match_factory import (
     ScanMatchFactory,
 )
 
+INVALID_LOG_LIKELIHOOD = -1.0e12
+FALLBACK_LOG_FLOOR = -80.0
+
 
 @dataclass(frozen=True)
 class ParticleParams:
@@ -52,13 +55,26 @@ class MeasurementModelParams:
 @dataclass(frozen=True)
 class BeamRangeFinderMeasModelParams:
     occ_thresh: float = 1.4
+    free_thresh: float = -1.4
+    unknown_ratio_thresh: float = 0.30
+    known_free_ratio_thresh: float = 0.70
+
     sigma_hit: float = 0.15
-    z_hit: float = 0.95
-    z_rand: float = 0.05
-    p_max_no_obstacle: float = 0.8
-    p_max_obstacle: float = 0.02
-    p_no_obstacle_for_hit: float = 0.01
-    beam_step: int = 2
+    w_hit: float = 0.70   
+    w_short: float = 0.10
+    lambda_short: float = 0.20
+    w_max: float = 0.10
+    w_rand: float = 0.10
+    
+    p_unknown: float = 0.20
+    p_out_of_map: float = 0.10
+    p_unexpected_known_free: float = 0.03
+    p_pred_below_min: float = 0.02
+
+    # Numerical / scaling
+    alpha_meas: float = 0.10
+    beam_step: int = 2  
+    eps: float = 1e-12
 
 
 class RBPFFactory():
@@ -120,16 +136,7 @@ class RBPFFactory():
 
         # Backward-compatible dispatch for both measurement-model parameter types.
         if isinstance(measurement_model_params, BeamRangeFinderMeasModelParams):
-            measurement_model = BeamRangeFinderModel(
-                occ_thresh=measurement_model_params.occ_thresh,
-                sigma_hit=measurement_model_params.sigma_hit,
-                z_hit=measurement_model_params.z_hit,
-                z_rand=measurement_model_params.z_rand,
-                p_max_no_obstacle=measurement_model_params.p_max_no_obstacle,
-                p_max_obstacle=measurement_model_params.p_max_obstacle,
-                p_no_obstacle_for_hit=measurement_model_params.p_no_obstacle_for_hit,
-                beam_step=measurement_model_params.beam_step,
-            )
+            measurement_model = BeamRangeFinderModel(**vars(measurement_model_params))
         else:
             measurement_model = LikelihoodFiledModel(
                 sigma=measurement_model_params.sigma_measurement
@@ -1414,11 +1421,11 @@ class RBPF:
             )
 
             # Extract likilihood 
-            log_p_weight = results.get("log_likelihood", -np.inf)
+            log_p_weight = results.get("log_likelihood", FALLBACK_LOG_FLOOR)
             
             if not np.isfinite(log_p_weight):
                 scan_match_fallback_failed = True
-                log_p_weight = -np.inf
+                log_p_weight = FALLBACK_LOG_FLOOR
             
             # Compute fallback time duration
             t_fallback_s = time.perf_counter() - t_fallback_start
