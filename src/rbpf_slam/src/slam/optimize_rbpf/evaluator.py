@@ -53,9 +53,13 @@ class StepResult:
     rot_err_sm_true: Optional[float] = None
     pose_err_sm_true: Optional[float] = None
     mu_true_err_improves_over_sm_true: Optional[float] = None
+    mu_true_better_than_sm_true: Optional[bool] = None
     
     min_xj_pose_err_true: Optional[float] = None
     min_xj_is_best_xj: Optional[bool] = None
+    min_xj_better_sm_pose: Optional[bool] = None
+    best_xj_better_sm_pose: Optional[bool] = None
+
     weight_min_xj_err: Optional[float] = None
     best_weighted_xj_pose_err_true: Optional[float] = None
     weight_best_xj: Optional[float] = None
@@ -224,6 +228,10 @@ class RBPFEvaluator:
 
     @staticmethod
     def _finite_values(values: List[Optional[float]]) -> List[float]:
+        '''
+        Converts the given list to a numpy array. Filters all non-finite values (inf, -inf, nan) and returns 
+        a list of only finite values.
+        '''
         arr = np.asarray(values, dtype=float)
         if arr.size == 0:
             return []
@@ -272,6 +280,7 @@ class RBPFEvaluator:
         rot_err_sm_true = None
         pose_err_sm_true = None
         mu_true_err_improves_over_sm_true = None
+        mu_true_better_than_sm_true = None
         trans_err_best_xj_true = None
         rot_err_best_xj_true = None
         trans_err_worst_xj_true = None
@@ -297,6 +306,8 @@ class RBPFEvaluator:
         best_xj_better_than_worst_trans = None
         best_xj_improves_over_sm_rot = None
         best_xj_better_than_worst_rot = None
+        min_xj_better_sm_pose = None
+        best_xj_better_sm_pose = None
         
         trans_errors_xj_true = []
         rot_errors_xj_true = []
@@ -388,6 +399,9 @@ class RBPFEvaluator:
                     # >0: mu is better than sm, =0: mu is equal to sm, <0: mu is worse than sm,
                     mu_true_err_improves_over_sm_true = (pose_err_sm_true - pose_err_mu_true) / (pose_err_sm_true + 1e-12)
 
+                    # Compute mu > sm 
+                    mu_true_better_than_sm_true = bool(pose_err_mu_true < pose_err_sm_true)
+
             # Analyze proposal xjs and weights
             if xjs is not None and xj_weights is not None and true_pose_t is not None:
                 xjs_arr = np.asarray(xjs, dtype=float)
@@ -467,6 +481,10 @@ class RBPFEvaluator:
 
                         # Measure if the min xj beats the bes xj
                         min_xj_is_best_xj = bool(best_idx == np.argmin(pose_errors_xj_true))
+
+                        # Compute min/best xj better than sm 
+                        min_xj_better_sm_pose = bool(min_xj_pose_err_true < pose_err_sm_true)
+                        best_xj_better_sm_pose = bool(best_weighted_xj_pose_err_true < pose_err_sm_true)
 
                         # Compute correlation between all xj errors to true pose and corresponding weights/probs
                         corr_xjs_weights, _ = spearmanr(-pose_errors_xj_true, weights)
@@ -621,6 +639,9 @@ class RBPFEvaluator:
             
             min_xj_pose_err_true=min_xj_pose_err_true,
             min_xj_is_best_xj=min_xj_is_best_xj,
+            min_xj_better_sm_pose=min_xj_better_sm_pose,
+            best_xj_better_sm_pose=best_xj_better_sm_pose,
+
             weight_min_xj_err=weight_min_xj_err,
             best_weighted_xj_pose_err_true=best_weighted_xj_pose_err_true,
             weight_best_xj=weight_best_xj,
@@ -652,6 +673,7 @@ class RBPFEvaluator:
             xj_motion=xj_motion,
             xj_meas=xj_meas,
             mu_true_err_improves_over_sm_true=mu_true_err_improves_over_sm_true,
+            mu_true_better_than_sm_true=mu_true_better_than_sm_true,
 
             prop_std_x=prop_std_x,
             prop_std_y=prop_std_y,
@@ -690,7 +712,7 @@ class RBPFEvaluator:
             [s.map_point_keep_ratio for s in step_results if s.map_point_keep_ratio is not None]
         )
         
-        # Compute proposal metrics
+        # Access step data and ensure valud values
         trans_err_mu_true_values = self._finite_values([s.trans_err_mu_true for s in step_results if s.trans_err_mu_true is not None])
         rot_err_mu_true_values = self._finite_values([s.rot_err_mu_true for s in step_results if s.rot_err_mu_true is not None])
         pose_err_mu_true_values = self._finite_values([s.pose_err_mu_true for s in step_results if s.pose_err_mu_true is not None])
@@ -726,6 +748,9 @@ class RBPFEvaluator:
         xj_eff_meas_values = self._finite_values([s.xj_eff_meas for s in step_results if s.xj_eff_meas is not None])
         min_xj_pose_err_true_values = self._finite_values([s.min_xj_pose_err_true for s in step_results if s.min_xj_pose_err_true is not None])
         min_xj_is_best_xj_values = [s.min_xj_is_best_xj for s in step_results if s.min_xj_is_best_xj is not None]
+        min_xj_better_sm_pose_values = [s.min_xj_better_sm_pose for s in step_results if s.min_xj_better_sm_pose is not None]
+        best_xj_better_sm_pose_values = [s.best_xj_better_sm_pose for s in step_results if s.best_xj_better_sm_pose is not None]
+
         min_xj_true_err_improves_over_sm_true_values = self._finite_values([s.min_xj_true_err_improves_over_sm_true for s in step_results if s.min_xj_true_err_improves_over_sm_true is not None])
         best_xj_true_err_improves_over_sm_true_values = self._finite_values([s.best_xj_true_err_improves_over_sm_true for s in step_results if s.best_xj_true_err_improves_over_sm_true is not None])
         min_xj_true_err_weight_score_values = self._finite_values([s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None])
@@ -742,6 +767,7 @@ class RBPFEvaluator:
         best_weighted_xj_pose_err_true_values = self._finite_values([s.best_weighted_xj_pose_err_true for s in step_results if s.best_weighted_xj_pose_err_true is not None])
         weight_best_xj_values = self._finite_values([s.weight_best_xj for s in step_results if s.weight_best_xj is not None])
         weight_ratio_min_best_weight_values = self._finite_values([s.weight_ratio_min_best_weight for s in step_results if s.weight_ratio_min_best_weight is not None])
+        mu_true_better_than_sm_true_values = [s.mu_true_better_than_sm_true for s in step_results if s.mu_true_better_than_sm_true is not None]
         log_motion_range_values = self._finite_values([s.log_motion_range for s in step_results if s.log_motion_range is not None])
         log_meas_range_values = self._finite_values([s.log_meas_range for s in step_results if s.log_meas_range is not None])
         log_weight_range_values = self._finite_values([s.log_weight_range for s in step_results if s.log_weight_range is not None])
@@ -795,6 +821,9 @@ class RBPFEvaluator:
             "mean_min_xj_pose_err_true": float(np.mean(min_xj_pose_err_true_values)) if min_xj_pose_err_true_values else float("nan"),
             "rmse_min_xj_pose_err_true": float(np.sqrt(np.mean(np.square(min_xj_pose_err_true_values)))) if min_xj_pose_err_true_values else float("nan"),
             "mean_min_xj_is_best_xj": float(np.mean(min_xj_is_best_xj_values)) if min_xj_is_best_xj_values else float("nan"),
+            "min_xj_better_sm_pose_rate": float(np.mean(min_xj_better_sm_pose_values)) if min_xj_better_sm_pose_values else float("nan"),
+            "best_xj_better_sm_pose_rate": float(np.mean(best_xj_better_sm_pose_values)) if best_xj_better_sm_pose_values else float("nan"),
+
             "mean_min_xj_true_err_improves_over_sm_true": float(np.mean(min_xj_true_err_improves_over_sm_true_values)) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
             "rmse_min_xj_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(min_xj_true_err_improves_over_sm_true_values)))) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
             "mean_best_xj_true_err_improves_over_sm_true": float(np.mean(best_xj_true_err_improves_over_sm_true_values)) if best_xj_true_err_improves_over_sm_true_values else float("nan"),
@@ -817,6 +846,7 @@ class RBPFEvaluator:
             "mean_meas_rank_score": float(np.mean(meas_rank_score_values)) if meas_rank_score_values else float("nan"),
             "mean_mu_true_err_improves_over_sm_true": float(np.mean(mu_true_err_improves_over_sm_true_values)) if mu_true_err_improves_over_sm_true_values else float("nan"),
             "rmse_mu_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(mu_true_err_improves_over_sm_true_values)))) if mu_true_err_improves_over_sm_true_values else float("nan"),
+            "mu_true_better_than_sm_true_rate": float(np.mean(mu_true_better_than_sm_true_values)) if mu_true_better_than_sm_true_values else float("nan"),
 
             "mean_weight_min_xj_err": float(np.mean(weight_min_xj_err_values)) if weight_min_xj_err_values else float("nan"),
             "mean_best_weighted_xj_pose_err_true": float(np.mean(best_weighted_xj_pose_err_true_values)) if best_weighted_xj_pose_err_true_values else float("nan"),
@@ -835,6 +865,9 @@ class RBPFEvaluator:
 
             "mean_trans_err_mu_sm": float(np.mean(trans_err_mu_sm_values)) if trans_err_mu_sm_values else float("nan"),
             "mean_rot_err_mu_sm": float(np.mean(rot_err_mu_sm_values)) if rot_err_mu_sm_values else float("nan"),
+
+            "mean_trans_err_sm_true": float(np.mean(trans_err_sm_true_values)) if trans_err_sm_true_values else float("nan"),
+            "mean_rot_err_sm_true": float(np.mean(rot_err_sm_true_values)) if rot_err_sm_true_values else float("nan"),
             "rmse_trans_err_sm_true": float(np.sqrt(np.mean(np.square(trans_err_sm_true_values)))) if trans_err_sm_true_values else float("nan"),
             "rmse_rot_err_sm_true": float(np.sqrt(np.mean(np.square(rot_err_sm_true_values)))) if rot_err_sm_true_values else float("nan"),
             

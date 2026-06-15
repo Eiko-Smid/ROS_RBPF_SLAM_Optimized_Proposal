@@ -4,6 +4,7 @@ from typing import Iterable, List
 import pandas as pd
 
 from .optimizer import RankedRun, RBPFOptimizer
+from .playback_defs import ExperimentParams
 
 
 class RankedRunConverter:
@@ -19,15 +20,28 @@ class RankedRunConverter:
         """Convert radians to degrees, while preserving None."""
         return math.degrees(value) if value is not None else None
 
+
     @staticmethod
     def _optional_ms(value_s):
         """Convert seconds to milliseconds, while preserving None."""
         return value_s * 1000.0 if value_s is not None else None
 
+
     @staticmethod
-    def _summary(run: RankedRun, key: str, default=None):
-        """Safely read a value from run.summary."""
-        return run.summary.get(key, default)
+    def _read_from_summary(run: RankedRun, key: str, default=None):
+        '''
+        Safely read a value from run.summary. Raises error if run.summary is not a dict or if the key is not present. 
+        '''
+        if not isinstance(run.summary, dict):
+            raise ValueError(f"Expected run.summary to be a dict, got {type(run.summary)}")
+
+        if key not in run.summary.keys():
+            raise KeyError(f"Key '{key}' not found in run.summary. Available keys: {list(run.summary.keys())}")
+
+        value = run.summary.get(key, default)
+            
+        return value
+
 
     @classmethod
     def to_dataframe(cls, ranked_runs: Iterable[RankedRun]) -> pd.DataFrame:
@@ -38,9 +52,9 @@ class RankedRunConverter:
 
         for run in ranked_runs:
             params = run.params
-            n_steps = cls._summary(run, "n_steps")
-            scan_match_failed_count = cls._summary(run, "scan_match_failed_count", 0)
-            scan_match_fallback_failed_count = cls._summary(
+            n_steps = cls._read_from_summary(run, "n_steps")
+            scan_match_failed_count = cls._read_from_summary(run, "scan_match_failed_count", 0)
+            scan_match_fallback_failed_count = cls._read_from_summary(
                 run,
                 "scan_match_fallback_failed_count",
                 0,
@@ -75,9 +89,30 @@ class RankedRunConverter:
                 "n_particles": params.particle_params.n_particles,
                 # TODO: Adapt measurement model here!
                 # "sigma_measurement": params.measurement_model_params.sigma_measurement,
-                "sigma_measurement":params.measurement_model_params.sigma_hit,
-                "proposal_alpha": params.proposal_alpha,
-                "proposal_beta": params.proposal_beta,
+                # "sigma_measurement":params.measurement_model_params.sigma_hit,
+                # "proposal_alpha": params.proposal_alpha,
+                # "proposal_beta": params.proposal_beta,
+                "occ_thresh": params.measurement_model_params.occ_thresh,
+                "free_thresh": params.measurement_model_params.free_thresh,
+                "unknown_ratio_thresh": params.measurement_model_params.unknown_ratio_thresh,
+                "known_free_ratio_thresh": params.measurement_model_params.known_free_ratio_thresh,
+
+                "sigma_hit": params.measurement_model_params.sigma_hit,
+                "w_hit": params.measurement_model_params.w_hit,
+                "w_short": params.measurement_model_params.w_short,
+                "lambda_short": params.measurement_model_params.lambda_short,
+                "w_max": params.measurement_model_params.w_max,
+                "w_rand": params.measurement_model_params.w_rand,
+                
+                "p_unknown": params.measurement_model_params.p_unknown,
+                "p_out_of_map": params.measurement_model_params.p_out_of_map,
+                "p_unexpected_known_free": params.measurement_model_params.p_unexpected_known_free,
+                "p_pred_below_min": params.measurement_model_params.p_pred_below_min,
+                
+                "alpha_meas": params.measurement_model_params.alpha_meas,
+                "beam_step": params.measurement_model_params.beam_step,
+                "eps": params.measurement_model_params.eps,
+
                 "sigma_x_motion": params.motion_model_params.sigma_x,
                 "sigma_y_motion": params.motion_model_params.sigma_y,
                 "sigma_theta_motion": params.motion_model_params.sigma_theta,
@@ -94,140 +129,166 @@ class RankedRunConverter:
                 "scan_match_fallback_failed_count": scan_match_fallback_failed_count,
                 "scan_match_failed_rate": scan_match_failed_rate,
                 "scan_match_fallback_failed_rate": scan_match_fallback_failed_rate,
-                "median_extracted_map_points": cls._summary(run, "median_extracted_map_points"),
-                "median_map_point_keep_ratio": cls._summary(run, "median_map_point_keep_ratio"),
-                "count_too_few_points": cls._summary(run, "count_too_few_points", 0),
-                "count_too_few_corresp": cls._summary(run, "count_too_few_corresp", 0),
-                "infinite_h_or_g": cls._summary(run, "infinite_h_or_g", 0),
-                "ill_cond_H": cls._summary(run, "ill_cond_H", 0),
-                "infinite_dtransform": cls._summary(run, "infinite_dtransform", 0),
-                "infinite_mean_err": cls._summary(run, "infinite_mean_err", 0),
-                "best_transf_too_large": cls._summary(run, "best_transf_too_large", 0),
-                "best_mean_err_too_large": cls._summary(run, "best_mean_err_too_large", 0),
+                "median_extracted_map_points": cls._read_from_summary(run, "median_extracted_map_points"),
+                "median_map_point_keep_ratio": cls._read_from_summary(run, "median_map_point_keep_ratio"),
+                "count_too_few_points": cls._read_from_summary(run, "count_too_few_points", 0),
+                "count_too_few_corresp": cls._read_from_summary(run, "count_too_few_corresp", 0),
+                "infinite_h_or_g": cls._read_from_summary(run, "infinite_h_or_g", 0),
+                "ill_cond_H": cls._read_from_summary(run, "ill_cond_H", 0),
+                "infinite_dtransform": cls._read_from_summary(run, "infinite_dtransform", 0),
+                "infinite_mean_err": cls._read_from_summary(run, "infinite_mean_err", 0),
+                "best_transf_too_large": cls._read_from_summary(run, "best_transf_too_large", 0),
+                "best_mean_err_too_large": cls._read_from_summary(run, "best_mean_err_too_large", 0),
 
-                # End pose errors
-                "mean_trans_error_raw_odom": cls._summary(run, "mean_translation_error_raw_odom"),
+                # Pose errors
+                # Translational errors
+                # mean
+                "mean_trans_error_raw_odom": cls._read_from_summary(run, "mean_translation_errorraw_odom"),                
+                "mean_trans_err_sm_true": cls._read_from_summary(run, "mean_trans_err_sm_true"),
+                "mean_trans_err_mu_true": cls._read_from_summary(run, "mean_trans_err_mu_true"),
+                "mean_trans_error": cls._read_from_summary(run, "mean_translation_error"),
+                # "mean_trans_err_mu_sm": cls._summary(run, "mean_trans_err_mu_sm"),
+                
+                # rmse
+                "rmse_trans_error_raw_odom": cls._read_from_summary(run, "rmse_translation_error_raw_odom"),
+                "rmse_trans_err_sm_true": cls._read_from_summary(run, "rmse_trans_err_sm_true"),
+                "rmse_trans_error": cls._read_from_summary(run, "rmse_translation_error"),            
+                # "rmse_trans_err_mu_sm": cls._summary(run, "rmse_trans_err_mu_sm"),
+
+                # Rotational errors
+                # mean
                 "mean_rot_error_raw_odom_deg": cls._deg(
-                    cls._summary(run, "mean_rotation_error_raw_odom")
+                    cls._read_from_summary(run, "mean_rotation_error_raw_odom")
                 ),
-                "rmse_trans_error_raw_odom": cls._summary(run, "rmse_translation_error_raw_odom"),
-                "rmse_rot_error_raw_odom_deg": cls._deg(
-                    cls._summary(run, "rmse_rotation_error_raw_odom")
+                "mean_rot_err_sm_true_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rot_err_sm_true")
                 ),
-                "mean_trans_error": cls._summary(run, "mean_translation_error"),
-                "mean_rot_error_deg": cls._deg(
-                    cls._summary(run, "mean_rotation_error")
-                ),
-                "rmse_trans_error": cls._summary(run, "rmse_translation_error"),
-                "rmse_rot_error_deg": cls._deg(
-                    cls._summary(run, "rmse_rotation_error")
-                ),
-                "drift_trans_err_raw_odom": cls._summary(run, "drift_trans_err_raw_odom"),
-
-                # Intentionally mirrored from previous CSV writer behavior:
-                # these are not converted here.
-                "drift_rot_err_raw_odom_deg": cls._summary(run, "drift_rot_err_raw_odom"),
-                "drift_trans_err": cls._summary(run, "drift_trans_err"),
-                "drift_rot_err_deg": cls._summary(run, "drift_rot_err"),
-
-                # Mu errors of proposal
-                "mean_trans_err_mu_true": cls._summary(run, "mean_trans_err_mu_true"),
                 "mean_rot_err_mu_true_deg": cls._deg(
-                    cls._summary(run, "mean_rot_err_mu_true")
+                    cls._read_from_summary(run, "mean_rot_err_mu_true")
                 ),
-                "mean_trans_err_mu_sm": cls._summary(run, "mean_trans_err_mu_sm"),
-                "mean_rot_err_mu_sm_deg": cls._deg(
-                    cls._summary(run, "mean_rot_err_mu_sm")
-                ),
-                "rmse_trans_err_sm_true": cls._summary(run, "rmse_trans_err_sm_true"),
+                "mean_rot_error_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rotation_error")
+                ),        
+                # TODO: Add mean rot err sm true        
+                # "mean_rot_err_mu_sm_deg": cls._deg(
+                #     cls._summary(run, "mean_rot_err_mu_sm")
+                # ),
+                
+                # rmse
+                "rmse_rot_error_raw_odom_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rotation_error_raw_odom")
+                ),                
                 "rmse_rot_err_sm_true_deg": cls._deg(
-                    cls._summary(run, "rmse_rot_err_sm_true")
+                    cls._read_from_summary(run, "rmse_rot_err_sm_true")
                 ),
-                "rmse_trans_err_mu_sm": cls._summary(run, "rmse_trans_err_mu_sm"),
-                "rmse_rot_err_mu_sm_deg": cls._deg(
-                    cls._summary(run, "rmse_rot_err_mu_sm")
+                "rmse_rot_error_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rotation_error")
                 ),
-
-                # Covariance and correlation metrics of proposal
-                "mean_prop_std_xy": cls._summary(run, "mean_prop_std_xy"),
-                "mean_prop_std_theta_deg": cls._deg(
-                    cls._summary(run, "mean_prop_std_theta")
-                ),
-                "mean_prop_corr_xy": cls._summary(run, "mean_prop_corr_xy"),
-                "mean_prop_corr_x_theta": cls._summary(run, "mean_prop_corr_x_theta"),
-                "mean_prop_corr_y_theta": cls._summary(run, "mean_prop_corr_y_theta"),
-                "mean_xj_eff": cls._summary(run, "mean_xj_eff"),
-                "mean_xj_eff_motion": cls._summary(run, "mean_xj_eff_motion"),
-                "mean_xj_eff_meas": cls._summary(run, "mean_xj_eff_meas"),
-
+                # "rmse_rot_err_mu_sm_deg": cls._deg(
+                #     cls._summary(run, "rmse_rot_err_mu_sm")
+                # ),
+                
                 # Pose errors metrics and xj weights
-                "mean_pose_err_sm_true": cls._summary(run, "mean_pose_err_sm_true"),
-                "mean_pose_err_mu_true": cls._summary(run, "mean_pose_err_mu_true"),
-                "mean_min_xj_pose_err_true": cls._summary(run, "mean_min_xj_pose_err_true"),
-                "mean_weight_min_xj_err": cls._summary(run, "mean_weight_min_xj_err"),
-                "mean_best_weighted_xj_pose_err_true": cls._summary(
+                "mean_pose_err_sm_true": cls._read_from_summary(run, "mean_pose_err_sm_true"),
+                "mean_pose_err_mu_true": cls._read_from_summary(run, "mean_pose_err_mu_true"),
+                "mean_min_xj_pose_err_true": cls._read_from_summary(run, "mean_min_xj_pose_err_true"),
+                "mean_weight_min_xj_err": cls._read_from_summary(run, "mean_weight_min_xj_err"),
+                "mean_best_weighted_xj_pose_err_true": cls._read_from_summary(
                     run, "mean_best_weighted_xj_pose_err_true"
                 ),
-                "mean_weight_best_xj": cls._summary(run, "mean_weight_best_xj"),
-                "mean_weight_ratio_min_best_weight": cls._summary(
-                    run, "mean_weight_ratio_min_best_weight"
-                ),
-                "median_weight_ratio_min_best_weight": cls._summary(
-                    run, "median_weight_ratio_min_best_weight"
-                ),
-                "mean_log_motion_range": cls._summary(run, "mean_log_motion_range"),
-                "median_log_motion_range": cls._summary(run, "median_log_motion_range"),
-                "mean_log_meas_range": cls._summary(run, "mean_log_meas_range"),
-                "median_log_meas_range": cls._summary(run, "median_log_meas_range"),
-                "mean_log_weight_range": cls._summary(run, "mean_log_weight_range"),
+
+                # Final drift metrics
+                # trans           
+                "drift_trans_err_raw_odom": cls._read_from_summary(run, "drift_trans_err_raw_odom"),
+                "drift_trans_err": cls._read_from_summary(run, "drift_trans_err"),
+                # rot
+                "drift_rot_err_raw_odom_deg": cls._read_from_summary(run, "drift_rot_err_raw_odom"),                
+                "drift_rot_err_deg": cls._read_from_summary(run, "drift_rot_err"),                                                
 
                 # Improvement metrics
-                "mean_min_xj_true_err_improves_over_sm_true": cls._summary(
+                "mean_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_min_xj_true_err_improves_over_sm_true"
                 ),
-                "rmse_min_xj_true_err_improves_over_sm_true": cls._summary(
+                "rmse_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "rmse_min_xj_true_err_improves_over_sm_true"
                 ),
-                "mean_best_xj_true_err_improves_over_sm_true": cls._summary(
+                "mean_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_best_xj_true_err_improves_over_sm_true"
                 ),
-                "rmse_best_xj_true_err_improves_over_sm_true": cls._summary(
+                "rmse_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "rmse_best_xj_true_err_improves_over_sm_true"
                 ),
-                "mean_mu_true_err_improves_over_sm_true": cls._summary(
+                "mean_mu_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_mu_true_err_improves_over_sm_true"
                 ),
-                "rmse_mu_true_err_improves_over_sm_true": cls._summary(
+                "rmse_mu_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "rmse_mu_true_err_improves_over_sm_true"
                 ),
+                "mu_true_better_than_sm_true_rate": cls._read_from_summary(
+                    run, "mu_true_better_than_sm_true_rate"
+                ),
 
+
+                # Covariance and correlation metrics of proposal
+                "mean_prop_std_xy": cls._read_from_summary(run, "mean_prop_std_xy"),
+                "mean_prop_std_theta_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_prop_std_theta")
+                ),
+                "mean_prop_corr_xy": cls._read_from_summary(run, "mean_prop_corr_xy"),
+                "mean_prop_corr_x_theta": cls._read_from_summary(run, "mean_prop_corr_x_theta"),
+                "mean_prop_corr_y_theta": cls._read_from_summary(run, "mean_prop_corr_y_theta"),
+                "mean_xj_eff": cls._read_from_summary(run, "mean_xj_eff"),
+                "mean_xj_eff_motion": cls._read_from_summary(run, "mean_xj_eff_motion"),
+                "mean_xj_eff_meas": cls._read_from_summary(run, "mean_xj_eff_meas"),
+
+                
+                "mean_weight_best_xj": cls._read_from_summary(run, "mean_weight_best_xj"),
+                "mean_weight_ratio_min_best_weight": cls._read_from_summary(
+                    run, "mean_weight_ratio_min_best_weight"
+                ),
+                "median_weight_ratio_min_best_weight": cls._read_from_summary(
+                    run, "median_weight_ratio_min_best_weight"
+                ),
+                "mean_log_motion_range": cls._read_from_summary(run, "mean_log_motion_range"),
+                "median_log_motion_range": cls._read_from_summary(run, "median_log_motion_range"),
+                "mean_log_meas_range": cls._read_from_summary(run, "mean_log_meas_range"),
+                "median_log_meas_range": cls._read_from_summary(run, "median_log_meas_range"),
+                "mean_log_weight_range": cls._read_from_summary(run, "mean_log_weight_range"),
+
+                
                 # xj and weight analysis metrics
-                "mean_min_xj_is_best_xj": cls._summary(run, "mean_min_xj_is_best_xj"),
-                "mean_min_xj_true_err_weight_score": cls._summary(
+                "mean_min_xj_is_best_xj": cls._read_from_summary(run, "mean_min_xj_is_best_xj"),
+                "min_xj_better_sm_pose_rate": cls._read_from_summary(run, "min_xj_better_sm_pose_rate"),
+                "best_xj_better_sm_pose_rate": cls._read_from_summary(run, "best_xj_better_sm_pose_rate"),
+
+                "mean_min_xj_true_err_weight_score": cls._read_from_summary(
                     run, "mean_min_xj_true_err_weight_score"
                 ),
-                "rmse_min_xj_true_err_weight_score": cls._summary(
+                "rmse_min_xj_true_err_weight_score": cls._read_from_summary(
                     run, "rmse_min_xj_true_err_weight_score"
                 ),
-                "mean_corr_xjs_weights": cls._summary(run, "mean_corr_xjs_weights"),
-                "median_corr_xjs_weights": cls._summary(run, "median_corr_xjs_weights"),
-                "mean_corr_xjs_motion": cls._summary(run, "mean_corr_xjs_motion"),
-                "median_corr_xjs_motion": cls._summary(run, "median_corr_xjs_motion"),
-                "mean_corr_xjs_meas": cls._summary(run, "mean_corr_xjs_meas"),
-                "median_corr_xjs_meas": cls._summary(run, "median_corr_xjs_meas"),
-                "mean_corr_weights_motion": cls._summary(run, "mean_corr_weights_motion"),
-                "median_corr_weights_motion": cls._summary(run, "median_corr_weights_motion"),
-                "mean_corr_weights_meas": cls._summary(run, "mean_corr_weights_meas"),
-                "median_corr_weights_meas": cls._summary(run, "median_corr_weights_meas"),
-                "mean_best_xj_score": cls._summary(run, "mean_best_xj_score"),
-                "rmse_best_xj_score": cls._summary(run, "rmse_best_xj_score"),
-                "mean_motion_rank_score": cls._summary(run, "mean_motion_rank_score"),
-                "mean_meas_rank_score": cls._summary(run, "mean_meas_rank_score"),
 
+                # Compute correlations (Does high weight, prob, etc correlate with low xj pose errors to true pose)
+                "mean_corr_xjs_weights": cls._read_from_summary(run, "mean_corr_xjs_weights"),
+                "median_corr_xjs_weights": cls._read_from_summary(run, "median_corr_xjs_weights"),
+                "mean_corr_xjs_motion": cls._read_from_summary(run, "mean_corr_xjs_motion"),
+                "median_corr_xjs_motion": cls._read_from_summary(run, "median_corr_xjs_motion"),
+                "mean_corr_xjs_meas": cls._read_from_summary(run, "mean_corr_xjs_meas"),
+                "median_corr_xjs_meas": cls._read_from_summary(run, "median_corr_xjs_meas"),
+                "mean_corr_weights_motion": cls._read_from_summary(run, "mean_corr_weights_motion"),
+                "median_corr_weights_motion": cls._read_from_summary(run, "median_corr_weights_motion"),
+                "mean_corr_weights_meas": cls._read_from_summary(run, "mean_corr_weights_meas"),
+                "median_corr_weights_meas": cls._read_from_summary(run, "median_corr_weights_meas"),
+                # "mean_best_xj_score": cls._summary(run, "mean_best_xj_score"),
+                # "rmse_best_xj_score": cls._summary(run, "rmse_best_xj_score"),
+                # "mean_motion_rank_score": cls._summary(run, "mean_motion_rank_score"),
+                # "mean_meas_rank_score": cls._summary(run, "mean_meas_rank_score"),
+
+                
                 # Step information
-                "n_steps": cls._summary(run, "n_steps"),
+                "n_steps": cls._read_from_summary(run, "n_steps"),
                 "mean_step_duration_ms": cls._optional_ms(
-                    cls._summary(run, "mean_step_duration")
+                    cls._read_from_summary(run, "mean_step_duration")
                 ),
             }
 
@@ -298,8 +359,14 @@ class ResultAggregator:
             "mean_min_xj_is_best_xj",
             "mean_min_xj_pose_err_true",
             "mean_best_weighted_xj_pose_err_true",
+            
+            "mu_true_better_than_sm_true_rate",
+
             "mean_min_xj_true_err_improves_over_sm_true",
+            "min_xj_better_sm_pose_rate",
             "mean_best_xj_true_err_improves_over_sm_true",
+            "best_xj_better_sm_pose_rate",
+
             "median_log_motion_range",
             "median_log_meas_range",
             "mean_corr_xjs_motion",
@@ -371,10 +438,12 @@ class ResultAggregator:
             worst_best_weighted_xj_pose_err_true=("mean_best_weighted_xj_pose_err_true", "max"),
 
             mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
-            worst_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "min"),          
+            worst_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "min"),
+            mean_min_xj_better_sm_pose_rate =("min_xj_better_sm_pose_rate", "mean"),
             
             mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
             worst_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "min"),
+            mean_best_xj_better_sm_pose_rate =("best_xj_better_sm_pose_rate", "mean"),
 
             median_log_motion_range=("median_log_motion_range", "median"),
             median_log_meas_range=("median_log_meas_range", "median"),
@@ -466,6 +535,9 @@ class ResultAggregator:
             "worst_best_weighted_xj_pose_err_true",
             "mean_min_xj_true_err_improves_over_sm_true",
             "worst_min_xj_true_err_improves_over_sm_true",
+            "mean_min_xj_better_sm_pose_rate",
+            "mean_best_xj_better_sm_pose_rate",
+
             "mean_best_xj_true_err_improves_over_sm_true",
             "worst_best_xj_true_err_improves_over_sm_true",
             "median_log_motion_range",
@@ -541,9 +613,11 @@ class ResultAggregator:
 
             mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
             worst_min_xj_true_err_improves_over_sm_true =("worst_min_xj_true_err_improves_over_sm_true", "min"),
+            mean_min_xj_better_sm_pose_rate =("mean_min_xj_better_sm_pose_rate", "mean"),
 
             mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
             worst_best_xj_true_err_improves_over_sm_true =("worst_best_xj_true_err_improves_over_sm_true", "min"),
+            mean_best_xj_better_sm_pose_rate =("mean_best_xj_better_sm_pose_rate", "mean"),
 
             median_log_motion_range=("median_log_motion_range", "median"),
             median_log_meas_range=("median_log_meas_range", "median"),

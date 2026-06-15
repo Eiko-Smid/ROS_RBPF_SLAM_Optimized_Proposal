@@ -97,17 +97,17 @@ def _beam_model_prob(
         p_rand = 1.0 / max_sensor_range
 
     # Mixture
-    p = (
+    prob = (
         w_hit * p_hit
         + w_short * p_short
         + w_max * p_max
         + w_rand * p_rand
     )
 
-    if p < eps:
-        p = eps
+    if prob < eps:
+        prob = eps
 
-    return p
+    return prob
 
 
 @njit
@@ -378,7 +378,7 @@ def raytracing_log_likelihood_numba(
         # --------------------------------------------------------
         if out_of_map:
             out_of_map_count += 1
-            p = p_out_of_map
+            prob = p_out_of_map
 
         # --------------------------------------------------------
         # Map predicts an occupied cell -> use full book beam model
@@ -396,11 +396,11 @@ def raytracing_log_likelihood_numba(
 
             if z_exp <= min_sensor_range:
                 # Handle case that expected measurement is below sensor minimum range
-                p = p_pred_below_min
+                prob = p_pred_below_min
 
             else:
                 # Compute measurement likelihood with Laser Range Finder Model
-                p = _beam_model_prob(
+                prob = _beam_model_prob(
                     z=z,
                     z_exp=z_exp,
                     measured_max=measured_max,
@@ -437,7 +437,7 @@ def raytracing_log_likelihood_numba(
             # ----------------------------------------------------
             if unknown_ratio >= unknown_ratio_thresh:
                 unknown_ray_count += 1
-                p = p_unknown
+                prob = p_unknown
 
             # ----------------------------------------------------
             # Mostly known-free ray.
@@ -448,7 +448,7 @@ def raytracing_log_likelihood_numba(
                 known_free_ray_count += 1
                 z_exp = max_sensor_range
 
-                p = _beam_model_prob(
+                prob = _beam_model_prob(
                     z=z,
                     z_exp=z_exp,
                     measured_max=measured_max,
@@ -466,22 +466,22 @@ def raytracing_log_likelihood_numba(
                 # this is an unexpected obstacle. Do not make it impossible.
                 if not measured_max:
                     unexpected_known_free_count += 1
-                    if p < p_unexpected_known_free:
-                        p = p_unexpected_known_free
+                    if prob < p_unexpected_known_free:
+                        prob = p_unexpected_known_free
 
             # ----------------------------------------------------
             # Mixed free/unknown ray -> map prediction is weak
             # ----------------------------------------------------
             else:
                 unknown_ray_count += 1
-                p = p_unknown
+                prob = p_unknown
 
         # Ensure valid likelihood
-        if p < eps:
-            p = eps
+        if prob < eps:
+            prob = eps
 
         # Transform to log space and accumulate log likelihoods
-        log_likelihood += log(p)
+        log_likelihood += log(prob)
 
     # No valid beams -> neutral update, not particle death.
     # This means: measurement gives no information.
