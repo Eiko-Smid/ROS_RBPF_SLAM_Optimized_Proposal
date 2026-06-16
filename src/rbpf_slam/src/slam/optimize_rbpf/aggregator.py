@@ -33,10 +33,10 @@ class RankedRunConverter:
         Safely read a value from run.summary. Raises error if run.summary is not a dict or if the key is not present. 
         '''
         if not isinstance(run.summary, dict):
-            raise ValueError(f"Expected run.summary to be a dict, got {type(run.summary)}")
+            raise ValueError(f"\nExpected run.summary to be a dict, got {type(run.summary)}")
 
         if key not in run.summary.keys():
-            raise KeyError(f"Key '{key}' not found in run.summary. Available keys: {list(run.summary.keys())}")
+            raise KeyError(f"\nKey '{key}' not found in run.summary. Available keys: {list(run.summary.keys())}")
 
         value = run.summary.get(key, default)
             
@@ -143,7 +143,7 @@ class RankedRunConverter:
                 # Pose errors
                 # Translational errors
                 # mean
-                "mean_trans_error_raw_odom": cls._read_from_summary(run, "mean_translation_errorraw_odom"),                
+                "mean_trans_error_raw_odom": cls._read_from_summary(run, "mean_translation_error_raw_odom"),                
                 "mean_trans_err_sm_true": cls._read_from_summary(run, "mean_trans_err_sm_true"),
                 "mean_trans_err_mu_true": cls._read_from_summary(run, "mean_trans_err_mu_true"),
                 "mean_trans_error": cls._read_from_summary(run, "mean_translation_error"),
@@ -152,8 +152,14 @@ class RankedRunConverter:
                 # rmse
                 "rmse_trans_error_raw_odom": cls._read_from_summary(run, "rmse_translation_error_raw_odom"),
                 "rmse_trans_err_sm_true": cls._read_from_summary(run, "rmse_trans_err_sm_true"),
+                "rmse_trans_err_mu_true": cls._read_from_summary(run, "rmse_trans_err_mu_true"),
                 "rmse_trans_error": cls._read_from_summary(run, "rmse_translation_error"),            
                 # "rmse_trans_err_mu_sm": cls._summary(run, "rmse_trans_err_mu_sm"),
+
+                # worst
+                "worst_trans_err_sm_true": cls._read_from_summary(run, "worst_trans_err_sm_true"),
+                "worst_trans_err_mu_true": cls._read_from_summary(run, "worst_trans_err_mu_true"),
+                "worst_translation_error": cls._read_from_summary(run, "worst_translation_error"),
 
                 # Rotational errors
                 # mean
@@ -181,13 +187,24 @@ class RankedRunConverter:
                 "rmse_rot_err_sm_true_deg": cls._deg(
                     cls._read_from_summary(run, "rmse_rot_err_sm_true")
                 ),
+                "rmse_rot_err_mu_true_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rot_err_mu_true")
+                ),
                 "rmse_rot_error_deg": cls._deg(
                     cls._read_from_summary(run, "rmse_rotation_error")
                 ),
-                # "rmse_rot_err_mu_sm_deg": cls._deg(
-                #     cls._summary(run, "rmse_rot_err_mu_sm")
-                # ),
-                
+
+                # worst
+                "worst_rot_err_sm_true_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_sm_true")
+                ),
+                "worst_rot_err_mu_true_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_mu_true")
+                ),
+                "worst_rot_error_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rotation_error")
+                ),
+
                 # Pose errors metrics and xj weights
                 "mean_pose_err_sm_true": cls._read_from_summary(run, "mean_pose_err_sm_true"),
                 "mean_pose_err_mu_true": cls._read_from_summary(run, "mean_pose_err_mu_true"),
@@ -202,45 +219,40 @@ class RankedRunConverter:
                 "drift_trans_err_raw_odom": cls._read_from_summary(run, "drift_trans_err_raw_odom"),
                 "drift_trans_err": cls._read_from_summary(run, "drift_trans_err"),
                 # rot
-                "drift_rot_err_raw_odom_deg": cls._read_from_summary(run, "drift_rot_err_raw_odom"),                
-                "drift_rot_err_deg": cls._read_from_summary(run, "drift_rot_err"),                                                
+                "drift_rot_err_raw_odom_deg": cls._deg(
+                    cls._read_from_summary(run, "drift_rot_err_raw_odom")            
+                ),
+                "drift_rot_err_deg": cls._deg(
+                    cls._read_from_summary(run, "drift_rot_err")            
+                ),                                                
 
                 # Improvement metrics
                 "mean_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_min_xj_true_err_improves_over_sm_true"
                 ),
-                "rmse_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
-                    run, "rmse_min_xj_true_err_improves_over_sm_true"
-                ),
+                # "rmse_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
+                #     run, "rmse_min_xj_true_err_improves_over_sm_true"
+                # ),
                 "mean_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_best_xj_true_err_improves_over_sm_true"
                 ),
-                "rmse_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
-                    run, "rmse_best_xj_true_err_improves_over_sm_true"
-                ),
+                # "rmse_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
+                #     run, "rmse_best_xj_true_err_improves_over_sm_true"
+                # ),
                 "mean_mu_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_mu_true_err_improves_over_sm_true"
                 ),
-                "rmse_mu_true_err_improves_over_sm_true": cls._read_from_summary(
-                    run, "rmse_mu_true_err_improves_over_sm_true"
-                ),
+                # "rmse_mu_true_err_improves_over_sm_true": cls._read_from_summary(
+                #     run, "rmse_mu_true_err_improves_over_sm_true"
+                # ),
                 "mu_true_better_than_sm_true_rate": cls._read_from_summary(
                     run, "mu_true_better_than_sm_true_rate"
                 ),
 
-
-                # Covariance and correlation metrics of proposal
-                "mean_prop_std_xy": cls._read_from_summary(run, "mean_prop_std_xy"),
-                "mean_prop_std_theta_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_prop_std_theta")
-                ),
-                "mean_prop_corr_xy": cls._read_from_summary(run, "mean_prop_corr_xy"),
-                "mean_prop_corr_x_theta": cls._read_from_summary(run, "mean_prop_corr_x_theta"),
-                "mean_prop_corr_y_theta": cls._read_from_summary(run, "mean_prop_corr_y_theta"),
+                # Covariance and correlation metrics of proposal                
                 "mean_xj_eff": cls._read_from_summary(run, "mean_xj_eff"),
                 "mean_xj_eff_motion": cls._read_from_summary(run, "mean_xj_eff_motion"),
                 "mean_xj_eff_meas": cls._read_from_summary(run, "mean_xj_eff_meas"),
-
                 
                 "mean_weight_best_xj": cls._read_from_summary(run, "mean_weight_best_xj"),
                 "mean_weight_ratio_min_best_weight": cls._read_from_summary(
@@ -254,7 +266,6 @@ class RankedRunConverter:
                 "mean_log_meas_range": cls._read_from_summary(run, "mean_log_meas_range"),
                 "median_log_meas_range": cls._read_from_summary(run, "median_log_meas_range"),
                 "mean_log_weight_range": cls._read_from_summary(run, "mean_log_weight_range"),
-
                 
                 # xj and weight analysis metrics
                 "mean_min_xj_is_best_xj": cls._read_from_summary(run, "mean_min_xj_is_best_xj"),
@@ -264,9 +275,9 @@ class RankedRunConverter:
                 "mean_min_xj_true_err_weight_score": cls._read_from_summary(
                     run, "mean_min_xj_true_err_weight_score"
                 ),
-                "rmse_min_xj_true_err_weight_score": cls._read_from_summary(
-                    run, "rmse_min_xj_true_err_weight_score"
-                ),
+                # "rmse_min_xj_true_err_weight_score": cls._read_from_summary(
+                #     run, "rmse_min_xj_true_err_weight_score"
+                # ),
 
                 # Compute correlations (Does high weight, prob, etc correlate with low xj pose errors to true pose)
                 "mean_corr_xjs_weights": cls._read_from_summary(run, "mean_corr_xjs_weights"),
@@ -284,6 +295,14 @@ class RankedRunConverter:
                 # "mean_motion_rank_score": cls._summary(run, "mean_motion_rank_score"),
                 # "mean_meas_rank_score": cls._summary(run, "mean_meas_rank_score"),
 
+                # Covariance matrix information of proposal distribution
+                "mean_prop_std_xy": cls._read_from_summary(run, "mean_prop_std_xy"),
+                "mean_prop_std_theta_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_prop_std_theta")
+                ),
+                "mean_prop_corr_xy": cls._read_from_summary(run, "mean_prop_corr_xy"),
+                "mean_prop_corr_x_theta": cls._read_from_summary(run, "mean_prop_corr_x_theta"),
+                "mean_prop_corr_y_theta": cls._read_from_summary(run, "mean_prop_corr_y_theta"),
                 
                 # Step information
                 "n_steps": cls._read_from_summary(run, "n_steps"),
@@ -345,42 +364,74 @@ class ResultAggregator:
         to compute a score. At the end the df is sorted by score in ascending order and a rank column is added.
         '''
         # Estimate if all needed columns exist
-        required_cols = {
+        required_cols = [
+            # Grouping columns
             "dataset_id",
-            "seed",
+            "parameter_hash",
+            "used_meas_model",
+
+            # General information
             "map",
+            "parameter_tag",
+            "score",
+            "seed",
             "n_steps",
             "measurement_stddev",
-            "score",
-            "rmse_trans_error",
-            "rmse_rot_error_deg",
+
+            # Translational pose errors
+            "mean_trans_error",
+            "mean_trans_err_sm_true",
+            "mean_trans_err_mu_true",
+
             "rmse_trans_err_sm_true",
+            "rmse_trans_err_mu_true",
+            "rmse_trans_error",
+
+            "worst_trans_err_sm_true",
+            "worst_trans_err_mu_true",
+            "worst_translation_error",
+
+            # Rotational pose errors
+            "mean_rot_err_sm_true_deg",
+            "mean_rot_err_mu_true_deg",
+            "mean_rot_error_deg",
+
             "rmse_rot_err_sm_true_deg",
+            "rmse_rot_err_mu_true_deg",
+            "rmse_rot_error_deg",
+
+            "worst_rot_err_sm_true_deg",
+            "worst_rot_err_mu_true_deg",
+            "worst_rot_error_deg",
+
+            # Scan-matcher information
+            "scan_match_failed_count",
+            "scan_match_fallback_failed_count",
+            "median_extracted_map_points",
+            "median_map_point_keep_ratio",
+
+            # Proposal metrics
+            "mu_true_better_than_sm_true_rate",
+
             "mean_min_xj_is_best_xj",
             "mean_min_xj_pose_err_true",
             "mean_best_weighted_xj_pose_err_true",
-            
-            "mu_true_better_than_sm_true_rate",
 
             "mean_min_xj_true_err_improves_over_sm_true",
             "min_xj_better_sm_pose_rate",
+
             "mean_best_xj_true_err_improves_over_sm_true",
             "best_xj_better_sm_pose_rate",
 
             "median_log_motion_range",
             "median_log_meas_range",
+
             "mean_corr_xjs_motion",
             "mean_corr_xjs_meas",
-            "scan_match_failed_count",
-            "scan_match_fallback_failed_count",
-            "median_extracted_map_points",
-            "median_map_point_keep_ratio",
-            "parameter_tag",
-            "parameter_hash",
-            "used_meas_model",
-        }
+        ]
 
-        missing = sorted(col for col in required_cols if col not in ranked_run_df.columns)
+        # Estimate missing columns
+        missing = [col for col in required_cols if col not in ranked_run_df.columns]
         if missing:
             raise ValueError(
                 "aggregate_by_dataset_and_param missing required columns: " + ", ".join(missing)
@@ -407,27 +458,54 @@ class ResultAggregator:
             worst_score=("score", "max"),
             std_score=("score", "std"),
 
+            # Pose errors
+            # Translational err
+            # mean
+            mean_trans_err=("mean_trans_error", "mean"),
+            mean_trans_err_sm_true=("mean_trans_err_sm_true", "mean"),
+            mean_trans_err_mu_true=("mean_trans_err_mu_true", "mean"),
+            # rmse
+            mean_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "mean"),
+            mean_rmse_trans_err_mu_true=("rmse_trans_err_mu_true", "mean"),
+            mean_rmse_trans_error=("rmse_trans_error", "mean"),
+            # worst rmse
+            worst_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "max"),
+            worst_rmse_trans_err_mu_true=("rmse_trans_err_mu_true", "max"),
+            worst_rmse_trans_error=("rmse_trans_error", "max"),
+            # max values (These are the max vals over all steps for all runs)
+            max_trans_err_sm_true=("worst_trans_err_sm_true", "max"),
+            max_trans_err_mu_true=("worst_trans_err_mu_true", "max"),
+            max_trans_err=("worst_translation_error", "max"),
+
+            # Rotational errors
+            # mean
+            mean_rot_err_sm_true_deg=("mean_rot_err_sm_true_deg", "mean"),
+            mean_rot_err_mu_true_deg=("mean_rot_err_mu_true_deg", "mean"),
+            mean_rot_error_deg=("mean_rot_error_deg", "mean"),
+            # rmse
+            mean_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "mean"),
+            mean_rmse_rot_err_mu_true_deg=("rmse_rot_err_mu_true_deg", "mean"),
+            mean_rmse_rot_error_deg=("rmse_rot_error_deg", "mean"),
+            # worst
+            worst_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "max"),
+            worst_rmse_rot_err_mu_true_deg=("rmse_rot_err_mu_true_deg", "max"),
+            worst_rmse_rot_error_deg=("rmse_rot_error_deg", "max"),
+            # max values
+            max_rot_err_sm_true_deg=("worst_rot_err_sm_true_deg", "max"),
+            max_rot_err_mu_true_deg=("worst_rot_err_mu_true_deg", "max"),
+            max_rot_err_deg=("worst_rot_error_deg", "max"),
+
             # Scan matcher info            
             total_scan_match_failed_count=("scan_match_failed_count", "sum"),
             total_scan_match_fallback_failed_count=("scan_match_fallback_failed_count", "sum"),
             
             median_extracted_map_points=("median_extracted_map_points", "median"),
-            median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
-
-            mean_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "mean"),
-            worst_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "max"),
-
-            mean_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "mean"),
-            worst_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "max"),
-
-            # Metrics for pose errors
-            mean_rmse_trans_error=("rmse_trans_error", "mean"),
-            worst_rmse_trans_error=("rmse_trans_error", "max"),
-
-            mean_rmse_rot_error_deg=("rmse_rot_error_deg", "mean"),
-            worst_rmse_rot_error_deg=("rmse_rot_error_deg", "max"),
+            median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),                          
 
             # Proposal information metrics
+            mean_mu_true_better_than_sm_true_rate=("mu_true_better_than_sm_true_rate", "mean"),
+            worst_mu_true_better_than_sm_true_rate=("mu_true_better_than_sm_true_rate", "min"),
+
             mean_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "mean"),
             worst_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "min"),
 
@@ -439,11 +517,15 @@ class ResultAggregator:
 
             mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
             worst_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "min"),
+
             mean_min_xj_better_sm_pose_rate =("min_xj_better_sm_pose_rate", "mean"),
+            worst_min_xj_better_sm_pose_rate =("min_xj_better_sm_pose_rate", "min"),
             
             mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
             worst_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "min"),
+
             mean_best_xj_better_sm_pose_rate =("best_xj_better_sm_pose_rate", "mean"),
+            worst_best_xj_better_sm_pose_rate =("best_xj_better_sm_pose_rate", "min"),
 
             median_log_motion_range=("median_log_motion_range", "median"),
             median_log_meas_range=("median_log_meas_range", "median"),
@@ -502,58 +584,95 @@ class ResultAggregator:
 
     def aggregate_by_params(self, agg_dataset_param_df: pd.DataFrame):
         # Estimate if all needed columns exist
-        required_cols = {
-            "dataset_param_score",
-            "dataset_id",
+        required_cols = [
+            # Grouping column
             "parameter_hash",
+
+            # General information
             "parameter_tag",
             "used_meas_model",
-
+            "dataset_id",
+            "dataset_param_score",
             "total_n_steps",
             "measurement_stddev",
 
+            # Translational pose errors
+            "mean_trans_err",
+            "mean_trans_err_sm_true",
+            "mean_trans_err_mu_true",
+
             "mean_rmse_trans_err_sm_true",
-            "worst_rmse_trans_err_sm_true",
-            "mean_rmse_rot_err_sm_true_deg",
-            "worst_rmse_rot_err_sm_true_deg",
-
-            # "mean_scan_match_failed_rate",
-            # "worst_scan_match_failed_rate",
-            # "mean_scan_match_fallback_failed_rate",
-            # "worst_scan_match_fallback_failed_rate",
-
+            "mean_rmse_trans_err_mu_true",
             "mean_rmse_trans_error",
+
+            "worst_rmse_trans_err_sm_true",
+            "worst_rmse_trans_err_mu_true",
             "worst_rmse_trans_error",
+
+            "max_trans_err_sm_true",
+            "max_trans_err_mu_true",
+            "max_trans_err",
+
+            # Rotational pose errors
+            "mean_rot_err_sm_true_deg",
+            "mean_rot_err_mu_true_deg",
+            "mean_rot_error_deg",
+
+            "mean_rmse_rot_err_sm_true_deg",
+            "mean_rmse_rot_err_mu_true_deg",
             "mean_rmse_rot_error_deg",
+
+            "worst_rmse_rot_err_sm_true_deg",
+            "worst_rmse_rot_err_mu_true_deg",
             "worst_rmse_rot_error_deg",
 
-            "mean_min_xj_is_best_xj",
-            "worst_min_xj_is_best_xj",
-            "mean_min_xj_pose_err_true",
-            "worst_min_xj_pose_err_true",
-            "mean_best_weighted_xj_pose_err_true",
-            "worst_best_weighted_xj_pose_err_true",
-            "mean_min_xj_true_err_improves_over_sm_true",
-            "worst_min_xj_true_err_improves_over_sm_true",
-            "mean_min_xj_better_sm_pose_rate",
-            "mean_best_xj_better_sm_pose_rate",
+            "max_rot_err_sm_true_deg",
+            "max_rot_err_mu_true_deg",
+            "max_rot_err_deg",
 
-            "mean_best_xj_true_err_improves_over_sm_true",
-            "worst_best_xj_true_err_improves_over_sm_true",
-            "median_log_motion_range",
-            "median_log_meas_range",
-            "mean_corr_xjs_motion",
-            "mean_corr_xjs_meas",
-            "worst_corr_xjs_motion",
-            "worst_corr_xjs_meas",
-            
+            # Scan-matcher information
             "scan_match_failed_rate",
             "scan_match_fallback_failed_rate",
             "median_extracted_map_points",
             "median_map_point_keep_ratio",
-        }
 
-        missing = sorted(col for col in required_cols if col not in agg_dataset_param_df.columns)
+            # Proposal metrics
+            "mean_mu_true_better_than_sm_true_rate",
+            "worst_mu_true_better_than_sm_true_rate",
+
+            "mean_min_xj_is_best_xj",
+            "worst_min_xj_is_best_xj",
+
+            "mean_min_xj_pose_err_true",
+            "worst_min_xj_pose_err_true",
+
+            "mean_best_weighted_xj_pose_err_true",
+            "worst_best_weighted_xj_pose_err_true",
+
+            "mean_min_xj_true_err_improves_over_sm_true",
+            "worst_min_xj_true_err_improves_over_sm_true",
+
+            "mean_min_xj_better_sm_pose_rate",
+            "worst_min_xj_better_sm_pose_rate",
+
+            "mean_best_xj_true_err_improves_over_sm_true",
+            "worst_best_xj_true_err_improves_over_sm_true",
+
+            "mean_best_xj_better_sm_pose_rate",
+            "worst_best_xj_better_sm_pose_rate",
+
+            "median_log_motion_range",
+            "median_log_meas_range",
+
+            "mean_corr_xjs_motion",
+            "worst_corr_xjs_motion",
+
+            "mean_corr_xjs_meas",
+            "worst_corr_xjs_meas",
+        ]
+
+        # Estimate missing columns
+        missing = [col for col in required_cols if col not in agg_dataset_param_df.columns]
         if missing:
             raise ValueError(
                 "aggregate_by_params missing required columns: " + ", ".join(missing)
@@ -576,6 +695,43 @@ class ResultAggregator:
             worst_score=("dataset_param_score", "max"),
             std_score=("dataset_param_score", "std"),
 
+            # Pose errors
+            # Translational err
+            # mean
+            mean_trans_err=("mean_trans_err", "mean"),
+            mean_trans_err_sm_true=("mean_trans_err_sm_true", "mean"),
+            mean_trans_err_mu_true=("mean_trans_err_mu_true", "mean"),
+            # rmse
+            mean_rmse_trans_err_sm_true=("mean_rmse_trans_err_sm_true", "mean"),
+            mean_rmse_trans_err_mu_true=("mean_rmse_trans_err_mu_true", "mean"),
+            mean_rmse_trans_error=("mean_rmse_trans_error", "mean"),
+            # worst rmse
+            worst_rmse_trans_err_sm_true=("worst_rmse_trans_err_sm_true", "max"),
+            worst_rmse_trans_err_mu_true=("worst_rmse_trans_err_mu_true", "max"),
+            worst_rmse_trans_error=("worst_rmse_trans_error", "max"),
+            # max values (These are the max vals over all steps for all runs)
+            max_trans_err_sm_true=("max_trans_err_sm_true", "max"),
+            max_trans_err_mu_true=("max_trans_err_mu_true", "max"),
+            max_trans_err=("max_trans_err", "max"),
+
+            # Rotational errors
+            # mean
+            mean_rot_err_sm_true_deg=("mean_rot_err_sm_true_deg", "mean"),
+            mean_rot_err_mu_true_deg=("mean_rot_err_mu_true_deg", "mean"),
+            mean_rot_error_deg=("mean_rot_error_deg", "mean"),
+            # rmse
+            mean_rmse_rot_err_sm_true_deg=("mean_rmse_rot_err_sm_true_deg", "mean"),
+            mean_rmse_rot_err_mu_true_deg=("mean_rmse_rot_err_mu_true_deg", "mean"),
+            mean_rmse_rot_error_deg=("mean_rmse_rot_error_deg", "mean"),
+            # worst
+            worst_rmse_rot_err_sm_true_deg=("worst_rmse_rot_err_sm_true_deg", "max"),
+            worst_rmse_rot_err_mu_true_deg=("worst_rmse_rot_err_mu_true_deg", "max"),
+            worst_rmse_rot_error_deg=("worst_rmse_rot_error_deg", "max"),
+            # max values
+            max_rot_err_sm_true_deg=("max_rot_err_sm_true_deg", "max"),
+            max_rot_err_mu_true_deg=("max_rot_err_mu_true_deg", "max"),
+            max_rot_err_deg=("max_rot_err_deg", "max"),
+
             # Scan matcher info
             # Here we dont compute the rates manually because we aggregate over different maps and don't
             # want to have big influence in unioned metrics because if big maps comapred to small maps
@@ -587,21 +743,11 @@ class ResultAggregator:
 
             median_extracted_map_points=("median_extracted_map_points", "median"),
             median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),
-
-            mean_rmse_trans_err_sm_true=("mean_rmse_trans_err_sm_true", "mean"),
-            worst_rmse_trans_err_sm_true=("worst_rmse_trans_err_sm_true", "max"),
-
-            mean_rmse_rot_err_sm_true_deg=("mean_rmse_rot_err_sm_true_deg", "mean"),
-            worst_rmse_rot_err_sm_true_deg=("worst_rmse_rot_err_sm_true_deg", "max"),
-
-            # Metrics for pose errors
-            mean_rmse_trans_error=("mean_rmse_trans_error", "mean"),
-            worst_rmse_trans_error=("worst_rmse_trans_error", "max"),
-
-            mean_rmse_rot_error_deg=("mean_rmse_rot_error_deg", "mean"),
-            worst_rmse_rot_error_deg=("worst_rmse_rot_error_deg", "max"),
-
+                        
             # Proposal information metrics
+            mean_mu_true_better_than_sm_true_rate=("mean_mu_true_better_than_sm_true_rate", "mean"),
+            worst_mu_true_better_than_sm_true_rate=("worst_mu_true_better_than_sm_true_rate", "min"),
+
             mean_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "mean"),
             worst_min_xj_is_best_xj=("worst_min_xj_is_best_xj", "min"),
 
@@ -613,11 +759,15 @@ class ResultAggregator:
 
             mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
             worst_min_xj_true_err_improves_over_sm_true =("worst_min_xj_true_err_improves_over_sm_true", "min"),
+
             mean_min_xj_better_sm_pose_rate =("mean_min_xj_better_sm_pose_rate", "mean"),
+            worst_min_xj_better_sm_pose_rate =("worst_min_xj_better_sm_pose_rate", "min"),
 
             mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
             worst_best_xj_true_err_improves_over_sm_true =("worst_best_xj_true_err_improves_over_sm_true", "min"),
+
             mean_best_xj_better_sm_pose_rate =("mean_best_xj_better_sm_pose_rate", "mean"),
+            worst_best_xj_better_sm_pose_rate =("worst_best_xj_better_sm_pose_rate", "min"),
 
             median_log_motion_range=("median_log_motion_range", "median"),
             median_log_meas_range=("median_log_meas_range", "median"),

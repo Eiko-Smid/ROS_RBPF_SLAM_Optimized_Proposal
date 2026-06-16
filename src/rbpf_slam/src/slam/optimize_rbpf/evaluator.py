@@ -794,7 +794,10 @@ class RBPFEvaluator:
             "scan_match_failed_count": int(scan_match_failed_count),
             "scan_match_fallback_failed_count": int(scan_match_fallback_failed_count),
             "mean_translation_error": float(np.mean(trans_err)) if trans_err else float("inf"),
+            "worst_translation_error": float(np.max(trans_err)) if trans_err else float("inf"),
             "mean_rotation_error": float(np.mean(rot_err)) if rot_err else float("inf"),
+            "worst_rotation_error": float(np.max(rot_err)) if rot_err else float("inf"),
+
             "rmse_translation_error": float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),
             "rmse_rotation_error": float(np.sqrt(np.mean(np.square(rot_err)))) if rot_err else float("inf"),
             "mean_translation_error_raw_odom": float(np.mean(trans_err_raw_odom)) if trans_err_raw_odom else float("inf"),
@@ -860,14 +863,20 @@ class RBPFEvaluator:
             "mean_log_weight_range": float(np.mean(log_weight_range_values)) if log_weight_range_values else float("nan"),
 
             "mean_trans_err_mu_true": float(np.mean(trans_err_mu_true_values)) if trans_err_mu_true_values else float("nan"),
+            "rmse_trans_err_mu_true": float(np.sqrt(np.mean(np.square(trans_err_mu_true_values)))) if trans_err_mu_true_values else float("nan"),
+            "worst_trans_err_mu_true": float(np.max(trans_err_mu_true_values)) if trans_err_mu_true_values else float("nan"),
             "mean_rot_err_mu_true": float(np.mean(rot_err_mu_true_values)) if rot_err_mu_true_values else float("nan"), 
+            "rmse_rot_err_mu_true": float(np.sqrt(np.mean(np.square(rot_err_mu_true_values)))) if rot_err_mu_true_values else float("nan"),
+            "worst_rot_err_mu_true": float(np.max(rot_err_mu_true_values)) if rot_err_mu_true_values else float("nan"),
             "mean_pose_err_sm_true": float(np.mean(pose_err_sm_true_values)) if pose_err_sm_true_values else float("nan"),
 
             "mean_trans_err_mu_sm": float(np.mean(trans_err_mu_sm_values)) if trans_err_mu_sm_values else float("nan"),
             "mean_rot_err_mu_sm": float(np.mean(rot_err_mu_sm_values)) if rot_err_mu_sm_values else float("nan"),
 
             "mean_trans_err_sm_true": float(np.mean(trans_err_sm_true_values)) if trans_err_sm_true_values else float("nan"),
+            "worst_trans_err_sm_true": float(np.max(trans_err_sm_true_values)) if trans_err_sm_true_values else float("nan"),
             "mean_rot_err_sm_true": float(np.mean(rot_err_sm_true_values)) if rot_err_sm_true_values else float("nan"),
+            "worst_rot_err_sm_true": float(np.max(rot_err_sm_true_values)) if rot_err_sm_true_values else float("nan"),
             "rmse_trans_err_sm_true": float(np.sqrt(np.mean(np.square(trans_err_sm_true_values)))) if trans_err_sm_true_values else float("nan"),
             "rmse_rot_err_sm_true": float(np.sqrt(np.mean(np.square(rot_err_sm_true_values)))) if rot_err_sm_true_values else float("nan"),
             

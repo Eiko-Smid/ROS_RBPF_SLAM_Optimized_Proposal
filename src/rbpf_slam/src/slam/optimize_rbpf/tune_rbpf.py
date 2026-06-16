@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-import debugpy
-debugpy.listen(("localhost", 5678))
-print("Waiting for debugger attach...")
-debugpy.wait_for_client()
+# import debugpy
+# debugpy.listen(("localhost", 5678))
+# print("Waiting for debugger attach...")
+# debugpy.wait_for_client()
 
 import itertools
 import json
@@ -530,15 +530,15 @@ from .aggregator import RankedRunConverter, ResultAggregator
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_params.json'
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -553,9 +553,9 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
-# SEED_LIST = [22]
+SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -623,366 +623,366 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
-# Grid axes for big param runs
-def _grid_axes() -> dict:
-    return {
-        # General rbpf params
-        "every_nth_beam_filter": [2],       # use every nth beam for proposal/scan matching
-        "every_nth_beam_map": [2],          # use every nth beam for map update
-        "n_particles": [1],                 # number of particles in the RBPF
-        "neff_threshold": [1],              # effective particle threshold for resampling
-
-        # Old measurement model params / compatibility params
-        # Keep them if your parameter builder still expects them.
-        "sigma_measurement": [0.06],
-        "meas_kernel_size": [1],
-
-        # Beam range finder measurement model params
-        # TODO: Try one run where we adapt all four :)
-        "beam_occ_thresh": [1.4],
-        "beam_free_thresh": [-1.4, -0.4],
-        # "beam_free_thresh": [-0.4],
-        "beam_unknown_thresh": [0.3],
-        "beam_known_free_ratio_thresh": [0.7],
-
-        # Beam model mixture params as bound sets.
-        # Important: beam_w_hit + beam_w_short + beam_w_max + beam_w_rand must sum to 1.
-        "beam_model_param_sets": [
-            # M1: best region from 31_2
-            {
-                "beam_w_hit": 0.60,
-                "beam_w_short": 0.20,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.10,
-                "beam_w_rand": 0.10,
-            },
-
-            # M2: more max-range/no-return support
-            {
-                "beam_w_hit": 0.60,
-                "beam_w_short": 0.10,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.20,
-                "beam_w_rand": 0.10,
-            },
-
-            # M3: more random tolerance
-            {
-                "beam_w_hit": 0.55,
-                "beam_w_short": 0.20,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.10,
-                "beam_w_rand": 0.15,
-            },
-
-            # M4: stronger unexpected-short component
-            {
-                "beam_w_hit": 0.50,
-                "beam_w_short": 0.30,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.10,
-                "beam_w_rand": 0.10,
-            },
-
-            # M5: old baseline for comparison
-            {
-                "beam_w_hit": 0.70,
-                "beam_w_short": 0.10,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.10,
-                "beam_w_rand": 0.10,
-            },
-        ],
-
-        # Beam extra params as bound sets.
-        # Focus around sigma_hit=0.10 and alpha_meas=0.10,
-        # because this was the best region in 31_2.
-        "beam_extra_param_sets": [
-            # E1: sharper hit model
-            {
-                "beam_sigma_hit": 0.07,
-                "beam_alpha_meas": 0.10,
-                "beam_p_unknown": 0.20,
-                "beam_p_out_of_map": 0.10,
-                "beam_p_unexpected_known_free": 0.03,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # E2: slightly weaker measurement weighting
-            {
-                "beam_sigma_hit": 0.10,
-                "beam_alpha_meas": 0.075,
-                "beam_p_unknown": 0.20,
-                "beam_p_out_of_map": 0.10,
-                "beam_p_unexpected_known_free": 0.03,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # E3: current best-center region
-            {
-                "beam_sigma_hit": 0.10,
-                "beam_alpha_meas": 0.10,
-                "beam_p_unknown": 0.20,
-                "beam_p_out_of_map": 0.10,
-                "beam_p_unexpected_known_free": 0.03,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # E4: slightly stronger measurement weighting
-            {
-                "beam_sigma_hit": 0.10,
-                "beam_alpha_meas": 0.125,
-                "beam_p_unknown": 0.20,
-                "beam_p_out_of_map": 0.10,
-                "beam_p_unexpected_known_free": 0.03,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # E5: slightly softer hit model
-            {
-                "beam_sigma_hit": 0.13,
-                "beam_alpha_meas": 0.10,
-                "beam_p_unknown": 0.20,
-                "beam_p_out_of_map": 0.10,
-                "beam_p_unexpected_known_free": 0.03,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # E6: more neutral unknown/out-of-map handling
-            {
-                "beam_sigma_hit": 0.10,
-                "beam_alpha_meas": 0.10,
-                "beam_p_unknown": 0.30,
-                "beam_p_out_of_map": 0.15,
-                "beam_p_unexpected_known_free": 0.05,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-        ],
-
-        # Motion model params
-        # Motion had weak influence, so keep this small.
-        "sigma_xy_motion": [0.12],
-        "sigma_theta": [0.06, 0.08],
-        "ctrl_motion_fac": [0.1],
-        "ctrl_turn_fac": [0.15],
-
-        # Proposal params as bound sets.
-        # Each dict is one fixed combination of:
-        # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir.
-        "proposal_param_sets": [
-            # P1: previous safe default
-            {
-                "proposal_sigma_xy": 0.02,
-                "proposal_sigma_theta": 0.01,
-                "n_samples_dir": 3,
-            },
-
-            # P2: same small window, but denser sampling
-            {
-                "proposal_sigma_xy": 0.02,
-                "proposal_sigma_theta": 0.01,
-                "n_samples_dir": 5,
-            },
-
-            # P3: middle window between safe and wide
-            {
-                "proposal_sigma_xy": 0.03,
-                "proposal_sigma_theta": 0.015,
-                "n_samples_dir": 3,
-            },
-
-            # P4: wider window, kept because rank 1 in 31_2 used it
-            {
-                "proposal_sigma_xy": 0.05,
-                "proposal_sigma_theta": 0.02,
-                "n_samples_dir": 3,
-            },
-        ],
-
-        # TODO: Delete proposal values when no longer needed later on
-        "proposal_alpha": [1.0],
-        "proposal_beta": [1.0],
-
-        # ScanMatcherParams / map extraction
-        "surface_radius_m": [0.2],      # TODO: rename later, because it is a quadratic window
-        "min_free_ratio": [0.4],
-    }
-
-
-# Grid axes for tuning proposal sampling params on best current params
-def _grid_axes() -> dict:
-    return {
-        # General rbpf params
-        "every_nth_beam_filter": [2],       # use every nth beam for proposal/scan matching
-        "every_nth_beam_map": [2],          # use every nth beam for map update
-        "n_particles": [1],                 # number of particles in the RBPF
-        "neff_threshold": [1],              # effective particle threshold for resampling
-
-        # Old measurement model params / compatibility params
-        # Keep them if your parameter builder still expects them.
-        "sigma_measurement": [0.06],
-        "meas_kernel_size": [1],
-
-        # Beam range finder measurement model params
-        # TODO: Try one run where we adapt all four :)
-        "beam_occ_thresh": [1.4],
-        "beam_free_thresh": [-1.4, 0.1],
-        # "beam_free_thresh": [-0.4],
-        "beam_unknown_thresh": [0.3],
-        "beam_known_free_ratio_thresh": [0.7],
-
-        # Beam model mixture params as bound sets.
-        # Important: beam_w_hit + beam_w_short + beam_w_max + beam_w_rand must sum to 1.
-        "beam_model_param_sets": [
-            # M1: best region from 31_2
-            {
-                "beam_w_hit": 0.50,
-                "beam_w_short": 0.30,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.10,
-                "beam_w_rand": 0.10,
-            },
-        ],
-
-        # Beam extra params as bound sets.
-        # Focus around sigma_hit=0.10 and alpha_meas=0.10,
-        # because this was the best region in 31_2.
-        "beam_extra_param_sets": [
-            # E1: sharper hit model
-            {
-                "beam_sigma_hit": 0.08,
-                "beam_alpha_meas": 0.075,
-                "beam_p_unknown": 0.30,
-                "beam_p_out_of_map": 0.15,
-                "beam_p_unexpected_known_free": 0.05,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },            
-        ],
-
-        # Motion model params
-        # Motion had weak influence, so keep this small.
-        "sigma_xy_motion": [0.12],
-        "sigma_theta": [0.06, 0.08],
-        "ctrl_motion_fac": [0.1],
-        "ctrl_turn_fac": [0.15],
-
-        # Proposal params as bound sets.
-        # Each dict is one fixed combination of:
-        # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir.
-        "proposal_param_sets": [
-            # P1: previous safe default
-            {
-                "proposal_sigma_xy": 0.02,
-                "proposal_sigma_theta": 0.01,
-                "n_samples_dir": 3,
-            },
-
-            # P2: same small window, but denser sampling
-            {
-                "proposal_sigma_xy": 0.02,
-                "proposal_sigma_theta": 0.01,
-                "n_samples_dir": 5,
-            },
-
-            # P3: middle window between safe and wide
-            {
-                "proposal_sigma_xy": 0.03,
-                "proposal_sigma_theta": 0.015,
-                "n_samples_dir": 3,
-            },
-
-            # P4: wider window, kept because rank 1 in 31_2 used it
-            {
-                "proposal_sigma_xy": 0.05,
-                "proposal_sigma_theta": 0.02,
-                "n_samples_dir": 3,
-            },
-        ],
-
-        # TODO: Delete proposal values when no longer needed later on
-        "proposal_alpha": [1.0],
-        "proposal_beta": [1.0],
-
-        # ScanMatcherParams / map extraction
-        "surface_radius_m": [0.2],      # TODO: rename later, because it is a quadratic window
-        "min_free_ratio": [0.4],
-    }
-
-
+# # Grid axes for big param runs
 # def _grid_axes() -> dict:
 #     return {
 #         # General rbpf params
-#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [1],                         # number of particles in the RBPF
-#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+#         "every_nth_beam_filter": [2],       # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],          # use every nth beam for map update
+#         "n_particles": [1],                 # number of particles in the RBPF
+#         "neff_threshold": [1],              # effective particle threshold for resampling
 
-#         # Measurement model params
-#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
+#         # Old measurement model params / compatibility params
+#         # Keep them if your parameter builder still expects them.
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
 #         # Beam range finder measurement model params
+#         # TODO: Try one run where we adapt all four :)
 #         "beam_occ_thresh": [1.4],
-#         "beam_free_thresh": [-1.4],
+#         "beam_free_thresh": [-1.4, -0.4],
+#         # "beam_free_thresh": [-0.4],
 #         "beam_unknown_thresh": [0.3],
 #         "beam_known_free_ratio_thresh": [0.7],
 
+#         # Beam model mixture params as bound sets.
+#         # Important: beam_w_hit + beam_w_short + beam_w_max + beam_w_rand must sum to 1.
 #         "beam_model_param_sets": [
+#             # M1: best region from 31_2
 #             {
-#                 # M1: baseline balanced model
-#                 "beam_w_hit": 0.7,
-#                 "beam_w_short": 0.1,
-#                 "beam_lambda_short": 0.2,
-#                 "beam_w_max": 0.1,
-#                 "beam_w_rand": 0.1,
-#             }           
+#                 "beam_w_hit": 0.60,
+#                 "beam_w_short": 0.20,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # M2: more max-range/no-return support
+#             {
+#                 "beam_w_hit": 0.60,
+#                 "beam_w_short": 0.10,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.20,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # M3: more random tolerance
+#             {
+#                 "beam_w_hit": 0.55,
+#                 "beam_w_short": 0.20,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.15,
+#             },
+
+#             # M4: stronger unexpected-short component
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # M5: old baseline for comparison
+#             {
+#                 "beam_w_hit": 0.70,
+#                 "beam_w_short": 0.10,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
 #         ],
 
+#         # Beam extra params as bound sets.
+#         # Focus around sigma_hit=0.10 and alpha_meas=0.10,
+#         # because this was the best region in 31_2.
 #         "beam_extra_param_sets": [
+#             # E1: sharper hit model
 #             {
-#             # baseline
-#                 "beam_sigma_hit": 0.15,
-#                 "beam_alpha_meas": 0.1,
-#                 "beam_p_unknown": 0.2,
-#                 "beam_p_out_of_map": 0.1,
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.10,
 #                 "beam_p_unexpected_known_free": 0.03,
 #                 "beam_p_pred_below_min": 0.02,
 #                 "beam_step": 2,
-#             }           
-#         ],
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.12, 0.18],               # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.04, 0.08],                  # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
+#             },
+
+#             # E2: slightly weaker measurement weighting
 #             {
-#                 "proposal_sigma_xy": 0.02,      # # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             }
+#                 "beam_sigma_hit": 0.10,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.10,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # E3: current best-center region
+#             {
+#                 "beam_sigma_hit": 0.10,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.10,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # E4: slightly stronger measurement weighting
+#             {
+#                 "beam_sigma_hit": 0.10,
+#                 "beam_alpha_meas": 0.125,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.10,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # E5: slightly softer hit model
+#             {
+#                 "beam_sigma_hit": 0.13,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.10,
+#                 "beam_p_unexpected_known_free": 0.03,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # E6: more neutral unknown/out-of-map handling
+#             {
+#                 "beam_sigma_hit": 0.10,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.05,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
 #         ],
+
+#         # Motion model params
+#         # Motion had weak influence, so keep this small.
+#         "sigma_xy_motion": [0.12],
+#         "sigma_theta": [0.06, 0.08],
+#         "ctrl_motion_fac": [0.1],
+#         "ctrl_turn_fac": [0.15],
+
+#         # Proposal params as bound sets.
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir.
+#         "proposal_param_sets": [
+#             # P1: previous safe default
+#             {
+#                 "proposal_sigma_xy": 0.02,
+#                 "proposal_sigma_theta": 0.01,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # P2: same small window, but denser sampling
+#             {
+#                 "proposal_sigma_xy": 0.02,
+#                 "proposal_sigma_theta": 0.01,
+#                 "n_samples_dir": 5,
+#             },
+
+#             # P3: middle window between safe and wide
+#             {
+#                 "proposal_sigma_xy": 0.03,
+#                 "proposal_sigma_theta": 0.015,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # P4: wider window, kept because rank 1 in 31_2 used it
+#             {
+#                 "proposal_sigma_xy": 0.05,
+#                 "proposal_sigma_theta": 0.02,
+#                 "n_samples_dir": 3,
+#             },
+#         ],
+
 #         # TODO: Delete proposal values when no longer needed later on
 #         "proposal_alpha": [1.0],
 #         "proposal_beta": [1.0],
 
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         # ScanMatcherParams / map extraction
+#         "surface_radius_m": [0.2],      # TODO: rename later, because it is a quadratic window
 #         "min_free_ratio": [0.4],
 #     }
+
+
+# # Grid axes for tuning proposal sampling params on best current params
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],       # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],          # use every nth beam for map update
+#         "n_particles": [1],                 # number of particles in the RBPF
+#         "neff_threshold": [1],              # effective particle threshold for resampling
+
+#         # Old measurement model params / compatibility params
+#         # Keep them if your parameter builder still expects them.
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # Beam range finder measurement model params
+#         # TODO: Try one run where we adapt all four :)
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4, 0.1],
+#         # "beam_free_thresh": [-0.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         # Beam model mixture params as bound sets.
+#         # Important: beam_w_hit + beam_w_short + beam_w_max + beam_w_rand must sum to 1.
+#         "beam_model_param_sets": [
+#             # M1: best region from 31_2
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         # Beam extra params as bound sets.
+#         # Focus around sigma_hit=0.10 and alpha_meas=0.10,
+#         # because this was the best region in 31_2.
+#         "beam_extra_param_sets": [
+#             # E1: sharper hit model
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.05,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },            
+#         ],
+
+#         # Motion model params
+#         # Motion had weak influence, so keep this small.
+#         "sigma_xy_motion": [0.12],
+#         "sigma_theta": [0.06, 0.08],
+#         "ctrl_motion_fac": [0.1],
+#         "ctrl_turn_fac": [0.15],
+
+#         # Proposal params as bound sets.
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir.
+#         "proposal_param_sets": [
+#             # P1: previous safe default
+#             {
+#                 "proposal_sigma_xy": 0.02,
+#                 "proposal_sigma_theta": 0.01,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # P2: same small window, but denser sampling
+#             {
+#                 "proposal_sigma_xy": 0.02,
+#                 "proposal_sigma_theta": 0.01,
+#                 "n_samples_dir": 5,
+#             },
+
+#             # P3: middle window between safe and wide
+#             {
+#                 "proposal_sigma_xy": 0.03,
+#                 "proposal_sigma_theta": 0.015,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # P4: wider window, kept because rank 1 in 31_2 used it
+#             {
+#                 "proposal_sigma_xy": 0.05,
+#                 "proposal_sigma_theta": 0.02,
+#                 "n_samples_dir": 3,
+#             },
+#         ],
+
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams / map extraction
+#         "surface_radius_m": [0.2],      # TODO: rename later, because it is a quadratic window
+#         "min_free_ratio": [0.4],
+#     }
+
+
+def _grid_axes() -> dict:
+    return {
+        # General rbpf params
+        "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+        "every_nth_beam_map": [2],                  # use every nth beam for map update
+        "n_particles": [1],                         # number of particles in the RBPF
+        "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+
+        # Measurement model params
+        "sigma_measurement": [0.06],                # measurement uncertainty [m]
+        "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+        # Beam range finder measurement model params
+        "beam_occ_thresh": [1.4],
+        "beam_free_thresh": [-1.4],
+        "beam_unknown_thresh": [0.3],
+        "beam_known_free_ratio_thresh": [0.7],
+
+        "beam_model_param_sets": [
+            {
+                # M1: baseline balanced model
+                "beam_w_hit": 0.7,
+                "beam_w_short": 0.1,
+                "beam_lambda_short": 0.2,
+                "beam_w_max": 0.1,
+                "beam_w_rand": 0.1,
+            }           
+        ],
+
+        "beam_extra_param_sets": [
+            {
+            # baseline
+                "beam_sigma_hit": 0.15,
+                "beam_alpha_meas": 0.1,
+                "beam_p_unknown": 0.2,
+                "beam_p_out_of_map": 0.1,
+                "beam_p_unexpected_known_free": 0.03,
+                "beam_p_pred_below_min": 0.02,
+                "beam_step": 2,
+            }           
+        ],
+        
+        # Motion model params
+        "sigma_xy_motion": [0.12, 0.18],               # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.08],                  # motion model uncertainty in theta direction [rad]
+        "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+        "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+        # Proposal params (bound sets).
+        # Each dict is one fixed combination of:
+        # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+        # so these three values are sampled together (no Cartesian product among them).
+        "proposal_param_sets": [
+            {
+                "proposal_sigma_xy": 0.02,      # Proposal window size in x/y direction [m]
+                "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+                "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+            }
+        ],
+        # TODO: Delete proposal values when no longer needed later on
+        "proposal_alpha": [1.0],
+        "proposal_beta": [1.0],
+
+        # ScanMatcherParams (map extraction)
+        "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+        "min_free_ratio": [0.4],
+    }
 
 
 

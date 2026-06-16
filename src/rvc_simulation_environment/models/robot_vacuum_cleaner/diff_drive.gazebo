@@ -9,7 +9,7 @@
         <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
             <alwaysOn>true</alwaysOn>
             <!-- Plugin update rate in Hz -->
-            <updateRate>10</updateRate>
+            <updateRate>${update_rate}</updateRate>
             <!-- Name of left joint, defaults to `left_joint` -->
             <leftJoint>base_link_to_left_wheel</leftJoint>
             <!-- Name of right joint, defaults to `right_joint` -->
