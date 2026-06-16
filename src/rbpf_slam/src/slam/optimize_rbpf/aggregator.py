@@ -205,7 +205,39 @@ class RankedRunConverter:
                     cls._read_from_summary(run, "worst_rotation_error")
                 ),
 
-                # Pose errors metrics and xj weights
+                # XJ errors
+                # trans err
+                # mean
+                "mean_min_trans_err_xjs": cls._read_from_summary(run, "mean_min_trans_err_xjs"),
+                "mean_min_xj_trans_err_true": cls._read_from_summary(run, "mean_min_xj_trans_err_true"),
+                "mean_best_xj_trans_err_true": cls._read_from_summary(run, "mean_best_xj_trans_err_true"),
+                # rmse
+                "rmse_min_trans_err_xjs": cls._read_from_summary(run, "rmse_min_trans_err_xjs"),
+                "rmse_min_xj_trans_err_true": cls._read_from_summary(run, "rmse_min_xj_trans_err_true"),
+                "rmse_best_xj_trans_err_true": cls._read_from_summary(run, "rmse_best_xj_trans_err_true"),
+                # rot err
+                # mean
+                "mean_min_rot_err_xjs_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_min_rot_err_xjs")
+                ),
+                "mean_min_xj_rot_err_true_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_min_xj_rot_err_true")
+                ),
+                "mean_best_xj_rot_err_true_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_best_xj_rot_err_true")
+                ),
+                # rmse
+                "rmse_min_rot_err_xjs_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_min_rot_err_xjs")
+                ),
+                "rmse_min_xj_rot_err_true_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_min_xj_rot_err_true")
+                ),
+                "rmse_best_xj_rot_err_true_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_best_xj_rot_err_true")
+                ),
+
+                # pose errors
                 "mean_pose_err_sm_true": cls._read_from_summary(run, "mean_pose_err_sm_true"),
                 "mean_pose_err_mu_true": cls._read_from_summary(run, "mean_pose_err_mu_true"),
                 "mean_min_xj_pose_err_true": cls._read_from_summary(run, "mean_min_xj_pose_err_true"),
@@ -213,6 +245,7 @@ class RankedRunConverter:
                 "mean_best_weighted_xj_pose_err_true": cls._read_from_summary(
                     run, "mean_best_weighted_xj_pose_err_true"
                 ),
+                "mean_weight_best_xj": cls._read_from_summary(run, "mean_weight_best_xj"),
 
                 # Final drift metrics
                 # trans           
@@ -230,21 +263,12 @@ class RankedRunConverter:
                 "mean_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_min_xj_true_err_improves_over_sm_true"
                 ),
-                # "rmse_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
-                #     run, "rmse_min_xj_true_err_improves_over_sm_true"
-                # ),
                 "mean_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_best_xj_true_err_improves_over_sm_true"
                 ),
-                # "rmse_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
-                #     run, "rmse_best_xj_true_err_improves_over_sm_true"
-                # ),
                 "mean_mu_true_err_improves_over_sm_true": cls._read_from_summary(
                     run, "mean_mu_true_err_improves_over_sm_true"
-                ),
-                # "rmse_mu_true_err_improves_over_sm_true": cls._read_from_summary(
-                #     run, "rmse_mu_true_err_improves_over_sm_true"
-                # ),
+                ),                
                 "mu_true_better_than_sm_true_rate": cls._read_from_summary(
                     run, "mu_true_better_than_sm_true_rate"
                 ),
@@ -275,9 +299,6 @@ class RankedRunConverter:
                 "mean_min_xj_true_err_weight_score": cls._read_from_summary(
                     run, "mean_min_xj_true_err_weight_score"
                 ),
-                # "rmse_min_xj_true_err_weight_score": cls._read_from_summary(
-                #     run, "rmse_min_xj_true_err_weight_score"
-                # ),
 
                 # Compute correlations (Does high weight, prob, etc correlate with low xj pose errors to true pose)
                 "mean_corr_xjs_weights": cls._read_from_summary(run, "mean_corr_xjs_weights"),
@@ -290,6 +311,20 @@ class RankedRunConverter:
                 "median_corr_weights_motion": cls._read_from_summary(run, "median_corr_weights_motion"),
                 "mean_corr_weights_meas": cls._read_from_summary(run, "mean_corr_weights_meas"),
                 "median_corr_weights_meas": cls._read_from_summary(run, "median_corr_weights_meas"),
+
+                "mean_corr_xj_trans_weights": cls._read_from_summary(run, "mean_corr_xj_trans_weights"),
+                "median_corr_xj_trans_weights": cls._read_from_summary(run, "median_corr_xj_trans_weights"),
+                "mean_corr_xj_trans_motion": cls._read_from_summary(run, "mean_corr_xj_trans_motion"),
+                "median_corr_xj_trans_motion": cls._read_from_summary(run, "median_corr_xj_trans_motion"),
+                "mean_corr_xj_trans_meas": cls._read_from_summary(run, "mean_corr_xj_trans_meas"),
+                "median_corr_xj_trans_meas": cls._read_from_summary(run, "median_corr_xj_trans_meas"),
+                "mean_corr_xj_rot_weights": cls._read_from_summary(run, "mean_corr_xj_rot_weights"),
+                "median_corr_xj_rot_weights": cls._read_from_summary(run, "median_corr_xj_rot_weights"),
+                "mean_corr_xj_rot_motion": cls._read_from_summary(run, "mean_corr_xj_rot_motion"),
+                "median_corr_xj_rot_motion": cls._read_from_summary(run, "median_corr_xj_rot_motion"),
+                "mean_corr_xj_rot_meas": cls._read_from_summary(run, "mean_corr_xj_rot_meas"),
+                "median_corr_xj_rot_meas": cls._read_from_summary(run, "median_corr_xj_rot_meas"),
+
                 # "mean_best_xj_score": cls._summary(run, "mean_best_xj_score"),
                 # "rmse_best_xj_score": cls._summary(run, "rmse_best_xj_score"),
                 # "mean_motion_rank_score": cls._summary(run, "mean_motion_rank_score"),
@@ -426,8 +461,29 @@ class ResultAggregator:
             "median_log_motion_range",
             "median_log_meas_range",
 
+            # XJ error metrics
+            "mean_min_trans_err_xjs",
+            "mean_min_xj_trans_err_true",
+            "mean_best_xj_trans_err_true",
+            "rmse_min_trans_err_xjs",
+            "rmse_min_xj_trans_err_true",
+            "rmse_best_xj_trans_err_true",
+            "mean_min_rot_err_xjs_deg",
+            "mean_min_xj_rot_err_true_deg",
+            "mean_best_xj_rot_err_true_deg",
+            "rmse_min_rot_err_xjs_deg",
+            "rmse_min_xj_rot_err_true_deg",
+            "rmse_best_xj_rot_err_true_deg",
+            
+            # Correlations
             "mean_corr_xjs_motion",
             "mean_corr_xjs_meas",
+            "mean_corr_xj_trans_weights",
+            "mean_corr_xj_trans_motion",
+            "mean_corr_xj_trans_meas",
+            "mean_corr_xj_rot_weights",
+            "mean_corr_xj_rot_motion",
+            "mean_corr_xj_rot_meas"
         ]
 
         # Estimate missing columns
@@ -530,10 +586,35 @@ class ResultAggregator:
             median_log_motion_range=("median_log_motion_range", "median"),
             median_log_meas_range=("median_log_meas_range", "median"),
 
-            mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),
-            worst_corr_xjs_motion=("mean_corr_xjs_motion", "min"),
+            # XJ error metrics
+            mean_min_trans_err_xjs=("mean_min_trans_err_xjs", "mean"),
+            mean_min_xj_trans_err_true=("mean_min_xj_trans_err_true", "mean"),
+            mean_best_xj_trans_err_true=("mean_best_xj_trans_err_true", "mean"),
+            mean_rmse_min_trans_err_xjs=("rmse_min_trans_err_xjs", "mean"),
+            mean_rmse_min_xj_trans_err_true=("rmse_min_xj_trans_err_true", "mean"),
+            mean_rmse_best_xj_trans_err_true=("rmse_best_xj_trans_err_true", "mean"),
+            mean_min_rot_err_xjs_deg=("mean_min_rot_err_xjs_deg", "mean"),
+            mean_min_xj_rot_err_true_deg=("mean_min_xj_rot_err_true_deg", "mean"),
+            mean_best_xj_rot_err_true_deg=("mean_best_xj_rot_err_true_deg", "mean"),
+            mean_rmse_min_rot_err_xjs_deg=("rmse_min_rot_err_xjs_deg", "mean"),
+            mean_rmse_min_xj_rot_err_true_deg=("rmse_min_xj_rot_err_true_deg", "mean"),
+            mean_rmse_best_xj_rot_err_true_deg=("rmse_best_xj_rot_err_true_deg", "mean"),
+
+            mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),            
             mean_corr_xjs_meas=("mean_corr_xjs_meas", "mean"),
+            worst_corr_xjs_motion=("mean_corr_xjs_motion", "min"),
             worst_corr_xjs_meas=("mean_corr_xjs_meas", "min"),
+
+            mean_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "mean"),            
+            mean_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "mean"),
+            worst_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "min"),
+            worst_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "min"),
+
+            mean_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "mean"),
+            mean_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "mean"),
+            worst_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "min"),
+            worst_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "min"),
+
         ).reset_index()
 
         # Place map name directly after dataset id
@@ -664,11 +745,33 @@ class ResultAggregator:
             "median_log_motion_range",
             "median_log_meas_range",
 
+            # XJ error metrics
+            "mean_min_trans_err_xjs",
+            "mean_min_xj_trans_err_true",
+            "mean_best_xj_trans_err_true",
+            "mean_rmse_min_trans_err_xjs",
+            "mean_rmse_min_xj_trans_err_true",
+            "mean_rmse_best_xj_trans_err_true",
+            "mean_min_rot_err_xjs_deg",
+            "mean_min_xj_rot_err_true_deg",
+            "mean_best_xj_rot_err_true_deg",
+            "mean_rmse_min_rot_err_xjs_deg",
+            "mean_rmse_min_xj_rot_err_true_deg",
+            "mean_rmse_best_xj_rot_err_true_deg",
+
             "mean_corr_xjs_motion",
             "worst_corr_xjs_motion",
-
             "mean_corr_xjs_meas",
             "worst_corr_xjs_meas",
+
+            "mean_corr_xj_trans_motion",
+            "worst_corr_xj_trans_motion",
+            "mean_corr_xj_trans_meas",
+            "worst_corr_xj_trans_meas",
+            "mean_corr_xj_rot_motion",
+            "worst_corr_xj_rot_motion",
+            "mean_corr_xj_rot_meas",
+            "worst_corr_xj_rot_meas",
         ]
 
         # Estimate missing columns
@@ -772,10 +875,34 @@ class ResultAggregator:
             median_log_motion_range=("median_log_motion_range", "median"),
             median_log_meas_range=("median_log_meas_range", "median"),
 
+            # XJ error metrics
+            mean_min_trans_err_xjs=("mean_min_trans_err_xjs", "mean"),
+            mean_min_xj_trans_err_true=("mean_min_xj_trans_err_true", "mean"),
+            mean_best_xj_trans_err_true=("mean_best_xj_trans_err_true", "mean"),
+            mean_rmse_min_trans_err_xjs=("mean_rmse_min_trans_err_xjs", "mean"),
+            mean_rmse_min_xj_trans_err_true=("mean_rmse_min_xj_trans_err_true", "mean"),
+            mean_rmse_best_xj_trans_err_true=("mean_rmse_best_xj_trans_err_true", "mean"),
+            mean_min_rot_err_xjs_deg=("mean_min_rot_err_xjs_deg", "mean"),
+            mean_min_xj_rot_err_true_deg=("mean_min_xj_rot_err_true_deg", "mean"),
+            mean_best_xj_rot_err_true_deg=("mean_best_xj_rot_err_true_deg", "mean"),
+            mean_rmse_min_rot_err_xjs_deg=("mean_rmse_min_rot_err_xjs_deg", "mean"),
+            mean_rmse_min_xj_rot_err_true_deg=("mean_rmse_min_xj_rot_err_true_deg", "mean"),
+            mean_rmse_best_xj_rot_err_true_deg=("mean_rmse_best_xj_rot_err_true_deg", "mean"),
+
             mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),
             worst_corr_xjs_motion=("worst_corr_xjs_motion", "min"),
             mean_corr_xjs_meas=("mean_corr_xjs_meas", "mean"),
-            worst_corr_xjs_meas=("worst_corr_xjs_meas", "min"),            
+            worst_corr_xjs_meas=("worst_corr_xjs_meas", "min"),        
+
+            mean_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "mean"),
+            mean_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "mean"),
+            worst_corr_xj_trans_motion=("worst_corr_xj_trans_motion", "min"),
+            worst_corr_xj_trans_meas=("worst_corr_xj_trans_meas", "min"),
+
+            mean_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "mean"),
+            mean_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "mean"),
+            worst_corr_xj_rot_motion=("worst_corr_xj_rot_motion", "min"),
+            worst_corr_xj_rot_meas=("worst_corr_xj_rot_meas", "min"),
         ).reset_index()
         
         agg_param_df["std_score"] = agg_param_df["std_score"].fillna(0.0)

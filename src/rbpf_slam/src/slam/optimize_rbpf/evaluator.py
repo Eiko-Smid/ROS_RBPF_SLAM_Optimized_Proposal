@@ -72,11 +72,21 @@ class StepResult:
     best_xj_better_than_worst_trans : Optional[bool] = None
     best_xj_better_than_worst_rot : Optional[bool] = None
     min_xj_true_err_weight_score: Optional[float] = None
+    
+    # Estimate correlations between low errors and high probs/weights
     corr_xjs_weights: Optional[float] = None
     corr_xjs_motion: Optional[float] = None
     corr_xjs_meas: Optional[float] = None
     corr_weights_motion: Optional[float] = None
     corr_weights_meas: Optional[float] = None
+
+    corr_xj_trans_weights: Optional[float] = None
+    corr_xj_trans_motion: Optional[float] = None
+    corr_xj_trans_meas: Optional[float] = None
+    corr_xj_rot_weights: Optional[float] = None
+    corr_xj_rot_motion: Optional[float] = None
+    corr_xj_rot_meas: Optional[float] = None
+
     best_xj_score: Optional[float] = None
     motion_rank_score: Optional[float] = None
     meas_rank_score: Optional[float] = None
@@ -89,6 +99,13 @@ class StepResult:
     xj_weight: Optional[List[float]] = None
     xj_motion: Optional[List[float]] = None
     xj_meas: Optional[List[float]] = None
+
+    min_trans_err_xjs: Optional[float] = None
+    min_rot_err_xjs: Optional[float] = None
+    min_xj_trans_err_true: Optional[float] = None
+    min_xj_rot_err_true: Optional[float] = None
+    best_xj_trans_err_true: Optional[float] = None
+    best_xj_rot_err_true: Optional[float] = None
     
     trans_err_mu_pred: Optional[float] = None
     rot_err_mu_pred: Optional[float] = None
@@ -308,6 +325,13 @@ class RBPFEvaluator:
         best_xj_better_than_worst_rot = None
         min_xj_better_sm_pose = None
         best_xj_better_sm_pose = None
+
+        min_trans_err_xjs = None
+        min_rot_err_xjs = None
+        min_xj_trans_err_true = None
+        min_xj_rot_err_true = None
+        best_xj_trans_err_true = None
+        best_xj_rot_err_true = None
         
         trans_errors_xj_true = []
         rot_errors_xj_true = []
@@ -316,11 +340,19 @@ class RBPFEvaluator:
         min_xj_true_err_improves_over_sm_true = None
         xj_improves_over_sm_rot_ratio = None
         min_xj_true_err_weight_score = None
+
         corr_xjs_weights = None
         corr_xjs_motion = None
         corr_xjs_meas = None
         corr_weights_motion = None
         corr_weights_meas = None
+        corr_xj_trans_weights = None
+        corr_xj_trans_motion = None
+        corr_xj_trans_meas = None
+        corr_xj_rot_weights = None
+        corr_xj_rot_motion = None
+        corr_xj_rot_meas = None
+
         best_xj_score = None
         motion_rank_score = None
         meas_rank_score = None
@@ -458,7 +490,7 @@ class RBPFEvaluator:
                         trans_errors_xj_true = np.asarray(trans_errors_xj_true, dtype=float)
                         rot_errors_xj_true = np.asarray(rot_errors_xj_true, dtype=float)
                         pose_errors_xj_true = np.asarray(pose_errors_xj_true, dtype=float)
-
+                        
                         # Store per-sample proposal diagnostics for optional CSV export.
                         # xj_weight/xj_motion/xj_meas are exported as normalized arrays.
                         xj_pose_err = pose_errors_xj_true.astype(float).tolist()
@@ -479,6 +511,23 @@ class RBPFEvaluator:
                             xj_weights=weights
                         )
 
+                        # Estimate min trans and rot xj errors
+                        min_trans_err_xjs = np.min(trans_errors_xj_true)
+                        min_rot_err_xjs = np.min(rot_errors_xj_true)
+
+                        # Estimate trans and rot errors of min and best weighted xj
+                        # Access min and best xj
+                        min_xj_idx = np.argmin(pose_errors_xj_true)
+                        min_xj = self._to_pose_tuple(xjs_arr[min_xj_idx])
+                        best_weighted_xj = self._to_pose_tuple(xjs_arr[best_idx])
+
+                        # Compute trans and rot erro for both
+                        min_xj_trans_err_true = self.translation_error(min_xj, true_pose_t)
+                        min_xj_rot_err_true = abs(self.angle_diff(min_xj[2], true_pose_t[2]))
+                        best_xj_trans_err_true = self.translation_error(best_weighted_xj, true_pose_t)
+                        best_xj_rot_err_true = abs(self.angle_diff(best_weighted_xj[2], true_pose_t[2]))   
+
+
                         # Measure if the min xj beats the bes xj
                         min_xj_is_best_xj = bool(best_idx == np.argmin(pose_errors_xj_true))
 
@@ -493,6 +542,14 @@ class RBPFEvaluator:
                         # COmpute correlation between weights and probs
                         corr_weights_motion, _ = spearmanr(weights, motion_probs_arr)
                         corr_weights_meas, _ = spearmanr(weights, meas_probs_arr)
+                        # Compute corr between xj probs/weights and trans
+                        corr_xj_trans_weights, _ = spearmanr(-trans_errors_xj_true, weights)
+                        corr_xj_trans_motion, _ = spearmanr(-trans_errors_xj_true, motion_probs_arr)
+                        corr_xj_trans_meas, _ = spearmanr(-trans_errors_xj_true, meas_probs_arr)
+                        # Compute corr between xj probs/weights and rot
+                        corr_xj_rot_weights, _ = spearmanr(-rot_errors_xj_true, weights)
+                        corr_xj_rot_motion, _ = spearmanr(-rot_errors_xj_true, motion_probs_arr)
+                        corr_xj_rot_meas, _ = spearmanr(-rot_errors_xj_true, meas_probs_arr)
 
                         # Compute importance score of best xj's weight.
                         min_xj_err_idx = np.argmin(pose_errors_xj_true)
@@ -642,6 +699,13 @@ class RBPFEvaluator:
             min_xj_better_sm_pose=min_xj_better_sm_pose,
             best_xj_better_sm_pose=best_xj_better_sm_pose,
 
+            min_trans_err_xjs=min_trans_err_xjs,
+            min_rot_err_xjs=min_rot_err_xjs,
+            min_xj_trans_err_true=min_xj_trans_err_true,
+            min_xj_rot_err_true=min_xj_rot_err_true,
+            best_xj_trans_err_true=best_xj_trans_err_true,
+            best_xj_rot_err_true=best_xj_rot_err_true,
+
             weight_min_xj_err=weight_min_xj_err,
             best_weighted_xj_pose_err_true=best_weighted_xj_pose_err_true,
             weight_best_xj=weight_best_xj,
@@ -660,6 +724,13 @@ class RBPFEvaluator:
             corr_xjs_meas=corr_xjs_meas,                                                       
             corr_weights_motion=corr_weights_motion,
             corr_weights_meas=corr_weights_meas,
+            corr_xj_trans_weights=corr_xj_trans_weights,
+            corr_xj_trans_motion=corr_xj_trans_motion,
+            corr_xj_trans_meas=corr_xj_trans_meas,
+            corr_xj_rot_weights=corr_xj_rot_weights,
+            corr_xj_rot_motion=corr_xj_rot_motion,
+            corr_xj_rot_meas=corr_xj_rot_meas,
+
             best_xj_score=best_xj_score,
             motion_rank_score=motion_rank_score,
             meas_rank_score=meas_rank_score,
@@ -754,11 +825,27 @@ class RBPFEvaluator:
         min_xj_true_err_improves_over_sm_true_values = self._finite_values([s.min_xj_true_err_improves_over_sm_true for s in step_results if s.min_xj_true_err_improves_over_sm_true is not None])
         best_xj_true_err_improves_over_sm_true_values = self._finite_values([s.best_xj_true_err_improves_over_sm_true for s in step_results if s.best_xj_true_err_improves_over_sm_true is not None])
         min_xj_true_err_weight_score_values = self._finite_values([s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None])
+        
+        min_trans_err_xjs_values = self._finite_values([s.min_trans_err_xjs for s in step_results if s.min_trans_err_xjs is not None])
+        min_rot_err_xjs_values = self._finite_values([s.min_rot_err_xjs for s in step_results if s.min_rot_err_xjs is not None])
+        min_xj_trans_err_true_values = self._finite_values([s.min_xj_trans_err_true for s in step_results if s.min_xj_trans_err_true is not None])
+        min_xj_rot_err_true_values = self._finite_values([s.min_xj_rot_err_true for s in step_results if s.min_xj_rot_err_true is not None])
+        best_xj_trans_err_true_values = self._finite_values([s.best_xj_trans_err_true for s in step_results if s.best_xj_trans_err_true is not None])
+        best_xj_rot_err_true_values = self._finite_values([s.best_xj_rot_err_true for s in step_results if s.best_xj_rot_err_true is not None])
+        
         corr_xjs_weights_values = self._finite_values([s.corr_xjs_weights for s in step_results if s.corr_xjs_weights is not None])
         corr_xjs_motion_values = self._finite_values([s.corr_xjs_motion for s in step_results if s.corr_xjs_motion is not None])
         corr_xjs_meas_values = self._finite_values([s.corr_xjs_meas for s in step_results if s.corr_xjs_meas is not None])
         corr_weights_motion_values = self._finite_values([s.corr_weights_motion for s in step_results if s.corr_weights_motion is not None])
         corr_weights_meas_values = self._finite_values([s.corr_weights_meas for s in step_results if s.corr_weights_meas is not None])
+        corr_xj_trans_weights_values = self._finite_values([s.corr_xj_trans_weights for s in step_results if s.corr_xj_trans_weights is not None])
+        corr_xj_trans_motion_values = self._finite_values([s.corr_xj_trans_motion for s in step_results if s.corr_xj_trans_motion is not None])
+        corr_xj_trans_meas_values = self._finite_values([s.corr_xj_trans_meas for s in step_results if s.corr_xj_trans_meas is not None])
+        corr_xj_rot_weights_values = self._finite_values([s.corr_xj_rot_weights for s in step_results if s.corr_xj_rot_weights is not None])
+        corr_xj_rot_motion_values = self._finite_values([s.corr_xj_rot_motion for s in step_results if s.corr_xj_rot_motion is not None])
+        corr_xj_rot_meas_values = self._finite_values([s.corr_xj_rot_meas for s in step_results if s.corr_xj_rot_meas is not None])
+
+
         best_xj_score_values = self._finite_values([s.best_xj_score for s in step_results if s.best_xj_score is not None])
         motion_rank_score_values = self._finite_values([s.motion_rank_score for s in step_results if s.motion_rank_score is not None])
         meas_rank_score_values = self._finite_values([s.meas_rank_score for s in step_results if s.meas_rank_score is not None])
@@ -826,6 +913,20 @@ class RBPFEvaluator:
             "mean_min_xj_is_best_xj": float(np.mean(min_xj_is_best_xj_values)) if min_xj_is_best_xj_values else float("nan"),
             "min_xj_better_sm_pose_rate": float(np.mean(min_xj_better_sm_pose_values)) if min_xj_better_sm_pose_values else float("nan"),
             "best_xj_better_sm_pose_rate": float(np.mean(best_xj_better_sm_pose_values)) if best_xj_better_sm_pose_values else float("nan"),
+            
+            # Trans and rot errors of xjs
+            "mean_min_trans_err_xjs": float(np.mean(min_trans_err_xjs_values)) if min_trans_err_xjs_values else float("nan"),
+            "rmse_min_trans_err_xjs": float(np.sqrt(np.mean(np.square(min_trans_err_xjs_values)))) if min_trans_err_xjs_values else float("nan"),
+            "mean_min_rot_err_xjs": float(np.mean(min_rot_err_xjs_values)) if min_rot_err_xjs_values else float("nan"),
+            "rmse_min_rot_err_xjs": float(np.sqrt(np.mean(np.square(min_rot_err_xjs_values)))) if min_rot_err_xjs_values else float("nan"),
+            "mean_min_xj_trans_err_true": float(np.mean(min_xj_trans_err_true_values)) if min_xj_trans_err_true_values else float("nan"),
+            "rmse_min_xj_trans_err_true": float(np.sqrt(np.mean(np.square(min_xj_trans_err_true_values)))) if min_xj_trans_err_true_values else float("nan"),
+            "mean_min_xj_rot_err_true": float(np.mean(min_xj_rot_err_true_values)) if min_xj_rot_err_true_values else float("nan"),
+            "rmse_min_xj_rot_err_true": float(np.sqrt(np.mean(np.square(min_xj_rot_err_true_values)))) if min_xj_rot_err_true_values else float("nan"),
+            "mean_best_xj_trans_err_true": float(np.mean(best_xj_trans_err_true_values)) if best_xj_trans_err_true_values else float("nan"),
+            "rmse_best_xj_trans_err_true": float(np.sqrt(np.mean(np.square(best_xj_trans_err_true_values)))) if best_xj_trans_err_true_values else float("nan"),
+            "mean_best_xj_rot_err_true": float(np.mean(best_xj_rot_err_true_values)) if best_xj_rot_err_true_values else float("nan"),
+            "rmse_best_xj_rot_err_true": float(np.sqrt(np.mean(np.square(best_xj_rot_err_true_values)))) if best_xj_rot_err_true_values else float("nan"),  
 
             "mean_min_xj_true_err_improves_over_sm_true": float(np.mean(min_xj_true_err_improves_over_sm_true_values)) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
             "rmse_min_xj_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(min_xj_true_err_improves_over_sm_true_values)))) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
@@ -833,6 +934,7 @@ class RBPFEvaluator:
             "rmse_best_xj_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(best_xj_true_err_improves_over_sm_true_values)))) if best_xj_true_err_improves_over_sm_true_values else float("nan"),
             "mean_min_xj_true_err_weight_score": float(np.mean(min_xj_true_err_weight_score_values)) if min_xj_true_err_weight_score_values else float("nan"),
             "rmse_min_xj_true_err_weight_score": float(np.sqrt(np.mean(np.square(min_xj_true_err_weight_score_values)))) if min_xj_true_err_weight_score_values else float("nan"),
+            
             "mean_corr_xjs_weights": float(np.mean(corr_xjs_weights_values)) if corr_xjs_weights_values else float("nan"),
             "median_corr_xjs_weights": float(np.median(corr_xjs_weights_values)) if corr_xjs_weights_values else float("nan"),
             "mean_corr_xjs_motion": float(np.mean(corr_xjs_motion_values)) if corr_xjs_motion_values else float("nan"),
@@ -843,6 +945,21 @@ class RBPFEvaluator:
             "median_corr_weights_motion": float(np.median(corr_weights_motion_values)) if corr_weights_motion_values else float("nan"),
             "mean_corr_weights_meas": float(np.mean(corr_weights_meas_values)) if corr_weights_meas_values else float("nan"),
             "median_corr_weights_meas": float(np.median(corr_weights_meas_values)) if corr_weights_meas_values else float("nan"),
+            
+            "mean_corr_xj_trans_weights": float(np.mean(corr_xj_trans_weights_values)) if corr_xj_trans_weights_values else float("nan"),
+            "median_corr_xj_trans_weights": float(np.median(corr_xj_trans_weights_values)) if corr_xj_trans_weights_values else float("nan"),
+            "mean_corr_xj_trans_motion": float(np.mean(corr_xj_trans_motion_values)) if corr_xj_trans_motion_values else float("nan"),
+            "median_corr_xj_trans_motion": float(np.median(corr_xj_trans_motion_values)) if corr_xj_trans_motion_values else float("nan"),
+            "mean_corr_xj_trans_meas": float(np.mean(corr_xj_trans_meas_values)) if corr_xj_trans_meas_values else float("nan"),
+            "median_corr_xj_trans_meas": float(np.median(corr_xj_trans_meas_values)) if corr_xj_trans_meas_values else float("nan"),
+            "mean_corr_xj_rot_weights": float(np.mean(corr_xj_rot_weights_values)) if corr_xj_rot_weights_values else float("nan"),
+            "median_corr_xj_rot_weights": float(np.median(corr_xj_rot_weights_values)) if corr_xj_rot_weights_values else float("nan"),
+            "mean_corr_xj_rot_motion": float(np.mean(corr_xj_rot_motion_values)) if corr_xj_rot_motion_values else float("nan"),
+            "median_corr_xj_rot_motion": float(np.median(corr_xj_rot_motion_values)) if corr_xj_rot_motion_values else float("nan"),
+            "mean_corr_xj_rot_meas": float(np.mean(corr_xj_rot_meas_values)) if corr_xj_rot_meas_values else float("nan"),
+            "median_corr_xj_rot_meas": float(np.median(corr_xj_rot_meas_values)) if corr_xj_rot_meas_values else float("nan"),
+            
+
             "mean_best_xj_score": float(np.mean(best_xj_score_values)) if best_xj_score_values else float("nan"),
             "rmse_best_xj_score": float(np.sqrt(np.mean(np.square(best_xj_score_values)))) if best_xj_score_values else float("nan"),
             "mean_motion_rank_score": float(np.mean(motion_rank_score_values)) if motion_rank_score_values else float("nan"),
@@ -896,7 +1013,6 @@ class RBPFEvaluator:
             "mean_xj_eff": float(np.mean(xj_eff_values)) if xj_eff_values else float("nan"),
             "mean_xj_eff_motion": float(np.mean(xj_eff_motion_values)) if xj_eff_motion_values else float("nan"),
             "mean_xj_eff_meas": float(np.mean(xj_eff_meas_values)) if xj_eff_meas_values else float("nan"),
-
         }
 
         if params is not None:
