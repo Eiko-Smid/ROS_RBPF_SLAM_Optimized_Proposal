@@ -1345,6 +1345,32 @@ class RBPF:
 
         return neff, weighted_mean_pose
 
+    
+    def update_measurement_model_counters_fallback(self, result: dict):
+        '''
+        Update measurement model counters for proposal diagnostics. 
+        '''
+        # Init dict if not already done
+        if not hasattr(self, "proposal_meas_counters") or self.meas_model_counters_fallback is None:
+            self.meas_model_counters_fallback = {
+                "call_count": 0,
+                "valid_beam_count": 0,
+                "map_hit_count": 0,
+                "no_map_hit_count": 0,
+                "out_of_map_count": 0,
+                "unknown_ray_count": 0,
+                "known_free_ray_count": 0,
+                "unexpected_known_free_count": 0,
+            }
+
+        self.meas_model_counters_fallback["call_count"] += 1
+        self.meas_model_counters_fallback["valid_beam_count"] += result.get("valid_beam_count", 0)
+        self.meas_model_counters_fallback["map_hit_count"] += result.get("map_hit_count", 0)
+        self.meas_model_counters_fallback["no_map_hit_count"] += result.get("no_map_hit_count", 0)
+        self.meas_model_counters_fallback["out_of_map_count"] += result.get("out_of_map_count", 0)
+        self.meas_model_counters_fallback["unknown_ray_count"] += result.get("unknown_ray_count", 0)
+        self.meas_model_counters_fallback["known_free_ray_count"] += result.get("known_free_ray_count", 0)
+        self.meas_model_counters_fallback["unexpected_known_free_count"] += result.get("unexpected_known_free_count", 0)
 
 
     def update_particle_range_finder_model(
@@ -1420,6 +1446,8 @@ class RBPF:
                 ogm=particle.scan_matcher.ogm,
             )
 
+            self.update_measurement_model_counters_fallback(results)
+
             # Extract likilihood 
             log_p_weight = results.get("log_likelihood", FALLBACK_LOG_FLOOR)
             
@@ -1458,10 +1486,11 @@ class RBPF:
             scan_matcher=particle.scan_matcher,
         )
 
-        # Get new proposal emtrics if possible
+        # Update proposal metrics
         if prop_metrics is None:
             prop_metrics = {}
         prop_metrics["scan_matcher_info"] = particle.scan_matcher.get_info()
+        prop_metrics["measurement_model_counters_fallback"] = self.meas_model_counters_fallback
 
         return new_particle, log_p_weight, scan_match_failed, scan_match_fallback_failed, prop_metrics
 
@@ -1610,6 +1639,17 @@ class RBPF:
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
         particle0_prop_metrics = None
+
+        self.meas_model_counters_fallback = {
+            "call_count": 0,
+            "valid_beam_count": 0,
+            "map_hit_count": 0,
+            "no_map_hit_count": 0,
+            "out_of_map_count": 0,
+            "unknown_ray_count": 0,
+            "known_free_ray_count": 0,
+            "unexpected_known_free_count": 0,
+        }
 
         self._step_counter += 1
         step_idx = self._step_counter

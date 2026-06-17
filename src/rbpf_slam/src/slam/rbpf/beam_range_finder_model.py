@@ -121,7 +121,8 @@ def _raytrace_first_occupied_cell(
     free_thresh: float,
 ):
     """
-    Bresenham raytracing from robot cell to beam endpoint.
+    Bresenham raytracing from robot cell to beam endpoint. The goalis to find the first pccupied cell in a straight line
+    between the given pose and the end cell.
 
     Returns
     -------
@@ -143,39 +144,48 @@ def _raytrace_first_occupied_cell(
     total_count : int
         Number of evaluated cells along the ray, excluding robot start cell.
     """
-
-    n_rows, n_cols = log_odds_map.shape
-
-    cell_i = pose_i
-    cell_j = pose_j
-
-    dx = abs(end_j - cell_j)
-    dy = abs(end_i - cell_i)
-
-    sx = 1 if cell_j < end_j else -1
-    sy = 1 if cell_i < end_i else -1
-
-    err = dx - dy
-
-    first_cell = True
-
+    # Init vars
+    found = False
+    out_of_map = False
     free_count = 0
     unknown_count = 0
     total_count = 0
 
+    n_rows, n_cols = log_odds_map.shape
+
+    # Init cell counter
+    cell_i = pose_i
+    cell_j = pose_j
+
+    # Compute dx and dy to end cell
+    dx = abs(end_j - cell_j)
+    dy = abs(end_i - cell_i)
+
+    # Define direction for iteration
+    sx = 1 if cell_j < end_j else -1
+    sy = 1 if cell_i < end_i else -1
+
+    err = dx - dy
+    first_cell = True   
+
     while True:
-        # Ray left map
+        # Check if ray left the map
         if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
-            return False, -1, -1, True, free_count, unknown_count, total_count
+            found = False
+            out_of_map = True
+            return found, -1, -1, out_of_map, free_count, unknown_count, total_count
 
         # Do not evaluate robot's own cell
         if not first_cell:
+            # Extract log odds val
             val = log_odds_map[cell_i, cell_j]
             total_count += 1
 
             # check if occupied cell has been found
             if val >= occ_thresh:
-                return True, cell_i, cell_j, False, free_count, unknown_count, total_count
+                found = True
+                out_of_map = False
+                return found, cell_i, cell_j, out_of_map, free_count, unknown_count, total_count
 
             # Check if free cell has been found
             elif val <= free_thresh:
@@ -184,13 +194,15 @@ def _raytrace_first_occupied_cell(
             # Check if unknown cell has been found (when not occ and not free -> unknown)
             else:
                 unknown_count += 1
-
-        first_cell = False
+        
+        else:
+            first_cell = False
 
         # Endpoint reached
         if cell_i == end_i and cell_j == end_j:
             break
-
+        
+        # Increment counters
         e2 = 2 * err
 
         if e2 > -dy:
@@ -201,7 +213,7 @@ def _raytrace_first_occupied_cell(
             err += dx
             cell_i += sy
 
-    return False, -1, -1, False, free_count, unknown_count, total_count
+    return found, -1, -1, out_of_map, free_count, unknown_count, total_count
 
 
 @njit
@@ -261,47 +273,96 @@ def raytracing_log_likelihood_numba(
     Returns
     -------
     log_likelihood : float
+            The log likelihood of the given pose based on the given measurements and map.
     mean_abs_error : float
+        The mean error of all valid errors between measurement range and predicted measurement range
     valid_beam_count : int
+        The number of beams after filtering invalid measurements
     map_hit_count : int
+        Counter that increments everytime a occupied cell has been found by raytracing.    
     no_map_hit_count : int
+        Counter that increments everytime no occupied cell has been found by raytracing.
     out_of_map_count : int
+        Counter that increments everytime the raytracing left the map before finding an occupied cell.
     unknown_ray_count : int
+        Only computed if the model hasn't found an occupied cell. We count the number of unknown rays everytime a beam traversed a cell which occ value is unknown.
+        Then we compute the rate by dividing through the total number of cells that have been traversed. 
+        If this is higher than unknown_ratio_thresh then we increase this counter value.
     known_free_ray_count : int
+        Same as unknown_ray_count but this time we computing the rate based on the free cells the beam traversed.
+        Then we check if this rate is greater than known_free_ratio_thresh.
     unexpected_known_free_count : int
+        Counter increments everytime the raytracing havent detected an occ cell and the actual measruement is not max range measurement.
+        In this the measruement detected an unexpected obstacle while the number of free and unknown cell haven been above threshold.
     skipped_beam_count : int
+        Counter that increases everytime we skip a beam due to invalid measurement (nan, below min range, etc.)
     """
     # Init
+    # Comptued log likelihood 
     log_likelihood = 0.0
 
+    # The mean error of all valid errors between measurement range and predicted measurement range
+    mean_abs_error = 0.0
+    
     valid_beam_count = 0
-    skipped_beam_count = 0
-
+    
     map_hit_count = 0
     no_map_hit_count = 0
     out_of_map_count = 0
+    
     unknown_ray_count = 0
     known_free_ray_count = 0
-    unexpected_known_free_count = 0
+    unexpected_known_free_count = 0    
+    
+    skipped_beam_count = 0
 
     abs_error_sum = 0.0
     abs_error_count = 0
+    
 
-    # Transform give postioin into grid cell and check for valid cell
+    # Transform given position into grid cell and check for valid cell
     n_rows, n_cols = log_odds_map.shape
 
     pose_i = int(floor((y + shift_y) / grid_resolution))
     pose_j = int(floor((x + shift_x) / grid_resolution))
 
+    # Check if robot position out of map -> punish 
     if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
-        return -1.0e12, 0.0, 0, 0, 0, 0, 0, 0, 0, 0
+        log_likelihood = -1.0e12
+        return (
+            log_likelihood,
+            mean_abs_error,
+            valid_beam_count,
+            map_hit_count,
+            no_map_hit_count,
+            out_of_map_count,
+            unknown_ray_count,
+            known_free_ray_count,
+            unexpected_known_free_count,
+            skipped_beam_count,
+        )
 
+    # Ensure valid beam step
     if beam_step < 1:
         beam_step = 1
 
-    if max_sensor_range <= 0.0:
-        return -1.0e12, 0.0, 0, 0, 0, 0, 0, 0, 0, 0
+    # Check if max sensor range is valid
+    if max_sensor_range <= min_sensor_range:
+        log_likelihood = -1.0e12
+        return (
+            log_likelihood,
+            mean_abs_error,
+            valid_beam_count,
+            map_hit_count,
+            no_map_hit_count,
+            out_of_map_count,
+            unknown_ray_count,
+            known_free_ray_count,
+            unexpected_known_free_count,
+            skipped_beam_count,
+        )
 
+    # Set default scale value for log likelihood if given one is not valid
     if alpha_meas <= 0.0:
         alpha_meas = 1.0
 
@@ -319,12 +380,13 @@ def raytracing_log_likelihood_numba(
     w_max /= w_sum
     w_rand /= w_sum
     
-
+    # Compute likelihood for every beam
     for k in range(0, measurements.shape[0], beam_step):
         r_meas = measurements[k, 0]
         bearing = measurements[k, 1]
 
-        # Skip invalid measurement
+        # Skip invalid measurements
+        # Skip nan measurements
         if np.isnan(r_meas):
             skipped_beam_count += 1
             continue
@@ -333,12 +395,13 @@ def raytracing_log_likelihood_numba(
         if r_meas <= min_sensor_range:
             skipped_beam_count += 1
             continue
-
+        
         valid_beam_count += 1
 
         # Ensure valid max range measurements
         measured_max = False
 
+        # Handle +inf and ranges above max range as max range
         if (not np.isfinite(r_meas)) or r_meas >= max_sensor_range:
             measured_max = True
             z = max_sensor_range
@@ -346,7 +409,7 @@ def raytracing_log_likelihood_numba(
             z = r_meas
 
         # Estimate raytracing position of beam by max sensor range raycasting.
-        # Compute reflecting grid cell
+        # Compute reflecting grid cell for max measurement along beam direction
         phi = heading + bearing
 
         ray_end_x = x + max_sensor_range * np.cos(phi)
@@ -373,16 +436,12 @@ def raytracing_log_likelihood_numba(
             free_thresh=free_thresh,
         )
 
-        # --------------------------------------------------------
-        # Ray leaves map -> map cannot predict reliably
-        # --------------------------------------------------------
+        # Case 1: If the ray left the map before occupied cell has been found -> punish
         if out_of_map:
             out_of_map_count += 1
             prob = p_out_of_map
 
-        # --------------------------------------------------------
-        # Map predicts an occupied cell -> use full book beam model
-        # --------------------------------------------------------
+        # Case 2: If we found the occupied cell in map -> increase hit count and compute likelihood with beam model
         elif found:
             map_hit_count += 1
 
@@ -394,8 +453,8 @@ def raytracing_log_likelihood_numba(
             dy = hit_y - y
             z_exp = sqrt(dx * dx + dy * dy)
 
+            # Validate that predicted range is above threshold
             if z_exp <= min_sensor_range:
-                # Handle case that expected measurement is below sensor minimum range
                 prob = p_pred_below_min
 
             else:
@@ -418,32 +477,26 @@ def raytracing_log_likelihood_numba(
                     abs_error_sum += abs(z - z_exp)
                     abs_error_count += 1
 
-        # --------------------------------------------------------
-        # No map hit found before max range
-        # Need to distinguish known-free ray vs unknown ray.
-        # --------------------------------------------------------
+        # Case 3: We have done raytracing, stayed inside the map but haven't found an occupied cell
         else:
+            # Increment no hit counter value since we haven't found an occupied cell
             no_map_hit_count += 1
-
+            
+            # Set inknown ratio and free ratio
             unknown_ratio = 1.0
             free_ratio = 0.0
 
+            # If we have traversed cells then compute unknown and free ratios
             if total_count > 0:
                 unknown_ratio = unknown_count / total_count
                 free_ratio = free_count / total_count
 
-            # ----------------------------------------------------
-            # Mostly unknown ray -> weak/neutral evidence
-            # ----------------------------------------------------
+            # If the we raytraced over more than unknown_ratio_thresh unknown cells, then we use small punishment
             if unknown_ratio >= unknown_ratio_thresh:
                 unknown_ray_count += 1
                 prob = p_unknown
-
-            # ----------------------------------------------------
-            # Mostly known-free ray.
-            # Map predicts no obstacle until max range.
-            # Treat expected range as max range.
-            # ----------------------------------------------------
+            
+            # If the free ratio is higher than known_free_ratio_thresh, then we compute likelihood with beam model
             elif free_ratio >= known_free_ratio_thresh:
                 known_free_ray_count += 1
                 z_exp = max_sensor_range
@@ -462,10 +515,12 @@ def raytracing_log_likelihood_numba(
                     eps=eps,
                 )
 
-                # If sensor saw finite obstacle in known-free map,
-                # this is an unexpected obstacle. Do not make it impossible.
+                # If sensor measurement is not max range measruement and expected measurement is max range, than increase unexpected 
+                # known free count
                 if not measured_max:
                     unexpected_known_free_count += 1
+
+                    # If the computed prbo is below the given threshold, then we set it to the given threshold value. 
                     if prob < p_unexpected_known_free:
                         prob = p_unexpected_known_free
 
@@ -486,8 +541,22 @@ def raytracing_log_likelihood_numba(
     # No valid beams -> neutral update, not particle death.
     # This means: measurement gives no information.
     if valid_beam_count <= 0:
-        return 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, skipped_beam_count
-
+        # log_likelihood = 0.0 -> prob = 1.0 -> neutral update, doesn't change the weight
+        log_likelihood = 0.0
+        return (
+            log_likelihood,
+            mean_abs_error,
+            valid_beam_count,
+            map_hit_count,
+            no_map_hit_count,
+            out_of_map_count,
+            unknown_ray_count,
+            known_free_ray_count,
+            unexpected_known_free_count,
+            skipped_beam_count,
+        )
+        
+    # Compute mean absolute error
     mean_abs_error = 0.0
     if abs_error_count > 0:
         mean_abs_error = abs_error_sum / abs_error_count
@@ -554,7 +623,7 @@ class BeamRangeFinderModel(MeasurementModel):
         # Default probs for special cases
         p_unknown: float = 0.20,
         p_out_of_map: float = 0.10,
-        p_unexpected_known_free: float = 0.03,
+        p_unexpected_known_free: float = 0.00,
         p_pred_below_min: float = 0.02,
 
         # Numerical / scaling
@@ -592,7 +661,10 @@ class BeamRangeFinderModel(MeasurementModel):
         ogm: OGM,
     ) -> dict:
         """
-        Computes log likelihood for one candidate pose.
+        Get's a 2D pose, the range, bearing measruements and an ogm object to compute the likelihood 
+        for the robot being in teh given pose, based on teh given data. 
+        The method filters nan values from the measruements. If u want them to count as max range measurements, then 
+        set all nan to max range before.
 
         Parameters
         ----------
@@ -638,8 +710,10 @@ class BeamRangeFinderModel(MeasurementModel):
                 "skipped_beam_count": 0,
             }
 
+        # Extract robot pose
         x, y, heading = pose
 
+        # Compute measurement likelihood 
         (
             log_likelihood,
             mean_abs_error,
@@ -687,10 +761,11 @@ class BeamRangeFinderModel(MeasurementModel):
             beam_step=self.beam_step,
             eps=self.eps,
         )
-
+      
         return {
             "log_likelihood": float(log_likelihood),
             "mean_abs_error": float(mean_abs_error),
+
             "valid_beam_count": int(valid_beam_count),
             "map_hit_count": int(map_hit_count),
             "no_map_hit_count": int(no_map_hit_count),

@@ -301,6 +301,7 @@ class RankedRunConverter:
                 ),
 
                 # Compute correlations (Does high weight, prob, etc correlate with low xj pose errors to true pose)
+                # corr for pose errors
                 "mean_corr_xjs_weights": cls._read_from_summary(run, "mean_corr_xjs_weights"),
                 "median_corr_xjs_weights": cls._read_from_summary(run, "median_corr_xjs_weights"),
                 "mean_corr_xjs_motion": cls._read_from_summary(run, "mean_corr_xjs_motion"),
@@ -311,7 +312,7 @@ class RankedRunConverter:
                 "median_corr_weights_motion": cls._read_from_summary(run, "median_corr_weights_motion"),
                 "mean_corr_weights_meas": cls._read_from_summary(run, "mean_corr_weights_meas"),
                 "median_corr_weights_meas": cls._read_from_summary(run, "median_corr_weights_meas"),
-
+                # corr for trans and rot errors
                 "mean_corr_xj_trans_weights": cls._read_from_summary(run, "mean_corr_xj_trans_weights"),
                 "median_corr_xj_trans_weights": cls._read_from_summary(run, "median_corr_xj_trans_weights"),
                 "mean_corr_xj_trans_motion": cls._read_from_summary(run, "mean_corr_xj_trans_motion"),
@@ -476,11 +477,14 @@ class ResultAggregator:
             "rmse_best_xj_rot_err_true_deg",
             
             # Correlations
+            # corr for pose errors
             "mean_corr_xjs_motion",
             "mean_corr_xjs_meas",
+            # corr for trans errors
             "mean_corr_xj_trans_weights",
             "mean_corr_xj_trans_motion",
             "mean_corr_xj_trans_meas",
+            # corr for rot errors
             "mean_corr_xj_rot_weights",
             "mean_corr_xj_rot_motion",
             "mean_corr_xj_rot_meas"
@@ -600,16 +604,18 @@ class ResultAggregator:
             mean_rmse_min_xj_rot_err_true_deg=("rmse_min_xj_rot_err_true_deg", "mean"),
             mean_rmse_best_xj_rot_err_true_deg=("rmse_best_xj_rot_err_true_deg", "mean"),
 
+            # Correlations
+            # corr for pose errors
             mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),            
             mean_corr_xjs_meas=("mean_corr_xjs_meas", "mean"),
             worst_corr_xjs_motion=("mean_corr_xjs_motion", "min"),
             worst_corr_xjs_meas=("mean_corr_xjs_meas", "min"),
-
+            # corr for trans errors
             mean_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "mean"),            
             mean_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "mean"),
             worst_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "min"),
             worst_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "min"),
-
+            # corr for rot errors
             mean_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "mean"),
             mean_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "mean"),
             worst_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "min"),

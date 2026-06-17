@@ -134,10 +134,13 @@ class PlaybackRunner:
         #     f"Running RBPF with params: {params.tag} "
         #     f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
         # )
-
+        
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
             step_duration = None
+
+            # if np.isnan(step.scan).any():
+            #     print("\nPlayback runner: measurement model contains nan value before subsampling")
 
             # Subsample and clean measurements
             measurements_proposal = (
@@ -150,6 +153,8 @@ class PlaybackRunner:
 
             measurements_map = step.scan[::every_nth_map] if every_nth_map > 1 else step.scan
 
+            if np.isnan(measurements_proposal).any():
+                print("\nPlayback runner: measurement model contains nan value after subsampling")
 
             # Use inf vals for map update, too -> clear free space faster
             # measurements_map = [

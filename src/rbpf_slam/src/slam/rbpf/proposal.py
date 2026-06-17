@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import numpy as np
 
 from sklearn.neighbors import NearestNeighbors
@@ -429,6 +429,34 @@ class ProposalEstimator:
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose    
 
 
+    def update_measurement_model_counters(self, result: dict):
+        '''
+        Update measurement model counters for proposal diagnostics. 
+        '''
+        # Init dict if not already done
+        if not hasattr(self, "proposal_meas_counters") or self.meas_model_counters is None:
+            self.meas_model_counters = {
+                "call_count": 0,
+                "valid_beam_count": 0,
+                "map_hit_count": 0,
+                "no_map_hit_count": 0,
+                "out_of_map_count": 0,
+                "unknown_ray_count": 0,
+                "known_free_ray_count": 0,
+                "unexpected_known_free_count": 0,
+            }
+
+        self.meas_model_counters["call_count"] += 1
+        self.meas_model_counters["valid_beam_count"] += result.get("valid_beam_count", 0)
+        self.meas_model_counters["map_hit_count"] += result.get("map_hit_count", 0)
+        self.meas_model_counters["no_map_hit_count"] += result.get("no_map_hit_count", 0)
+        self.meas_model_counters["out_of_map_count"] += result.get("out_of_map_count", 0)
+        self.meas_model_counters["unknown_ray_count"] += result.get("unknown_ray_count", 0)
+        self.meas_model_counters["known_free_ray_count"] += result.get("known_free_ray_count", 0)
+        self.meas_model_counters["unexpected_known_free_count"] += result.get("unexpected_known_free_count", 0)
+        
+
+
     def compute_proposal_params_range_finder_model(
         self,
         scan_match_pose: Pose2D,
@@ -449,6 +477,18 @@ class ProposalEstimator:
         norm = 0.0
         mu = np.zeros(3)
 
+        # Define measurement model counters for xjs
+        self.meas_model_counters = {
+            "call_count": 0,
+            "valid_beam_count": 0,
+            "map_hit_count": 0,
+            "no_map_hit_count": 0,
+            "out_of_map_count": 0,
+            "unknown_ray_count": 0,
+            "known_free_ray_count": 0,
+            "unexpected_known_free_count": 0,
+        }
+
         samples, n_samples = self.sample_poses_deterministic(
             pose=scan_match_pose,
             sigma_xy=sigma_xy,
@@ -464,6 +504,10 @@ class ProposalEstimator:
             dr=dr,
         )
        
+        # Check if measurements contain nan values
+        # if np.isnan(measurements).any():
+        #     print("\nProposal: Measruement model contains nan value")
+
         # Compute measurement model likelihoods for each sample  
         log_likelihoods = np.empty(shape=(samples.shape[0],))
         for i, sample in enumerate(samples):
@@ -472,13 +516,17 @@ class ProposalEstimator:
                 measurements=measurements,
                 ogm=particle.scan_matcher.ogm,
             )
+            # Extract log-likelihood 
             log_likelihood = results.get("log_likelihood", INVALID_LOG_LIKELIHOOD)
-
             log_likelihoods[i] = log_likelihood
+
+            # Update measurement model counters for diagnostics
+            self.update_measurement_model_counters(results)
             
         # Convert log-likelihoods to probabilities in save manner
         max_log_likelihood = np.max(log_likelihoods)
 
+        # Ensure valid log-likelihoods and compute measurement probabilities
         if not np.isfinite(max_log_likelihood):
             mu = np.asarray(scan_match_pose, dtype=float)
             cov = 1e-6 * np.eye(3)
@@ -530,8 +578,7 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta 
-
+        return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
 
 
     def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
@@ -665,6 +712,7 @@ class ProposalEstimator:
             "xj_weights": xj_weights,
             "motion_probs": motion_probs,
             "meas_probs": meas_probs,
+            "measurement_model_counters": self.meas_model_counters,
         }
 
         # Estimate new particle pose

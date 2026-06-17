@@ -56,6 +56,10 @@ class PlaybackConverter:
                 max_range=max_range,
             )
 
+        if np.isnan(ranges).any():
+            print("\Playback converter: Measruement model contains nan value")
+
+
         bearing = raw_scan.angle_min
         for r in ranges:
             measurements.append((r, bearing))
