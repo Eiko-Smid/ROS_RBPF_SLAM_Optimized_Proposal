@@ -6,7 +6,6 @@
 # print("Debugger attached")
 
 from typing import List, Tuple, Optional
-from collections import deque
 
 import rospy
 import threading
@@ -94,13 +93,6 @@ class ROSParams:
     map_topic= "log_odds_map"
     # odom topic
     wheel_encoder_topic= "wheel_encoder"
-
-    # Laser scanner
-    # Record every nth scan
-    record_every_nth_scan = 5
-
-    # Reject pose/scan pairs with a time difference larger than this threshold [s]
-    max_sync_error_s = 0.1
 
     # TFs
     map_tf_frame = "map"
@@ -250,15 +242,11 @@ class ROSPlaybackNode:
         self.dr = 0.0
 
         # Define link states
-        # self.link_state_message = None
+        self.link_state_message = None
         self.link_state_name = ros_params.link_state_name
         self.link_state_idx = None
-        # Buffer size of link state topic (store states and match to closest scan)
-        self.link_state_buffer = deque(maxlen=500)  
-
-        # self.laser_scan = None
+        self.laser_scan = None
         self.laser_pose_world = None
-        self.scan_counter = 0
 
         # Define topics
         self.link_state_sub = rospy.Subscriber(
@@ -293,113 +281,35 @@ class ROSPlaybackNode:
         rospy.loginfo("Shutting down RBPF ROS node.")
 
 
-    def link_states_cb(self, link_states: LinkStates):        
-        '''
-        Store every Gazebo pose together with its ROS reception timestamp. LinkStates has no message header, 
-        so rospy.Time.now() is used. 
-        This way we can later find the closest pose to every given scan based on the timestamp.
-        '''
-        # Init link state index if not already done
-        if self.link_state_idx is None:
-            # Search for index corresponding to the given link state name
-            try:
-                self.link_state_idx = link_states.name.index(
-                    self.link_state_name
-                )
-                rospy.loginfo(
-                    f"Found link state index: {self.link_state_idx}"
-                )
-            except ValueError:
-                rospy.logwarn_throttle(
-                    5.0,
-                    f"Link {self.link_state_name} not found."
-                )
-                return
+    def link_states_cb(self, link_states: LinkStates):
+        '''Receive gazebo link state from topic.'''
+        with self.lock:
+            # Extract message
+            self.link_state_message = link_states
 
-        # Transform 3D pose -> 2D pose
-        true_pose = self.transform_link_state_pose_to_planar_pose(
-            link_state=link_states,
-            link_state_index=self.link_state_idx,
-        )
+            # Find link state name index -> base_link index
+            if self.link_state_idx is None:
+                try:
+                    self.link_state_idx = link_states.name.index(self.link_state_name)
+                    rospy.loginfo(f"Found link state index: {self.link_state_idx}")
+                except ValueError:
+                    rospy.logwarn_throttle(5.0, f"Link {self.link_state_name} not found in Gazebo link states.")
 
-        # Store link state in buffer together with reception timestamp 
-        pose_timestamp = rospy.Time.now()
+            if self.link_state_idx is None:
+                for i in range(len(link_states.name)):
+                    if self.link_state_name == link_states.name[i]:
+                        self.link_state_idx = i
+                        break
     
-        with self.lock:
-            self.link_state_buffer.append(
-                (pose_timestamp, true_pose)
-            )
-        
 
-    def laser_scan_cb(self, laser_scan: LaserScan):
-        '''
-        Process every fifth laser scan.
-
-        At a laser rate of 10 Hz, every fifth scan produces
-        one playback step every 0.5 seconds.
-        '''
-        # Check if every ng beam has been received 
-        self.scan_counter += 1
-        if self.scan_counter % self.ros_params.record_every_nth_scan != 0:
-            return
-
-        # Extract timestamp from laser scanner header
-        scan_timestamp = laser_scan.header.stamp
-
-        # Check if valid time stamp has been extracted
-        if scan_timestamp == rospy.Time():
-            rospy.logwarn_throttle(
-                5.0,
-                "LaserScan timestamp is zero. Using callback reception time."
-            )
-            scan_timestamp = rospy.Time.now()
-
-        # Estimate closest link state pose for given laser scan timestamp
-        result = self.find_corresponding_link_state(scan_timestamp)
-
-        # Throw warning and skip step if no corresponding link state pose has been found
-        if result is None:
-            rospy.logwarn_throttle(
-                2.0,
-                "No Gazebo pose available for laser scan."
-            )
-            return
-
-        true_pose, sync_error_s = result
-
-        # If sync time difference abvove threshold, skip step and throw warning
-        if sync_error_s > self.ros_params.max_sync_error_s:
-            rospy.logwarn(
-                "Skipping playback step because synchronization error "
-                f"is too large: {sync_error_s * 1000.0:.1f} ms"
-            )
-            return
-
-        # Extract left and right wheel distance 
-        with self.lock:
-            dl = self.dl
-            dr = self.dr
-
-            self.dl = 0.0
-            self.dr = 0.0
-
-        # Record step data 
-        self.recorder.record_step(
-            t=time.perf_counter(),
-            t_ros=scan_timestamp.to_sec(),
-            dl=dl,
-            dr=dr,
-            true_pose=true_pose,
-            laser_scan=laser_scan,
-        )
-
-        # Log info about step
-        rospy.loginfo(
-            f"Robot pose: sync error: {sync_error_s * 1000.0:.2f} ms"
-        )
+    def laser_scan_cb(self, laser_scan):
+        '''Receive laser scan from topic.'''
+        self.lock.acquire()
+        self.laser_scan= laser_scan
+        self.lock.release()
 
 
-    def wheel_encoder_cb(self, distance: WheelEncoder):
+    def wheel_encoder_cb(self, distance):
         '''Accumulate the distances of the left and right wheel.'''
         self.lock.acquire()
         self.dl+= distance.left
@@ -408,10 +318,7 @@ class ROSPlaybackNode:
 
     
     @staticmethod
-    def transform_link_state_pose_to_planar_pose(
-        link_state: LinkStates,
-        link_state_index: int
-    ) -> Tuple[float, float, float]:
+    def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
         '''
         Transforms the link state message to a planar pose, consisting of (x, y, yaw) tuple.
         '''
@@ -425,35 +332,61 @@ class ROSPlaybackNode:
                                                 orientation.w])
         planar_pose= (x, y, yaw)
         return planar_pose
-
     
-    def find_corresponding_link_state(self, scan_timestamp: rospy.Time):
-        '''
-        Finds the closest gazebo link state pose for the given scan timestamp.
-        '''
-        # Lock threads
-        with self.lock:
-            if not self.link_state_buffer:
-                return None
-
-            # Find closest time stamp and pose
-            closest_timestamp, closest_pose = min(
-                self.link_state_buffer,
-                key=lambda item: abs(
-                    (item[0] - scan_timestamp).to_sec()
-                ),
-            )
-
-        # Compute time difference
-        time_difference = abs(
-            (closest_timestamp - scan_timestamp).to_sec()
-        )
-
-        return closest_pose, time_difference    
-        
 
     def exe(self):
-        rospy.spin()
+        update_rate = rospy.Rate(self.ros_params.update_rate)
+        while not rospy.is_shutdown():
+            try:
+                # Check if all necessary data is received
+                min_dist = self.exp_params.map_param.grid_resolution_m
+                if(
+                    self.link_state_message is not None and
+                    self.link_state_idx is not None and
+                    self.laser_scan is not None 
+                    # and(self.dl > min_dist or self.dr > min_dist)
+                ):                    
+
+                    # Extract data and reset data
+                    with self.lock:
+                        link_state = self.link_state_message
+                        link_idx = self.link_state_idx
+                        laser_scan = self.laser_scan
+                        dl = self.dl
+                        dr = self.dr
+
+                        self.link_state_message = None
+                        self.link_state_idx = None
+                        self.laser_scan = None
+                        self.dl = 0.0
+                        self.dr = 0.0
+                    
+                    # Transform 3D pose -> 2D pose
+                    true_pose = self.transform_link_state_pose_to_planar_pose(
+                        link_state=link_state,
+                        link_state_index=link_idx
+                    )
+
+                    # Record step
+                    self.recorder.record_step(
+                        t=time.perf_counter(),
+                        t_ros = rospy.get_time(),
+                        dl=dl,
+                        dr=dr,
+                        true_pose=true_pose,
+                        laser_scan=laser_scan
+                    )
+
+                    rospy.loginfo(f"Robot pose: {true_pose[0]:.2f}, {true_pose[1]:.2f}, {true_pose[2]:.2f}")
+                
+
+            except rospy.exceptions.ROSTimeMovedBackwardsException:
+                rospy.logwarn("Time jump detected → skipping this iteration")
+                self.time_jumps += 1
+                continue
+
+            finally:
+                update_rate.sleep()
 
 
 def main():
