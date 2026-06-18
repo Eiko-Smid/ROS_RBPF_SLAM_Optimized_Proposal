@@ -1350,19 +1350,6 @@ class RBPF:
         '''
         Update measurement model counters for proposal diagnostics. 
         '''
-        # Init dict if not already done
-        if not hasattr(self, "proposal_meas_counters") or self.meas_model_counters_fallback is None:
-            self.meas_model_counters_fallback = {
-                "call_count": 0,
-                "valid_beam_count": 0,
-                "map_hit_count": 0,
-                "no_map_hit_count": 0,
-                "out_of_map_count": 0,
-                "unknown_ray_count": 0,
-                "known_free_ray_count": 0,
-                "unexpected_known_free_count": 0,
-            }
-
         self.meas_model_counters_fallback["call_count"] += 1
         self.meas_model_counters_fallback["valid_beam_count"] += result.get("valid_beam_count", 0)
         self.meas_model_counters_fallback["map_hit_count"] += result.get("map_hit_count", 0)
@@ -1640,6 +1627,7 @@ class RBPF:
         scan_match_fallback_failed_any = False
         particle0_prop_metrics = None
 
+        # Init measurement model counters
         self.meas_model_counters_fallback = {
             "call_count": 0,
             "valid_beam_count": 0,
@@ -1726,6 +1714,7 @@ class RBPF:
                     "timing_metrics_s": None,
                     "timing_resampling_s": None,
                     "proposal_metrics": None,
+                    "measurement_model_counters_fallback": None
                 }
 
                 return neff, self.particles[0].pose
@@ -1807,6 +1796,7 @@ class RBPF:
             "timing_metrics_s": t_metrics_s,
             "timing_resampling_s": t_resampling_s,
             "proposal_metrics": particle0_prop_metrics,
+            "measurement_model_counters_fallback": self.meas_model_counters_fallback,
         }
 
         # Resampling step

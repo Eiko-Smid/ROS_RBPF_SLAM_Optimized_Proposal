@@ -429,23 +429,107 @@ class ProposalEstimator:
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose    
 
 
+    def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
+        '''
+        Sample a new pose from a Gaussian distribution with mean mu and covariance sigma. Ensures angles are normalized.
+        '''
+        new_pose = np.random.multivariate_normal(mean=mu, cov=cov)
+        new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
+        return new_pose
+    
+
+    def estimate_proposal(
+        self,
+        scan_match_pose: Pose2D,
+        particle: Particle,
+        odom: Tuple[float, float],
+        measurements: List[Tuple[float, float]],
+        neighbor: NearestNeighbors,
+        motion_model: MotionModel,
+        measurement_model: MeasurementModel,
+        sigma_xy: float=1.0,
+        sigma_theta: float=1.0,
+        n_samples: int=3,
+        meas_kernel_size: int=1,
+        gaussian_sigma: float=0.05,
+        alpha: float=0.5,
+        beta: float=2.0,
+    ) -> Tuple[np.ndarray, float, dict]:
+        '''
+
+        '''
+
+        # Compute proposal parameters old variant (NN tree distances + clip)
+        mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch_copy(
+            scan_match_pose=scan_match_pose,
+            particle=particle,
+            odom=odom,
+            measurements=measurements,
+            neighbor=neighbor,
+            motion_model=motion_model,
+            measurement_model=measurement_model,
+            sigma_xy=sigma_xy,
+            sigma_theta=sigma_theta,
+            n_samples=n_samples,
+        )
+
+        # Compute proposal params
+        # mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch(
+        #     scan_match_pose=scan_match_pose,
+        #     particle=particle,
+        #     odom=odom,
+        #     measurements=measurements,
+        #     neighbor=neighbor,
+        #     motion_model=motion_model,
+        #     measurement_model=measurement_model,
+        #     sigma_xy=sigma_xy,
+        #     sigma_theta=sigma_theta,
+        #     n_samples=n_samples,
+        #     alpha=alpha,
+        #     beta=beta,
+        # )
+
+        # mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_gmapping(
+        #     scan_match_pose=scan_match_pose,
+        #     particle=particle,
+        #     odom=odom,
+        #     measurements=measurements,
+        #     motion_model=motion_model,
+        #     measurement_model=measurement_model,
+        #     meas_kernel_size=meas_kernel_size,
+        #     gaussian_sigma=gaussian_sigma,
+        #     sigma_xy=sigma_xy,
+        #     sigma_theta=sigma_theta,
+        #     n_samples_dir=n_samples,
+        #     alpha=alpha,
+        #     beta=beta,
+        # )
+
+        # Store raw proposal diagnostics for downstream evaluation.
+        info = {
+            "prop_mu": mu,
+            "prop_cov_matrix": cov,
+            "scan_match_pose": np.asarray(scan_match_pose, dtype=float),
+            "pred_pose": np.asarray(pred_pose, dtype=float),
+            "xjs": xjs,
+            "xj_weights": xj_weights,
+            "motion_probs": motion_probs,
+            "meas_probs": meas_probs,
+        }
+
+        # Sample pose
+        # new_pose = self.sample_from_proposal(mu, cov)
+        
+        # TODO: Keep this for the moment until we found better solution. Chat GPT recommends this version due to better results
+        new_pose = mu 
+        
+        return new_pose, p_weight, info
+
+
     def update_measurement_model_counters(self, result: dict):
         '''
         Update measurement model counters for proposal diagnostics. 
         '''
-        # Init dict if not already done
-        if not hasattr(self, "proposal_meas_counters") or self.meas_model_counters is None:
-            self.meas_model_counters = {
-                "call_count": 0,
-                "valid_beam_count": 0,
-                "map_hit_count": 0,
-                "no_map_hit_count": 0,
-                "out_of_map_count": 0,
-                "unknown_ray_count": 0,
-                "known_free_ray_count": 0,
-                "unexpected_known_free_count": 0,
-            }
-
         self.meas_model_counters["call_count"] += 1
         self.meas_model_counters["valid_beam_count"] += result.get("valid_beam_count", 0)
         self.meas_model_counters["map_hit_count"] += result.get("map_hit_count", 0)
@@ -580,103 +664,6 @@ class ProposalEstimator:
 
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
 
-
-    def sample_from_proposal(self, mu: np.ndarray, cov: np.ndarray) -> np.ndarray:
-        '''
-        Sample a new pose from a Gaussian distribution with mean mu and covariance sigma. Ensures angles are normalized.
-        '''
-        new_pose = np.random.multivariate_normal(mean=mu, cov=cov)
-        new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
-        return new_pose
-    
-
-    def estimate_proposal(
-        self,
-        scan_match_pose: Pose2D,
-        particle: Particle,
-        odom: Tuple[float, float],
-        measurements: List[Tuple[float, float]],
-        neighbor: NearestNeighbors,
-        motion_model: MotionModel,
-        measurement_model: MeasurementModel,
-        sigma_xy: float=1.0,
-        sigma_theta: float=1.0,
-        n_samples: int=3,
-        meas_kernel_size: int=1,
-        gaussian_sigma: float=0.05,
-        alpha: float=0.5,
-        beta: float=2.0,
-    ) -> Tuple[np.ndarray, float, dict]:
-        '''
-
-        '''
-
-        # Compute proposal parameters old variant (NN tree distances + clip)
-        mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch_copy(
-            scan_match_pose=scan_match_pose,
-            particle=particle,
-            odom=odom,
-            measurements=measurements,
-            neighbor=neighbor,
-            motion_model=motion_model,
-            measurement_model=measurement_model,
-            sigma_xy=sigma_xy,
-            sigma_theta=sigma_theta,
-            n_samples=n_samples,
-        )
-
-        # Compute proposal params
-        # mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_batch(
-        #     scan_match_pose=scan_match_pose,
-        #     particle=particle,
-        #     odom=odom,
-        #     measurements=measurements,
-        #     neighbor=neighbor,
-        #     motion_model=motion_model,
-        #     measurement_model=measurement_model,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples=n_samples,
-        #     alpha=alpha,
-        #     beta=beta,
-        # )
-
-        # mu, cov, p_weight, xjs, xj_weights, meas_probs, motion_probs, pred_pose = self.compute_proposal_param_gmapping(
-        #     scan_match_pose=scan_match_pose,
-        #     particle=particle,
-        #     odom=odom,
-        #     measurements=measurements,
-        #     motion_model=motion_model,
-        #     measurement_model=measurement_model,
-        #     meas_kernel_size=meas_kernel_size,
-        #     gaussian_sigma=gaussian_sigma,
-        #     sigma_xy=sigma_xy,
-        #     sigma_theta=sigma_theta,
-        #     n_samples_dir=n_samples,
-        #     alpha=alpha,
-        #     beta=beta,
-        # )
-
-        # Store raw proposal diagnostics for downstream evaluation.
-        info = {
-            "prop_mu": mu,
-            "prop_cov_matrix": cov,
-            "scan_match_pose": np.asarray(scan_match_pose, dtype=float),
-            "pred_pose": np.asarray(pred_pose, dtype=float),
-            "xjs": xjs,
-            "xj_weights": xj_weights,
-            "motion_probs": motion_probs,
-            "meas_probs": meas_probs,
-        }
-
-        # Sample pose
-        # new_pose = self.sample_from_proposal(mu, cov)
-        
-        # TODO: Keep this for the moment until we found better solution. Chat GPT recommends this version due to better results
-        new_pose = mu 
-        
-        return new_pose, p_weight, info
-    
 
     def estimate_proposal_range_finder(
         self,

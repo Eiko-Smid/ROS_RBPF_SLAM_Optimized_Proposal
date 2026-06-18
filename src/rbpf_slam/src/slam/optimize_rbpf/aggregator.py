@@ -2,6 +2,7 @@ import math
 from typing import Iterable, List
 
 import pandas as pd
+import numpy as np
 
 from .optimizer import RankedRun, RBPFOptimizer
 from .playback_defs import ExperimentParams
@@ -345,6 +346,99 @@ class RankedRunConverter:
                 "mean_step_duration_ms": cls._optional_ms(
                     cls._read_from_summary(run, "mean_step_duration")
                 ),
+
+                # Measurement model metrics
+                # Proposal 
+                # Counters
+                "meas_model_prop_call_count": cls._read_from_summary(
+                    run, "meas_model_prop_call_count"
+                ),
+                "meas_model_prop_valid_beam_count": cls._read_from_summary(
+                    run, "meas_model_prop_valid_beam_count"
+                ),
+                "meas_model_prop_map_hit_count": cls._read_from_summary(
+                    run, "meas_model_prop_map_hit_count"
+                ),
+                "meas_model_prop_no_map_hit_count": cls._read_from_summary(
+                    run, "meas_model_prop_no_map_hit_count"
+                ),
+                "meas_model_prop_out_of_map_count": cls._read_from_summary(
+                    run, "meas_model_prop_out_of_map_count"
+                ),
+                "meas_model_prop_unknown_ray_count": cls._read_from_summary(
+                    run, "meas_model_prop_unknown_ray_count"
+                ),
+                "meas_model_prop_known_free_ray_count": cls._read_from_summary(
+                    run, "meas_model_prop_known_free_ray_count"
+                ),
+                "meas_model_prop_unexpected_known_free_count": cls._read_from_summary(
+                    run, "meas_model_prop_unexpected_known_free_count"
+                ),
+                # Rates
+                "meas_model_prop_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_prop_map_hit_rate"
+                ),
+                "meas_model_prop_out_of_map_rate": cls._read_from_summary(
+                    run, "meas_model_prop_out_of_map_rate"
+                ),
+                "meas_model_prop_no_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_prop_no_map_hit_rate"
+                ),
+                "meas_model_prop_unknown_no_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_prop_unknown_no_map_hit_rate"
+                ),
+                "meas_model_prop_known_free_no_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_prop_known_free_no_map_hit_rate"
+                ),
+                "meas_model_prop_unexpected_known_free_rate": cls._read_from_summary(
+                    run, "meas_model_prop_unexpected_known_free_rate"
+                ),
+                # Fallback
+                # Counters
+                "meas_model_fallback_call_count": cls._read_from_summary(
+                    run, "meas_model_fallback_call_count"
+                ),
+                "meas_model_fallback_valid_beam_count": cls._read_from_summary(
+                    run, "meas_model_fallback_valid_beam_count"
+                ),
+                "meas_model_fallback_map_hit_count": cls._read_from_summary(
+                    run, "meas_model_fallback_map_hit_count"
+                ),
+                "meas_model_fallback_no_map_hit_count": cls._read_from_summary(
+                    run, "meas_model_fallback_no_map_hit_count"
+                ),
+                "meas_model_fallback_out_of_map_count": cls._read_from_summary(
+                    run, "meas_model_fallback_out_of_map_count"
+                ),
+                "meas_model_fallback_unknown_ray_count": cls._read_from_summary(
+                    run, "meas_model_fallback_unknown_ray_count"
+                ),
+                "meas_model_fallback_known_free_ray_count": cls._read_from_summary(
+                    run, "meas_model_fallback_known_free_ray_count"
+                ),
+                "meas_model_fallback_unexpected_known_free_count": cls._read_from_summary(
+                    run, "meas_model_fallback_unexpected_known_free_count"
+                ),
+                # Rates
+                "meas_model_fallback_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_fallback_map_hit_rate"
+                ),
+                "meas_model_fallback_out_of_map_rate": cls._read_from_summary(
+                    run, "meas_model_fallback_out_of_map_rate"
+                ),
+                "meas_model_fallback_no_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_fallback_no_map_hit_rate"
+                ),
+                "meas_model_fallback_unknown_no_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_fallback_unknown_no_map_hit_rate"
+                ),
+                "meas_model_fallback_known_free_no_map_hit_rate": cls._read_from_summary(
+                    run, "meas_model_fallback_known_free_no_map_hit_rate"
+                ),
+                "meas_model_fallback_unexpected_known_free_rate": cls._read_from_summary(
+                    run, "meas_model_fallback_unexpected_known_free_rate"
+                ),
+                
             }
 
             rows.append(row)
@@ -487,7 +581,37 @@ class ResultAggregator:
             # corr for rot errors
             "mean_corr_xj_rot_weights",
             "mean_corr_xj_rot_motion",
-            "mean_corr_xj_rot_meas"
+            "mean_corr_xj_rot_meas",
+
+            # Measurement model metrics
+            "meas_model_prop_call_count",
+            "meas_model_prop_valid_beam_count",
+            "meas_model_prop_map_hit_count",
+            "meas_model_prop_no_map_hit_count",
+            "meas_model_prop_out_of_map_count",
+            "meas_model_prop_unknown_ray_count",
+            "meas_model_prop_known_free_ray_count",
+            "meas_model_prop_unexpected_known_free_count",
+            # "meas_model_prop_map_hit_rate",
+            # "meas_model_prop_out_of_map_rate",
+            # "meas_model_prop_no_map_hit_rate",
+            # "meas_model_prop_unknown_no_map_hit_rate",
+            # "meas_model_prop_known_free_no_map_hit_rate",
+            # "meas_model_prop_unexpected_known_free_rate",
+            "meas_model_fallback_call_count",
+            "meas_model_fallback_valid_beam_count",
+            "meas_model_fallback_map_hit_count",
+            "meas_model_fallback_no_map_hit_count",
+            "meas_model_fallback_out_of_map_count",
+            "meas_model_fallback_unknown_ray_count",
+            "meas_model_fallback_known_free_ray_count",
+            "meas_model_fallback_unexpected_known_free_count",
+            # "meas_model_fallback_map_hit_rate",
+            # "meas_model_fallback_out_of_map_rate",
+            # "meas_model_fallback_no_map_hit_rate",
+            # "meas_model_fallback_unknown_no_map_hit_rate",
+            # "meas_model_fallback_known_free_no_map_hit_rate",
+            # "meas_model_fallback_unexpected_known_free_rate"
         ]
 
         # Estimate missing columns
@@ -621,6 +745,26 @@ class ResultAggregator:
             worst_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "min"),
             worst_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "min"),
 
+            # Measurement model metrics
+            # Proposal
+            meas_model_prop_call_count=("meas_model_prop_call_count", "sum"),
+            meas_model_prop_valid_beam_count=("meas_model_prop_valid_beam_count", "sum"),
+            meas_model_prop_map_hit_count=("meas_model_prop_map_hit_count", "sum"),
+            meas_model_prop_no_map_hit_count=("meas_model_prop_no_map_hit_count", "sum"),
+            meas_model_prop_out_of_map_count=("meas_model_prop_out_of_map_count", "sum"),
+            meas_model_prop_unknown_ray_count=("meas_model_prop_unknown_ray_count", "sum"),
+            meas_model_prop_known_free_ray_count=("meas_model_prop_known_free_ray_count", "sum"),
+            meas_model_prop_unexpected_known_free_count=("meas_model_prop_unexpected_known_free_count", "sum"),
+            # Fallback
+            meas_model_fallback_call_count=("meas_model_fallback_call_count", "sum"),
+            meas_model_fallback_valid_beam_count=("meas_model_fallback_valid_beam_count", "sum"),
+            meas_model_fallback_map_hit_count=("meas_model_fallback_map_hit_count", "sum"),
+            meas_model_fallback_no_map_hit_count=("meas_model_fallback_no_map_hit_count", "sum"),
+            meas_model_fallback_out_of_map_count=("meas_model_fallback_out_of_map_count", "sum"),
+            meas_model_fallback_unknown_ray_count=("meas_model_fallback_unknown_ray_count", "sum"),
+            meas_model_fallback_known_free_ray_count=("meas_model_fallback_known_free_ray_count", "sum"),
+            meas_model_fallback_unexpected_known_free_count=("meas_model_fallback_unexpected_known_free_count", "sum"),
+
         ).reset_index()
 
         # Place map name directly after dataset id
@@ -652,6 +796,56 @@ class ResultAggregator:
             df=agg_dataset_param_df,
             col="scan_match_fallback_failed_rate",
             col_after="total_scan_match_fallback_failed_count"
+        )
+
+        # Compute measurement model metrics
+        def _rate(numerator_col: str, denominator_col: str, call_count_col: str):
+            numerator = pd.to_numeric(agg_dataset_param_df[numerator_col], errors="coerce")
+            denominator = pd.to_numeric(agg_dataset_param_df[denominator_col], errors="coerce")
+            call_count = pd.to_numeric(agg_dataset_param_df[call_count_col], errors="coerce")
+            valid = call_count.gt(0) & denominator.gt(0) & numerator.ge(0)
+            result = pd.Series(np.nan, index=agg_dataset_param_df.index, dtype=float)
+            result.loc[valid] = numerator.loc[valid] / denominator.loc[valid]
+            return result
+
+        # Proposal rates
+        agg_dataset_param_df["meas_model_prop_map_hit_rate"] = _rate(
+            "meas_model_prop_map_hit_count", "meas_model_prop_valid_beam_count", "meas_model_prop_call_count"
+        )
+        agg_dataset_param_df["meas_model_prop_out_of_map_rate"] = _rate(
+            "meas_model_prop_out_of_map_count", "meas_model_prop_valid_beam_count", "meas_model_prop_call_count"
+        )
+        agg_dataset_param_df["meas_model_prop_no_map_hit_rate"] = _rate(
+            "meas_model_prop_no_map_hit_count", "meas_model_prop_valid_beam_count", "meas_model_prop_call_count"
+        )
+        agg_dataset_param_df["meas_model_prop_unknown_no_map_hit_rate"] = _rate(
+            "meas_model_prop_unknown_ray_count", "meas_model_prop_no_map_hit_count", "meas_model_prop_call_count"
+        )
+        agg_dataset_param_df["meas_model_prop_known_free_no_map_hit_rate"] = _rate(
+            "meas_model_prop_known_free_ray_count", "meas_model_prop_no_map_hit_count", "meas_model_prop_call_count"
+        )
+        agg_dataset_param_df["meas_model_prop_unexpected_known_free_rate"] = _rate(
+            "meas_model_prop_unexpected_known_free_count", "meas_model_prop_known_free_ray_count", "meas_model_prop_call_count"
+        )
+
+        # Fallback rates
+        agg_dataset_param_df["meas_model_fallback_map_hit_rate"] = _rate(
+            "meas_model_fallback_map_hit_count", "meas_model_fallback_valid_beam_count", "meas_model_fallback_call_count"
+        )
+        agg_dataset_param_df["meas_model_fallback_out_of_map_rate"] = _rate(
+            "meas_model_fallback_out_of_map_count", "meas_model_fallback_valid_beam_count", "meas_model_fallback_call_count"
+        )
+        agg_dataset_param_df["meas_model_fallback_no_map_hit_rate"] = _rate(
+            "meas_model_fallback_no_map_hit_count", "meas_model_fallback_valid_beam_count", "meas_model_fallback_call_count"
+        )
+        agg_dataset_param_df["meas_model_fallback_unknown_no_map_hit_rate"] = _rate(
+            "meas_model_fallback_unknown_ray_count", "meas_model_fallback_no_map_hit_count", "meas_model_fallback_call_count"
+        )
+        agg_dataset_param_df["meas_model_fallback_known_free_no_map_hit_rate"] = _rate(
+            "meas_model_fallback_known_free_ray_count", "meas_model_fallback_no_map_hit_count", "meas_model_fallback_call_count"
+        )
+        agg_dataset_param_df["meas_model_fallback_unexpected_known_free_rate"] = _rate(
+            "meas_model_fallback_unexpected_known_free_count", "meas_model_fallback_known_free_ray_count", "meas_model_fallback_call_count"
         )
 
         # Use 0.0 score if score is none
@@ -778,6 +972,23 @@ class ResultAggregator:
             "worst_corr_xj_rot_motion",
             "mean_corr_xj_rot_meas",
             "worst_corr_xj_rot_meas",
+
+            # Measurement model metrics
+            # Proposal rates
+            "meas_model_prop_map_hit_rate",
+            "meas_model_prop_out_of_map_rate",
+            "meas_model_prop_no_map_hit_rate",
+            "meas_model_prop_unknown_no_map_hit_rate",
+            "meas_model_prop_known_free_no_map_hit_rate",
+            "meas_model_prop_unexpected_known_free_rate",
+
+            # Fallback rates
+            "meas_model_fallback_map_hit_rate",
+            "meas_model_fallback_out_of_map_rate",
+            "meas_model_fallback_no_map_hit_rate",
+            "meas_model_fallback_unknown_no_map_hit_rate",
+            "meas_model_fallback_known_free_no_map_hit_rate",
+            "meas_model_fallback_unexpected_known_free_rate",
         ]
 
         # Estimate missing columns
@@ -909,6 +1120,93 @@ class ResultAggregator:
             mean_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "mean"),
             worst_corr_xj_rot_motion=("worst_corr_xj_rot_motion", "min"),
             worst_corr_xj_rot_meas=("worst_corr_xj_rot_meas", "min"),
+
+            # measurement model metrics
+            # Proposal rates
+            mean_meas_model_prop_map_hit_rate=(
+                "meas_model_prop_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_prop_out_of_map_rate=(
+                "meas_model_prop_out_of_map_rate",
+                "mean",
+            ),
+            mean_meas_model_prop_no_map_hit_rate=(
+                "meas_model_prop_no_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_prop_unknown_no_map_hit_rate=(
+                "meas_model_prop_unknown_no_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_prop_known_free_no_map_hit_rate=(
+                "meas_model_prop_known_free_no_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_prop_unexpected_known_free_rate=(
+                "meas_model_prop_unexpected_known_free_rate",
+                "mean",
+            ),
+            # Worst proposal rates
+            worst_meas_model_prop_out_of_map_rate=(
+                "meas_model_prop_out_of_map_rate",
+                "max",
+            ),
+            worst_meas_model_prop_unknown_no_map_hit_rate=(
+                "meas_model_prop_unknown_no_map_hit_rate",
+                "max",
+            ),
+            worst_meas_model_prop_unexpected_known_free_rate=(
+                "meas_model_prop_unexpected_known_free_rate",
+                "max",
+            ),
+
+            # Fallback rates
+            mean_meas_model_fallback_map_hit_rate=(
+                "meas_model_fallback_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_fallback_out_of_map_rate=(
+                "meas_model_fallback_out_of_map_rate",
+                "mean",
+            ),
+            mean_meas_model_fallback_no_map_hit_rate=(
+                "meas_model_fallback_no_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_fallback_unknown_no_map_hit_rate=(
+                "meas_model_fallback_unknown_no_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_fallback_known_free_no_map_hit_rate=(
+                "meas_model_fallback_known_free_no_map_hit_rate",
+                "mean",
+            ),
+            mean_meas_model_fallback_unexpected_known_free_rate=(
+                "meas_model_fallback_unexpected_known_free_rate",
+                "mean",
+            ),
+
+            # Worst fallback rates
+            worst_meas_model_fallback_out_of_map_rate=(
+                "meas_model_fallback_out_of_map_rate",
+                "max",
+            ),
+            worst_meas_model_fallback_unknown_no_map_hit_rate=(
+                "meas_model_fallback_unknown_no_map_hit_rate",
+                "max",
+            ),
+            worst_meas_model_fallback_unexpected_known_free_rate=(
+                "meas_model_fallback_unexpected_known_free_rate",
+                "max",
+            ),
+
+            # Info on how many datasets needed to use fallback 
+            n_datasets_with_fallback=(
+                "meas_model_fallback_map_hit_rate",
+                "count",
+            ),
+
         ).reset_index()
         
         agg_param_df["std_score"] = agg_param_df["std_score"].fillna(0.0)

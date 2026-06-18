@@ -204,6 +204,7 @@ class PlaybackRunner:
             particle_weight_max = info.get("particle_weight_max")
             particle_weight_mean = info.get("particle_weight_mean")
             proposal_metrics = info.get("proposal_metrics")
+            measurement_model_counters_fallback = info.get("measurement_model_counters_fallback")
 
             # Evaluate the current step and store results
             step_result = self.evaluator.evaluate_step(
@@ -225,6 +226,8 @@ class PlaybackRunner:
                 particle_weight_mean=particle_weight_mean,
                 step_duration=step_duration,
                 proposal_metrics=proposal_metrics,
+                measurement_model_counters_fallback=measurement_model_counters_fallback,
+
             )
 
             run_result.step_results.append(step_result)

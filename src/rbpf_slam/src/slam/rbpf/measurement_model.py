@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Union, Dict
 
 from abc import ABC, abstractmethod
 
@@ -23,7 +23,7 @@ class MeasurementModel(ABC):
         pose: Pose2D,
         measurements: List[Tuple[float, float]],
         **kwargs,
-    ) -> float:
+    ) -> Union[float, Dict]:
         '''
         Compute the likelihood of a pose given a set of measurements.
 
@@ -33,6 +33,9 @@ class MeasurementModel(ABC):
         measurements: List[Tuple[float, float]]
             The list of measurements (e.g., LiDAR scan points) to compare against the scan matcher.
         
+        Returns:
+        Union[float, Dict]
+            The likelihood value or a dictionary containing detailed likelihood information.
         '''
         raise NotImplementedError
     

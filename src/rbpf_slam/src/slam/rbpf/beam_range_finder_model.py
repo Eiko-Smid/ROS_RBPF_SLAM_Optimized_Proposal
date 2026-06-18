@@ -285,9 +285,9 @@ def raytracing_log_likelihood_numba(
     out_of_map_count : int
         Counter that increments everytime the raytracing left the map before finding an occupied cell.
     unknown_ray_count : int
-        Only computed if the model hasn't found an occupied cell. We count the number of unknown rays everytime a beam traversed a cell which occ value is unknown.
-        Then we compute the rate by dividing through the total number of cells that have been traversed. 
-        If this is higher than unknown_ratio_thresh then we increase this counter value.
+        Only computed if the model hasn't found an occupied cell. We count the number of unknown rays everytime a beam traversed
+        a cell which occ value is unknown. Then we compute the rate by dividing through the total number of cells that have been 
+        traversed. If this is higher than unknown_ratio_thresh then we increase this counter value.
     known_free_ray_count : int
         Same as unknown_ray_count but this time we computing the rate based on the free cells the beam traversed.
         Then we check if this rate is greater than known_free_ratio_thresh.

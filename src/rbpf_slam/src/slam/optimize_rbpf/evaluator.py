@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass, field
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -118,6 +118,43 @@ class StepResult:
     xj_eff: Optional[float] = None
     xj_eff_motion: Optional[float] = None
     xj_eff_meas: Optional[float] = None
+
+    # Measurement model counter values
+    # Proposal
+    # Counter
+    meas_model_prop_call_count: Optional[int] = None
+    meas_model_prop_valid_beam_count: Optional[int] = None
+    meas_model_prop_map_hit_count: Optional[int] = None
+    meas_model_prop_no_map_hit_count: Optional[int] = None
+    meas_model_prop_out_of_map_count: Optional[int] = None
+    meas_model_prop_unknown_ray_count: Optional[int] = None
+    meas_model_prop_known_free_ray_count: Optional[int] = None
+    meas_model_prop_unexpected_known_free_count: Optional[int] = None
+    # rates
+    meas_model_prop_map_hit_rate: Optional[float] = None
+    meas_model_prop_out_of_map_rate: Optional[float] = None    
+    meas_model_prop_no_map_hit_rate: Optional[float] = None
+    meas_model_prop_unknown_no_map_hit_rate: Optional[float] = None
+    meas_model_prop_known_free_no_map_hit_rate: Optional[float] = None
+    meas_model_prop_unexpected_known_free_rate: Optional[float] = None
+
+    # Fallback
+    # Counter
+    meas_model_fallback_call_count: Optional[int] = None
+    meas_model_fallback_valid_beam_count: Optional[int] = None
+    meas_model_fallback_map_hit_count: Optional[int] = None
+    meas_model_fallback_no_map_hit_count: Optional[int] = None
+    meas_model_fallback_out_of_map_count: Optional[int] = None
+    meas_model_fallback_unknown_ray_count: Optional[int] = None
+    meas_model_fallback_known_free_ray_count: Optional[int] = None
+    meas_model_fallback_unexpected_known_free_count: Optional[int] = None
+    # rates
+    meas_model_fallback_map_hit_rate: Optional[float] = None
+    meas_model_fallback_out_of_map_rate: Optional[float] = None    
+    meas_model_fallback_no_map_hit_rate: Optional[float] = None
+    meas_model_fallback_unknown_no_map_hit_rate: Optional[float] = None
+    meas_model_fallback_known_free_no_map_hit_rate: Optional[float] = None
+    meas_model_fallback_unexpected_known_free_rate: Optional[float] = None
 
 
 @dataclass
@@ -253,7 +290,57 @@ class RBPFEvaluator:
         if arr.size == 0:
             return []
         return arr[np.isfinite(arr)].astype(float).tolist()
-    
+
+
+    @staticmethod
+    def _compute_rate(
+        numerator,
+        denominator,
+        call_count=None,
+    ) -> float:
+        """
+        Compute a pooled measurement-model rate.
+
+        Returns
+        -------
+        float
+            NaN:
+                - measurement model was not called, or
+                - denominator is missing, non-finite, or <= 0
+            0.0:
+                - measurement model was called,
+                - denominator is valid,
+                - numerator is zero
+            > 0.0:
+                - valid rate
+        """
+        # Explicitly distinguish "model not used" from "event did not occur".
+        if call_count is not None:
+            try:
+                call_count = float(call_count)
+            except (TypeError, ValueError):
+                return float("nan")
+
+            if not np.isfinite(call_count) or call_count <= 0.0:
+                return float("nan")
+
+        if numerator is None or denominator is None:
+            return float("nan")
+
+        try:
+            numerator = float(numerator)
+            denominator = float(denominator)
+        except (TypeError, ValueError):
+            return float("nan")
+
+        if not np.isfinite(numerator) or not np.isfinite(denominator):
+            return float("nan")
+
+        if numerator < 0.0 or denominator <= 0.0:
+            return float("nan")
+
+        return numerator / denominator
+        
 
     def evaluate_step(
         self,
@@ -271,6 +358,7 @@ class RBPFEvaluator:
         particle_weight_mean: Optional[float],
         step_duration: Optional[float],
         proposal_metrics: Optional[dict] = None,
+        measurement_model_counters_fallback: Optional[dict] = None,
     ) -> StepResult:
         """
         Evaluates one RBPF step and returns per-step errors.
@@ -369,6 +457,45 @@ class RBPFEvaluator:
         n_used_map_points = None
         map_point_keep_ratio = None
 
+        # Measurement model counter values
+        # Proposal
+        # Counter
+        meas_model_prop_call_count = None
+        meas_model_prop_valid_beam_count = None
+        meas_model_prop_map_hit_count = None
+        meas_model_prop_no_map_hit_count = None
+        meas_model_prop_out_of_map_count = None
+        meas_model_prop_unknown_ray_count = None
+        meas_model_prop_known_free_ray_count = None
+        meas_model_prop_unexpected_known_free_count = None
+        # rates
+        meas_model_prop_map_hit_rate = None
+        meas_model_prop_out_of_map_rate = None    
+        meas_model_prop_no_map_hit_rate = None
+        meas_model_prop_unknown_no_map_hit_rate = None
+        meas_model_prop_known_free_no_map_hit_rate = None
+        meas_model_prop_unexpected_known_free_rate = None
+        
+        # Fallback
+        # Counter
+        meas_model_fallback_call_count = None
+        meas_model_fallback_valid_beam_count = None
+        meas_model_fallback_map_hit_count = None
+        meas_model_fallback_no_map_hit_count = None
+        meas_model_fallback_out_of_map_count = None
+        meas_model_fallback_unknown_ray_count = None
+        meas_model_fallback_known_free_ray_count = None
+        meas_model_fallback_unexpected_known_free_count = None
+        # rates
+        meas_model_fallback_map_hit_rate = None
+        meas_model_fallback_out_of_map_rate = None    
+        meas_model_fallback_no_map_hit_rate = None
+        meas_model_fallback_unknown_no_map_hit_rate = None
+        meas_model_fallback_known_free_no_map_hit_rate = None
+        meas_model_fallback_unexpected_known_free_rate = None
+
+
+        # Compute errors to true pose
         if raw_odom_pose_t is not None:
             trans_err_raw_odom = self.translation_error(raw_odom_pose_t, true_pose_t)
             rot_err_raw_odom = abs(self.angle_diff(raw_odom_pose_t[2], true_pose_t[2]))
@@ -642,21 +769,100 @@ class RBPFEvaluator:
                         corr_x_theta = float(cov_arr[0, 2] / (std_x * std_theta))
                     if std_y > 0.0 and std_theta > 0.0:
                         corr_y_theta = float(cov_arr[1, 2] / (std_y * std_theta))
-
-            # Check if proposal improves scan match pose
-            # if trans_err_best_xj_true is not None and trans_err_sm_true is not None:
-            #     best_xj_improves_over_sm_trans = trans_err_best_xj_true < trans_err_sm_true
-
-            # if rot_err_best_xj_true is not None and rot_err_sm_true is not None:
-            #     best_xj_improves_over_sm_rot = rot_err_best_xj_true < rot_err_sm_true
             
-            # # Check if worst xj pose is worse than best xj pose
-            # if trans_err_best_xj_true is not None and trans_err_worst_xj_true is not None:
-            #     best_xj_better_than_worst_trans = trans_err_best_xj_true < trans_err_worst_xj_true
+            # Compute proposal measurement model rates
+            measurement_model_counters: Dict = proposal_metrics.get("measurement_model_counters")
+            if measurement_model_counters is not None:   
+                # Get Counter
+                meas_model_prop_call_count = measurement_model_counters.get("call_count")
+                meas_model_prop_valid_beam_count = measurement_model_counters.get("valid_beam_count")
+                meas_model_prop_map_hit_count = measurement_model_counters.get("map_hit_count")
+                meas_model_prop_no_map_hit_count = measurement_model_counters.get("no_map_hit_count")
+                meas_model_prop_out_of_map_count = measurement_model_counters.get("out_of_map_count")
+                meas_model_prop_unknown_ray_count = measurement_model_counters.get("unknown_ray_count")
+                meas_model_prop_known_free_ray_count = measurement_model_counters.get("known_free_ray_count")
+                meas_model_prop_unexpected_known_free_count = measurement_model_counters.get("unexpected_known_free_count") 
+                
+                proposal_call_count = measurement_model_counters.get("call_count")
 
-            # if rot_err_best_xj_true is not None and rot_err_worst_xj_true is not None:
-            #     best_xj_better_than_worst_rot = rot_err_best_xj_true < rot_err_worst_xj_true
+                # Compute rates
+                meas_model_prop_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("map_hit_count"),
+                    denominator=measurement_model_counters.get("valid_beam_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_out_of_map_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("out_of_map_count"),
+                    denominator=measurement_model_counters.get("valid_beam_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_no_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("no_map_hit_count"),
+                    denominator=measurement_model_counters.get("valid_beam_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_unknown_no_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("unknown_ray_count"),
+                    denominator=measurement_model_counters.get("no_map_hit_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_known_free_no_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("known_free_ray_count"),
+                    denominator=measurement_model_counters.get("no_map_hit_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_unexpected_known_free_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("unexpected_known_free_count"),
+                    denominator=measurement_model_counters.get("known_free_ray_count"),
+                    call_count=proposal_call_count,
+                )
 
+        # Compute fallback measurement model counters
+        if measurement_model_counters_fallback is not None:
+            # Get Counter
+            meas_model_fallback_call_count = measurement_model_counters_fallback.get("call_count")
+            meas_model_fallback_valid_beam_count = measurement_model_counters_fallback.get("valid_beam_count")
+            meas_model_fallback_map_hit_count = measurement_model_counters_fallback.get("map_hit_count")
+            meas_model_fallback_no_map_hit_count = measurement_model_counters_fallback.get("no_map_hit_count")
+            meas_model_fallback_out_of_map_count = measurement_model_counters_fallback.get("out_of_map_count")
+            meas_model_fallback_unknown_ray_count = measurement_model_counters_fallback.get("unknown_ray_count")
+            meas_model_fallback_known_free_ray_count = measurement_model_counters_fallback.get("known_free_ray_count")
+            meas_model_fallback_unexpected_known_free_count = measurement_model_counters_fallback.get("unexpected_known_free_count")
+
+            fallback_call_count = measurement_model_counters_fallback.get("call_count")
+
+            # Compute rates
+            meas_model_fallback_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("map_hit_count"),
+                denominator=measurement_model_counters_fallback.get("valid_beam_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_out_of_map_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("out_of_map_count"),
+                denominator=measurement_model_counters_fallback.get("valid_beam_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_no_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("no_map_hit_count"),
+                denominator=measurement_model_counters_fallback.get("valid_beam_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_unknown_no_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("unknown_ray_count"),
+                denominator=measurement_model_counters_fallback.get("no_map_hit_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_known_free_no_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("known_free_ray_count"),
+                denominator=measurement_model_counters_fallback.get("no_map_hit_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_unexpected_known_free_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("unexpected_known_free_count"),
+                denominator=measurement_model_counters_fallback.get("known_free_ray_count"),
+                call_count=fallback_call_count,
+            )
+            
         return StepResult(
             step_idx=step_idx,
             t=float(t),
@@ -755,6 +961,43 @@ class RBPFEvaluator:
             xj_eff=xj_eff,
             xj_eff_motion=xj_eff_motion,
             xj_eff_meas=xj_eff_meas,
+
+            # Measurement model counter values
+            # Proposal
+            # Counter 
+            meas_model_prop_call_count = meas_model_prop_call_count,
+            meas_model_prop_valid_beam_count = meas_model_prop_valid_beam_count,
+            meas_model_prop_map_hit_count = meas_model_prop_map_hit_count,
+            meas_model_prop_no_map_hit_count = meas_model_prop_no_map_hit_count,
+            meas_model_prop_out_of_map_count = meas_model_prop_out_of_map_count,
+            meas_model_prop_unknown_ray_count = meas_model_prop_unknown_ray_count,
+            meas_model_prop_known_free_ray_count = meas_model_prop_known_free_ray_count,
+            meas_model_prop_unexpected_known_free_count = meas_model_prop_unexpected_known_free_count,
+            # rates
+            meas_model_prop_map_hit_rate = meas_model_prop_map_hit_rate,
+            meas_model_prop_out_of_map_rate = meas_model_prop_out_of_map_rate,
+            meas_model_prop_no_map_hit_rate = meas_model_prop_no_map_hit_rate,
+            meas_model_prop_unknown_no_map_hit_rate = meas_model_prop_unknown_no_map_hit_rate,
+            meas_model_prop_known_free_no_map_hit_rate = meas_model_prop_known_free_no_map_hit_rate,
+            meas_model_prop_unexpected_known_free_rate = meas_model_prop_unexpected_known_free_rate,
+            
+            # Fallback
+            # Counter
+            meas_model_fallback_call_count = meas_model_fallback_call_count,
+            meas_model_fallback_valid_beam_count = meas_model_fallback_valid_beam_count,
+            meas_model_fallback_map_hit_count = meas_model_fallback_map_hit_count,
+            meas_model_fallback_no_map_hit_count = meas_model_fallback_no_map_hit_count,
+            meas_model_fallback_out_of_map_count = meas_model_fallback_out_of_map_count,
+            meas_model_fallback_unknown_ray_count = meas_model_fallback_unknown_ray_count,
+            meas_model_fallback_known_free_ray_count = meas_model_fallback_known_free_ray_count,
+            meas_model_fallback_unexpected_known_free_count = meas_model_fallback_unexpected_known_free_count,
+            # rates
+            meas_model_fallback_map_hit_rate = meas_model_fallback_map_hit_rate,
+            meas_model_fallback_out_of_map_rate = meas_model_fallback_out_of_map_rate,
+            meas_model_fallback_no_map_hit_rate = meas_model_fallback_no_map_hit_rate,
+            meas_model_fallback_unknown_no_map_hit_rate = meas_model_fallback_unknown_no_map_hit_rate,
+            meas_model_fallback_known_free_no_map_hit_rate = meas_model_fallback_known_free_no_map_hit_rate,
+            meas_model_fallback_unexpected_known_free_rate = meas_model_fallback_unexpected_known_free_rate,
         )
 
 
@@ -858,6 +1101,77 @@ class RBPFEvaluator:
         log_motion_range_values = self._finite_values([s.log_motion_range for s in step_results if s.log_motion_range is not None])
         log_meas_range_values = self._finite_values([s.log_meas_range for s in step_results if s.log_meas_range is not None])
         log_weight_range_values = self._finite_values([s.log_weight_range for s in step_results if s.log_weight_range is not None])
+
+        # Measurement model counters
+        # Proposal
+        meas_model_prop_call_count_vals = self._finite_values(
+            [s.meas_model_prop_call_count for s in step_results if s.meas_model_prop_call_count is not None]
+        )
+        meas_model_prop_valid_beam_count_vals = self._finite_values(
+            [s.meas_model_prop_valid_beam_count for s in step_results if s.meas_model_prop_valid_beam_count is not None]
+        )
+        meas_model_prop_map_hit_count_vals = self._finite_values(
+            [s.meas_model_prop_map_hit_count for s in step_results if s.meas_model_prop_map_hit_count is not None]
+        )
+        meas_model_prop_no_map_hit_count_vals = self._finite_values(
+            [s.meas_model_prop_no_map_hit_count for s in step_results if s.meas_model_prop_no_map_hit_count is not None]
+        )
+        meas_model_prop_out_of_map_count_vals = self._finite_values(
+            [s.meas_model_prop_out_of_map_count for s in step_results if s.meas_model_prop_out_of_map_count is not None]
+        )
+        meas_model_prop_unknown_ray_count_vals = self._finite_values(
+            [s.meas_model_prop_unknown_ray_count for s in step_results if s.meas_model_prop_unknown_ray_count is not None]
+        )
+        meas_model_prop_known_free_ray_count_vals = self._finite_values(
+            [s.meas_model_prop_known_free_ray_count for s in step_results if s.meas_model_prop_known_free_ray_count is not None]
+        )
+        meas_model_prop_unexpected_known_free_count_vals = self._finite_values(
+            [s.meas_model_prop_unexpected_known_free_count for s in step_results if s.meas_model_prop_unexpected_known_free_count is not None]
+        )
+        # Fallback
+        meas_model_fallback_call_count_vals = self._finite_values(
+            [s.meas_model_fallback_call_count for s in step_results if s.meas_model_fallback_call_count is not None]
+        )
+        meas_model_fallback_valid_beam_count_vals = self._finite_values(
+            [s.meas_model_fallback_valid_beam_count for s in step_results if s.meas_model_fallback_valid_beam_count is not None]
+        )
+        meas_model_fallback_map_hit_count_vals = self._finite_values(
+            [s.meas_model_fallback_map_hit_count for s in step_results if s.meas_model_fallback_map_hit_count is not None]
+        )
+        meas_model_fallback_no_map_hit_count_vals = self._finite_values(
+            [s.meas_model_fallback_no_map_hit_count for s in step_results if s.meas_model_fallback_no_map_hit_count is not None]
+        )
+        meas_model_fallback_out_of_map_count_vals = self._finite_values(
+            [s.meas_model_fallback_out_of_map_count for s in step_results if s.meas_model_fallback_out_of_map_count is not None]
+        )
+        meas_model_fallback_unknown_ray_count_vals = self._finite_values(
+            [s.meas_model_fallback_unknown_ray_count for s in step_results if s.meas_model_fallback_unknown_ray_count is not None]
+        )
+        meas_model_fallback_known_free_ray_count_vals = self._finite_values(
+            [s.meas_model_fallback_known_free_ray_count for s in step_results if s.meas_model_fallback_known_free_ray_count is not None]
+        )
+        meas_model_fallback_unexpected_known_free_count_vals = self._finite_values(
+            [s.meas_model_fallback_unexpected_known_free_count for s in step_results if s.meas_model_fallback_unexpected_known_free_count is not None]
+        )
+
+        prop_call_count = float(np.sum(meas_model_prop_call_count_vals))
+        prop_valid_beam_count = float(np.sum(meas_model_prop_valid_beam_count_vals))
+        prop_map_hit_count = float(np.sum(meas_model_prop_map_hit_count_vals))
+        prop_no_map_hit_count = float(np.sum(meas_model_prop_no_map_hit_count_vals))
+        prop_out_of_map_count = float(np.sum(meas_model_prop_out_of_map_count_vals))
+        prop_unknown_ray_count = float(np.sum(meas_model_prop_unknown_ray_count_vals))
+        prop_known_free_ray_count = float(np.sum(meas_model_prop_known_free_ray_count_vals))
+        prop_unexpected_known_free_count = float(np.sum(meas_model_prop_unexpected_known_free_count_vals))
+
+        fallback_call_count = float(np.sum(meas_model_fallback_call_count_vals))
+        fallback_valid_beam_count = float(np.sum(meas_model_fallback_valid_beam_count_vals))
+        fallback_map_hit_count = float(np.sum(meas_model_fallback_map_hit_count_vals))
+        fallback_no_map_hit_count = float(np.sum(meas_model_fallback_no_map_hit_count_vals))
+        fallback_out_of_map_count = float(np.sum(meas_model_fallback_out_of_map_count_vals))
+        fallback_unknown_ray_count = float(np.sum(meas_model_fallback_unknown_ray_count_vals))
+        fallback_known_free_ray_count = float(np.sum(meas_model_fallback_known_free_ray_count_vals))
+        fallback_unexpected_known_free_count = float(np.sum(meas_model_fallback_unexpected_known_free_count_vals))
+
 
         drift_trans_err = float("inf")
         drift_rot_err = float("inf")
@@ -1013,6 +1327,90 @@ class RBPFEvaluator:
             "mean_xj_eff": float(np.mean(xj_eff_values)) if xj_eff_values else float("nan"),
             "mean_xj_eff_motion": float(np.mean(xj_eff_motion_values)) if xj_eff_motion_values else float("nan"),
             "mean_xj_eff_meas": float(np.mean(xj_eff_meas_values)) if xj_eff_meas_values else float("nan"),
+
+            # Measurement model metrics
+            # Proposal
+            # Counter
+            "meas_model_prop_call_count": prop_call_count,
+            "meas_model_prop_valid_beam_count": prop_valid_beam_count,
+            "meas_model_prop_map_hit_count": prop_map_hit_count,
+            "meas_model_prop_no_map_hit_count": prop_no_map_hit_count,
+            "meas_model_prop_out_of_map_count": prop_out_of_map_count,
+            "meas_model_prop_unknown_ray_count": prop_unknown_ray_count,
+            "meas_model_prop_known_free_ray_count": prop_known_free_ray_count,
+            "meas_model_prop_unexpected_known_free_count": prop_unexpected_known_free_count,
+            # Rates
+            "meas_model_prop_map_hit_rate": self._compute_rate(
+                numerator=prop_map_hit_count,
+                denominator=prop_valid_beam_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_out_of_map_rate": self._compute_rate(
+                numerator=prop_out_of_map_count,
+                denominator=prop_valid_beam_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_no_map_hit_rate": self._compute_rate(
+                numerator=prop_no_map_hit_count,
+                denominator=prop_valid_beam_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_unknown_no_map_hit_rate": self._compute_rate(
+                numerator=prop_unknown_ray_count,
+                denominator=prop_no_map_hit_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_known_free_no_map_hit_rate": self._compute_rate(
+                numerator=prop_known_free_ray_count,
+                denominator=prop_no_map_hit_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_unexpected_known_free_rate": self._compute_rate(
+                numerator=prop_unexpected_known_free_count,
+                denominator=prop_known_free_ray_count,
+                call_count=prop_call_count,
+            ),
+            # Fallback
+            # Counter
+            "meas_model_fallback_call_count": fallback_call_count,
+            "meas_model_fallback_valid_beam_count": fallback_valid_beam_count,
+            "meas_model_fallback_map_hit_count": fallback_map_hit_count,
+            "meas_model_fallback_no_map_hit_count": fallback_no_map_hit_count,
+            "meas_model_fallback_out_of_map_count": fallback_out_of_map_count,
+            "meas_model_fallback_unknown_ray_count": fallback_unknown_ray_count,
+            "meas_model_fallback_known_free_ray_count": fallback_known_free_ray_count,
+            "meas_model_fallback_unexpected_known_free_count": fallback_unexpected_known_free_count,
+            # Rates
+            "meas_model_fallback_map_hit_rate": self._compute_rate(
+                numerator=fallback_map_hit_count,
+                denominator=fallback_valid_beam_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_out_of_map_rate": self._compute_rate(
+                numerator=fallback_out_of_map_count,
+                denominator=fallback_valid_beam_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_no_map_hit_rate": self._compute_rate(
+                numerator=fallback_no_map_hit_count,
+                denominator=fallback_valid_beam_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_unknown_no_map_hit_rate": self._compute_rate(
+                numerator=fallback_unknown_ray_count,
+                denominator=fallback_no_map_hit_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_known_free_no_map_hit_rate": self._compute_rate(
+                numerator=fallback_known_free_ray_count,
+                denominator=fallback_no_map_hit_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_unexpected_known_free_rate": self._compute_rate(
+                numerator=fallback_unexpected_known_free_count,
+                denominator=fallback_known_free_ray_count,
+                call_count=fallback_call_count,
+            ),
         }
 
         if params is not None:
