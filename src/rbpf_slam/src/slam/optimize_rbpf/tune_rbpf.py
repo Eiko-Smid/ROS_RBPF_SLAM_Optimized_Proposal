@@ -568,6 +568,25 @@ MEASUREMENT_STDDEV = 0.03
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
+SUMMARY_COLS_TO_EXCLUDE = [
+    # Proposal counters
+    "meas_model_prop_valid_beam_count",
+    "meas_model_prop_map_hit_count",
+    "meas_model_prop_no_map_hit_count",
+    "meas_model_prop_out_of_map_count",
+    "meas_model_prop_unknown_ray_count",
+    "meas_model_prop_known_free_ray_count",
+    "meas_model_prop_unexpected_known_free_count",
+
+    # Fallback counters
+    "meas_model_fallback_valid_beam_count",
+    "meas_model_fallback_map_hit_count",
+    "meas_model_fallback_no_map_hit_count",
+    "meas_model_fallback_out_of_map_count",
+    "meas_model_fallback_unknown_ray_count",
+    "meas_model_fallback_known_free_ray_count",
+    "meas_model_fallback_unexpected_known_free_count",
+]
 
 # PLAYBACK_SUFFIX = "1779375646"        # Cafe map
 
@@ -960,8 +979,8 @@ def _grid_axes() -> dict:
         ],
         
         # Motion model params
-        "sigma_xy_motion": [0.12, 0.18],               # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.08],                  # motion model uncertainty in theta direction [rad]
+        "sigma_xy_motion": [0.12, 0.18],            # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
         
@@ -1529,6 +1548,7 @@ def rbpf_tuning_pipeline_multiprocessing():
         df=rank_scored_df,
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
+        cols_to_exclude=SUMMARY_COLS_TO_EXCLUDE,
     )
 
     result_writer.write_dataframe_csv(
