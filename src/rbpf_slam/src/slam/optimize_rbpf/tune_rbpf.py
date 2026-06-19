@@ -619,7 +619,6 @@ PLAYBACK_DATA_LIST = [
 # ]
 
 
-
 def _to_jsonable(value):
     if isinstance(value, np.ndarray):
         return value.tolist()

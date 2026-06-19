@@ -65,17 +65,17 @@
 
     <!--Launch the LogOddsToOccupancyGrid algorithm that transforms the map from logOdds space to scaled probability
     space and publishes the map as nav_msgs.msg OccupancyGrid message.-->
-    <node pkg="rbpf_slam" name="log_odds_map_to_occupancy_grid" type="log_odds_map_to_occupancy_grid.py" output="screen">
-    </node>
+    <!-- <node pkg="rbpf_slam" name="log_odds_map_to_occupancy_grid" type="log_odds_map_to_occupancy_grid.py" output="screen">
+    </node> -->
 
     <!--Simulate Wheel Encoder data-->
-    <node   pkg="rbpf_slam" 
+    <!-- <node   pkg="rbpf_slam" 
             name="wheel_encoder_simulation_node" 
             type="wheel_encoder_simulation.py" 
             output="screen">
             <param name="wheel_encoder_motion_error_factor" value="$(arg motion_error_factor)"/>
             <param name="wheel_encoder_turn_error_factor" value="$(arg turn_error_factor)"/>
-    </node>
+    </node> -->
     
     <!--Launch the occupancy grid mapping algorithm (with known pose).-->
     <node pkg="rbpf_slam" name="playback_node" type="playback_node.py" output="screen">        

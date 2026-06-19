@@ -115,20 +115,20 @@ class SimulateWheelEncoder():
         alpha= atan2(sin(alpha), cos(alpha))
 
         # Compute direct distance between x_t and x_t-1
-        d = sqrt((new_x-old_x)**2 + (new_y - old_y)**2)
+        dist = sqrt((new_x-old_x)**2 + (new_y - old_y)**2)
 
         # If turning took place
         if(abs(alpha) > eps_alpha):
             # Calculate turning radius 
-            radius = d / (2 * sin(alpha/2))
+            radius = dist / (2 * sin(alpha/2))
             # Calculate left and right control
             width_by_two= width / 2
             left_control= (radius - width_by_two) * alpha
             right_control= (radius + width_by_two) * alpha
         else:
             # If not turning took place
-            left_control= d
-            right_control= d
+            left_control= dist
+            right_control= dist
         return (left_control, right_control)        
 
 

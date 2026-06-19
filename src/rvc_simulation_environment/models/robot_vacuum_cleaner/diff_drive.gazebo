@@ -43,6 +43,35 @@
         </plugin>
     </gazebo>
 
+    <!-- TThis plugin is used to publish the true pose of the robot with a timestamp -->
+    <gazebo>
+        <plugin name="ground_truth_odometry" filename="libgazebo_ros_p3d.so">
+            <!-- Optional ROS namespace -->
+            <robotNamespace>/</robotNamespace>
+
+            <!-- Link whose ground-truth pose is published -->
+            <bodyName>base_link</bodyName>
+
+            <!-- Output topic -->
+            <topicName>ground_truth/odom</topicName>
+
+            <!-- Pose is expressed relative to Gazebo world -->
+            <frameName>world</frameName>
+
+            <!-- Publish ground truth at 100 Hz -->
+            <updateRate>100.0</updateRate>
+
+            <!-- No artificial offset -->
+            <xyzOffset>0 0 0</xyzOffset>
+            <rpyOffset>0 0 0</rpyOffset>
+
+            <!-- Ground truth must contain no noise -->
+            <gaussianNoise>0.0</gaussianNoise>
+
+            <!-- Velocity frame; irrelevant for your true pose -->
+            <localTwist>false</localTwist>
+        </plugin>
+    </gazebo>
 
     <!--Hukuyo Laser Plugin-->
     <gazebo reference="laser_scanner_link">
