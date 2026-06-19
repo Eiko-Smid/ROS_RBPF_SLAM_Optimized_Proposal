@@ -480,10 +480,10 @@ class ROSPlaybackNode:
         return planar_pose
     
 
-
     def exe(self):
         '''Keeps the callback-driven playback node alive.'''
         rospy.spin()
+
 
 
 def main():
