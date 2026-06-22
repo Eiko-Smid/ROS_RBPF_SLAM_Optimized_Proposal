@@ -93,7 +93,7 @@ class RBPFFactory():
             robot_params: RobotParams,
             scan_matcher_params: ScanMatcherParams,
             motion_model_params: MotionModelParams,
-                measurement_model_params: Union[MeasurementModelParams, BeamRangeFinderMeasModelParams],
+            measurement_model_params: Union[MeasurementModelParams, BeamRangeFinderMeasModelParams],
             neff_threshold: Optional[float] = None,
     ):
         # Init particle class

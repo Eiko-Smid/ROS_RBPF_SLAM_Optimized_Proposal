@@ -318,14 +318,7 @@ class ScanMatcher():
             measurements=measurements
         )
 
-        # Filter inf and nan values from measurements and check if enough scans are left, else break
-        scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
-        self.last_t_map_extraction_s = time.perf_counter() - t_map_extraction_start
-        if scan_points.shape[0] < 3:
-            self.pose = pred_pose
-            return _finish_and_return(corr_pose, pred_pose)
-
-        # Get map points
+        # Extarct map points
         map_points = self.ogm.extract_map_for_scan_matching_numba(
             pose=pred_pose,
             radius=max_meas_range,
@@ -335,6 +328,14 @@ class ScanMatcher():
             min_free_ratio=self.min_free_ratio,
         )
         self.last_map_points_count = int(map_points.shape[0]) if map_points.ndim == 2 else 0
+
+        # Filter inf and nan values from measurements and check if enough scans are left, else break
+        scan_points = scan_points[np.all(np.isfinite(scan_points), axis=1)]
+        self.last_t_map_extraction_s = time.perf_counter() - t_map_extraction_start
+        if scan_points.shape[0] < 3:
+            self.pose = pred_pose
+            return _finish_and_return(corr_pose, pred_pose)
+       
 
         # Check if array shape is correct and has enough elements, else break
         if map_points.ndim != 2 or map_points.shape[0] < 3:

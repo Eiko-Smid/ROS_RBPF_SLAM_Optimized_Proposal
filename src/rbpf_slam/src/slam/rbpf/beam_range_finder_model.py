@@ -482,7 +482,7 @@ def raytracing_log_likelihood_numba(
             # Increment no hit counter value since we haven't found an occupied cell
             no_map_hit_count += 1
             
-            # Set inknown ratio and free ratio
+            # Set unknown ratio and free ratio
             unknown_ratio = 1.0
             free_ratio = 0.0
 

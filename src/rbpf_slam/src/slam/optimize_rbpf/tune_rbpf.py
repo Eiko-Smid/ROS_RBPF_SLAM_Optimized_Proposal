@@ -525,20 +525,122 @@ from .aggregator import RankedRunConverter, ResultAggregator
             - The downside is that the rotational error and the scan matcher failure rate increased
             - The difference to 31.1 is soo small that it doesn't really make sense to change the params
 
+            
+32. After Implementing measruement model metrics ans snyced playback data
+
+New measurement model metrics
+    - We added a log of metrics inb order to be able to analyze the current Beam Range Finder model
+    - The metrics are part of the summary as well as the aggregation stages
+
+Synchronized playback data
+    - We had the problem that the laser range finder published data with 10 Hz
+    - The link states were published at much higher frequency 
+    - The dl dr have been coputed in external node
+    - We updated the palyback with 2 Hz on the data we simply had 
+        -> No snyc
+        -> scan was not guranteed to match true pose
+    
+    - Now we synced them within 10 ms -> scan matches poe and dl/dr pretty good
+
+    
+    32. 1 Firs run on new synced playback data 
+
+        - We ran the rbpf with a wide search on turtlebot and aws map
+        - Results a tiny bit worse than before buit only a bit
+        - trans really good, proposal improves sm
+        - rot worse, makes sm result worse
+
+    
+    32.2 Phase 1: Tune motion and proposal 
+
+        - here we freezed everything beside the motion and proposal params
+        - Goal was to find good combination between proposal and motion model params and see influence of 
+          motion model
+        
+        Results:
+            - Overall we are now again in mm area -> close to saturation, overfitting
+            - Global score improved from 4.57 -> 4.11 
+            - mean rmse imporved about 0.005 m = 5 mm 
+            - Closest xj now receives now in 44.9 % = 50% of the cases the highest weight (35.9 % before) 
+
+            - Winning score is a bit more seed sensitive
+            - Therefore we will not only use rank run params for newxt phase we will also use a second variant
+            - No matter that, the proposal param winner is clear:
+                "proposal_sigma_xy": 0.06,
+                "proposal_sigma_theta": 0.025,
+                "n_samples_dir": 3,
+
+            - The motion model is unclear. Rank run had:
+                sigma_xy_motion = 0.12
+                sigma_theta = 0.11
+
+            - We also have more stable variant:
+                sigma_xy_motion = 0.15
+                sigma_theta = 0.05
+
+            - Measurement model
+
+                - For both map we haev > 95% all cases beam finds cell by raycasting
+                - When no occ cell has been found then we had
+                    > 60% cases most part the beam traversed was unknown. 
+                    (>90 turtle bot, >60% aws map)
+
+
+    32.3 Phase 2: Measurement model param tuning
+
+        Goal:
+            Try to find best measurement model params
+
+        Results:
+
+            - We got a few really good idividual results that outperformed the individual results from before
+            - Unfortunately the aggregated results didnt inproved at all 
+                -> Our measurement model params were already good
+
+
+
+    32.4 Phase 3: Measurement model extra param training
+
+        Goal:
+            - Finetune the extra measurement model params
+            - Here we wanne improve the cases when a beam doesn't find a occ cell by raytracing
+            - Cause the number of cases were this happens is quiet low, we will probably not see that much improvement
+              here. 
+
+        Results:
+
+            - Compared to 32.3 we improved in rotational accuracy while getting worse translational accuracy
+            - Seems like we need to find a compromiss between both. 
+            - Also our model seems to be saturated. These is no real irmovement, so we are at the end of what is possible
+
+            - Proposal
+                - The number of times the correct xj has been choosen is lower than before
+                - This is not a good sign. The angle got better due to the wrong reason. 
+
+
+
+    32.5 Phase 4: Final focused tuning of measurement model extra params and beam thresholds
+
+        Goal:
+            - 
+
+        Results:
+
+
 
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_31_3_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -553,8 +655,8 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
 # SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
@@ -846,7 +948,7 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
-# # Grid axes for tuning proposal sampling params on best current params
+# Grid axes for tuning proposal sampling params on best current params
 # def _grid_axes() -> dict:
 #     return {
 #         # General rbpf params
@@ -891,7 +993,7 @@ def _compute_wheel_separation() -> float:
 #                 "beam_alpha_meas": 0.075,
 #                 "beam_p_unknown": 0.30,
 #                 "beam_p_out_of_map": 0.15,
-#                 "beam_p_unexpected_known_free": 0.05,
+#                 "beam_p_unexpected_known_free": 0.00,
 #                 "beam_p_pred_below_min": 0.02,
 #                 "beam_step": 2,
 #             },            
@@ -947,73 +1049,1113 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
+# def _grid_axes() -> dict:
+#     return {
+#         # General RBPF parameters
+#         "every_nth_beam_filter": [2],
+#         "every_nth_beam_map": [2],
+#         "n_particles": [1],
+#         "neff_threshold": [1],
+
+#         # Compatibility parameters
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # Beam classification thresholds
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4, -0.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         # Mixture parameters: weights always sum to 1.0
+#         "beam_model_param_sets": [
+#             # Previous balanced baseline
+#             {
+#                 "beam_w_hit": 0.70,
+#                 "beam_w_short": 0.10,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # Earlier good region
+#             {
+#                 "beam_w_hit": 0.60,
+#                 "beam_w_short": 0.20,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # Stronger short component
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # More max-range tolerance
+#             {
+#                 "beam_w_hit": 0.55,
+#                 "beam_w_short": 0.15,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.20,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         # Keep unexpected-known-free penalty fixed at zero
+#         "beam_extra_param_sets": [
+#             # Current sharp candidate
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # Sharp with stronger measurement influence
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # Previous center region
+#             {
+#                 "beam_sigma_hit": 0.10,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.10,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # Softer comparison
+#             {
+#                 "beam_sigma_hit": 0.15,
+#                 "beam_alpha_meas": 0.10,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#         ],
+
+#         # Motion model
+#         "sigma_xy_motion": [0.10, 0.15],
+#         "sigma_theta": [0.05, 0.08],
+#         "ctrl_motion_fac": [0.10],
+#         "ctrl_turn_fac": [0.15],
+
+#         # Bound proposal parameter sets
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.02,
+#                 "proposal_sigma_theta": 0.01,
+#                 "n_samples_dir": 3,
+#             },
+#             {
+#                 "proposal_sigma_xy": 0.03,
+#                 "proposal_sigma_theta": 0.015,
+#                 "n_samples_dir": 3,
+#             },
+#             {
+#                 "proposal_sigma_xy": 0.05,
+#                 "proposal_sigma_theta": 0.02,
+#                 "n_samples_dir": 3,
+#             },
+#         ],
+
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # Keep scan matcher/map extraction fixed
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.4],
+#     }
+
+
+# Phase 1 — Proposal geometry and motion balance
+# def _grid_axes() -> dict:
+#     return {
+#         # ============================================================
+#         # General RBPF parameters — fixed
+#         # ============================================================
+#         "every_nth_beam_filter": [2],
+#         "every_nth_beam_map": [2],
+#         "n_particles": [1],
+#         "neff_threshold": [1],
+
+#         # Compatibility parameters — fixed
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # ============================================================
+#         # Measurement model — frozen to best 32_1 region
+#         # ============================================================
+#         "beam_occ_thresh": [1.4],
+
+#         # -1.4 and -0.4 classify the same discrete log-odds values.
+#         "beam_free_thresh": [-1.4],
+
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         "beam_model_param_sets": [
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         "beam_extra_param_sets": [
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Phase 1: tune motion-model uncertainty
+#         # ============================================================
+#         "sigma_xy_motion": [
+#             0.08,
+#             0.10,
+#             0.12,
+#             0.15,
+#         ],
+
+#         "sigma_theta": [
+#             0.05,
+#             0.08,
+#             0.11,
+#         ],
+
+#         "ctrl_motion_fac": [0.10],
+#         "ctrl_turn_fac": [0.15],
+
+#         # ============================================================
+#         # Phase 1: tune proposal geometry
+#         #
+#         # Keep translation window, rotation window and sampling density
+#         # paired. The 32_1 winner was at the largest tested window,
+#         # therefore this grid extends beyond it.
+#         # ============================================================
+#         "proposal_param_sets": [
+#             # Slightly smaller than the 32_1 winner
+#             {
+#                 "proposal_sigma_xy": 0.04,
+#                 "proposal_sigma_theta": 0.015,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # 32_1 best region
+#             {
+#                 "proposal_sigma_xy": 0.05,
+#                 "proposal_sigma_theta": 0.020,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # Moderately wider
+#             {
+#                 "proposal_sigma_xy": 0.06,
+#                 "proposal_sigma_theta": 0.025,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # Clearly wider boundary test
+#             {
+#                 "proposal_sigma_xy": 0.07,
+#                 "proposal_sigma_theta": 0.030,
+#                 "n_samples_dir": 3,
+#             },
+
+#             # Test whether denser sampling improves the 32_1 window
+#             {
+#                 "proposal_sigma_xy": 0.05,
+#                 "proposal_sigma_theta": 0.020,
+#                 "n_samples_dir": 5,
+#             },
+#         ],
+
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # Scan matcher / map extraction — fixed
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.4],
+#     }
+
+# # Phase 2: measruemetn model training
+# def _grid_axes() -> dict:
+#     return {
+#         # ============================================================
+#         # General RBPF parameters — fixed
+#         # ============================================================
+#         "every_nth_beam_filter": [2],
+#         "every_nth_beam_map": [2],
+#         "n_particles": [1],
+#         "neff_threshold": [1],
+
+#         # Compatibility parameters — fixed
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # ============================================================
+#         # Measurement classification — fixed during Phase 2
+#         # ============================================================
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         # ============================================================
+#         # Phase 2: beam-mixture weights
+#         #
+#         # All weights sum to 1.0.
+#         # ============================================================
+#         "beam_model_param_sets": [
+#             # Strong short component
+#             {
+#                 "beam_w_hit": 0.45,
+#                 "beam_w_short": 0.35,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # Current best from 32_1 / 32_2
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # Slightly more hit-oriented
+#             {
+#                 "beam_w_hit": 0.55,
+#                 "beam_w_short": 0.25,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+
+#             # More max-range support
+#             {
+#                 "beam_w_hit": 0.55,
+#                 "beam_w_short": 0.15,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.20,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Phase 2: hit sharpness and measurement strength
+#         #
+#         # sigma_hit and alpha_meas are deliberately paired.
+#         # Other special-case probabilities remain fixed.
+#         # ============================================================
+#         "beam_extra_param_sets": [
+#             {
+#                 "beam_sigma_hit": 0.055,
+#                 "beam_alpha_meas": 0.050,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.055,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.070,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.070,
+#                 "beam_alpha_meas": 0.100,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.080,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.080,
+#                 "beam_alpha_meas": 0.100,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.100,
+#                 "beam_alpha_meas": 0.100,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.100,
+#                 "beam_alpha_meas": 0.130,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Keep both promising Phase-1 motion regions.
+#         #
+#         # Your current generator creates a Cartesian product here:
+#         # (0.10, 0.05), (0.10, 0.11),
+#         # (0.12, 0.05), (0.12, 0.11).
+#         #
+#         # This is intentional and remains below 200 combinations.
+#         # ============================================================
+#         "sigma_xy_motion": [
+#             0.10,
+#             0.12,
+#         ],
+
+#         "sigma_theta": [
+#             0.05,
+#             0.11,
+#         ],
+
+#         "ctrl_motion_fac": [0.10],
+#         "ctrl_turn_fac": [0.15],
+
+#         # ============================================================
+#         # Proposal geometry — frozen to Phase-1 winner
+#         # ============================================================
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.06,
+#                 "proposal_sigma_theta": 0.025,
+#                 "n_samples_dir": 3,
+#             },
+#         ],
+
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # Scan matcher / map extraction — fixed
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.4],
+#     }
+
+# Pahse 3: Measruement mdel extra param training
+# def _grid_axes() -> dict:
+#     return {
+#         # ============================================================
+#         # General RBPF parameters — fixed
+#         # ============================================================
+#         "every_nth_beam_filter": [2],
+#         "every_nth_beam_map": [2],
+#         "n_particles": [1],
+#         "neff_threshold": [1],
+
+#         # Compatibility parameters — fixed
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # ============================================================
+#         # Phase 3: unknown/free classification
+#         # ============================================================
+#         "beam_occ_thresh": [1.4],
+
+#         # Fixed because -1.4 and -0.4 classify the same discrete
+#         # log-odds values in the current occupancy grid.
+#         "beam_free_thresh": [-1.4],
+
+#         "beam_unknown_thresh": [
+#             0.15,
+#             0.30,
+#             0.45,
+#         ],
+
+#         "beam_known_free_ratio_thresh": [
+#             0.50,
+#             0.70,
+#             0.85,
+#         ],
+
+#         # ============================================================
+#         # Beam mixture — frozen
+#         #
+#         # This mixture produced the best aggregate result and also
+#         # performed well in the more seed-stable Phase-2 region.
+#         # ============================================================
+#         "beam_model_param_sets": [
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Two retained Phase-2 measurement regions
+#         #
+#         # p_unknown is varied inside each region because it is one of
+#         # the central Phase-3 parameters.
+#         # ============================================================
+#         "beam_extra_param_sets": [
+#             # --------------------------------------------------------
+#             # Region A: best aggregate Phase-2 measurement region
+#             # --------------------------------------------------------
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # --------------------------------------------------------
+#             # Region B: balanced / more seed-stable Phase-2 region
+#             # --------------------------------------------------------
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.20,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Motion model — freeze to the more seed-stable configuration
+#         # ============================================================
+#         "sigma_xy_motion": [0.10],
+#         "sigma_theta": [0.05],
+
+#         "ctrl_motion_fac": [0.10],
+#         "ctrl_turn_fac": [0.15],
+
+#         # ============================================================
+#         # Proposal geometry — frozen to Phase-1 winner
+#         # ============================================================
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.06,
+#                 "proposal_sigma_theta": 0.025,
+#                 "n_samples_dir": 3,
+#             },
+#         ],
+
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # Scan matcher / map extraction — fixed
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.4],
+#     }
+
+# # Phase 4 — Final focused tuning of measurement model extra params and beam thresholds
+# def _grid_axes() -> dict:
+#     return {
+#         # ============================================================
+#         # General RBPF parameters — fixed
+#         # ============================================================
+#         "every_nth_beam_filter": [2],
+#         "every_nth_beam_map": [2],
+#         "n_particles": [1],
+#         "neff_threshold": [1],
+
+#         # Compatibility parameters — fixed
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # ============================================================
+#         # Phase 4: retain the two relevant classification regions
+#         # ============================================================
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+
+#         # Robust Phase-3 region and rotation/stability alternative
+#         "beam_unknown_thresh": [
+#             0.30,
+#             0.45,
+#         ],
+
+#         # Clearly best Phase-3 value
+#         "beam_known_free_ratio_thresh": [0.70],
+
+#         # ============================================================
+#         # Beam mixture — fixed to the robust winner
+#         # ============================================================
+#         "beam_model_param_sets": [
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Phase 4: special-case probability and ray-tracing resolution
+#         #
+#         # Two hit-model regions:
+#         #   sigma_hit = 0.08: best aggregated translation/proposal region
+#         #   sigma_hit = 0.07: balanced Phase-2/Phase-3 region
+#         #
+#         # Two unknown probabilities:
+#         #   p_unknown = 0.30: robust average winner
+#         #   p_unknown = 0.10: Phase-3 rotation/stability alternative
+#         #
+#         # Three predicted-below-min probabilities and two beam steps.
+#         # ============================================================
+#         "beam_extra_param_sets": [
+#             # --------------------------------------------------------
+#             # Region A: sigma_hit = 0.08, p_unknown = 0.30
+#             # --------------------------------------------------------
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 2,
+#             },
+
+#             # --------------------------------------------------------
+#             # Region B: sigma_hit = 0.08, p_unknown = 0.10
+#             # --------------------------------------------------------
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 2,
+#             },
+
+#             # --------------------------------------------------------
+#             # Region C: sigma_hit = 0.07, p_unknown = 0.30
+#             # --------------------------------------------------------
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 2,
+#             },
+
+#             # --------------------------------------------------------
+#             # Region D: sigma_hit = 0.07, p_unknown = 0.10
+#             # --------------------------------------------------------
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.005,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.020,
+#                 "beam_step": 2,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 1,
+#             },
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.050,
+#                 "beam_step": 2,
+#             },
+#         ],
+
+#         # ============================================================
+#         # Retain both Phase-1 motion candidates
+#         #
+#         # The current generator produces four combinations:
+#         # (0.10, 0.05), (0.10, 0.11),
+#         # (0.12, 0.05), (0.12, 0.11).
+#         # ============================================================
+#         "sigma_xy_motion": [
+#             0.10,
+#             0.12,
+#         ],
+
+#         "sigma_theta": [
+#             0.05,
+#             0.11,
+#         ],
+
+#         "ctrl_motion_fac": [0.10],
+#         "ctrl_turn_fac": [0.15],
+
+#         # ============================================================
+#         # Proposal geometry — fixed
+#         # ============================================================
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.06,
+#                 "proposal_sigma_theta": 0.025,
+#                 "n_samples_dir": 3,
+#             },
+#         ],
+
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # Scan matcher / map extraction — fixed
+#         "surface_radius_m": [0.2],
+#         "min_free_ratio": [0.4],
+#     }
+
+
+# Phase 5: Final candiddates stability test
 def _grid_axes() -> dict:
     return {
-        # General rbpf params
-        "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-        "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [1],                         # number of particles in the RBPF
-        "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+        # ============================================================
+        # General RBPF parameters — fixed
+        # ============================================================
+        "every_nth_beam_filter": [2],
+        "every_nth_beam_map": [2],
+        "n_particles": [1],
+        "neff_threshold": [1],
 
-        # Measurement model params
-        "sigma_measurement": [0.06],                # measurement uncertainty [m]
-        "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-        # Beam range finder measurement model params
+        # Compatibility parameters — fixed
+        "sigma_measurement": [0.06],
+        "meas_kernel_size": [1],
+
+        # ============================================================
+        # Measurement classification — fixed
+        # ============================================================
         "beam_occ_thresh": [1.4],
         "beam_free_thresh": [-1.4],
-        "beam_unknown_thresh": [0.3],
-        "beam_known_free_ratio_thresh": [0.7],
+        "beam_known_free_ratio_thresh": [0.70],
 
+        # ============================================================
+        # Beam mixture — fixed
+        # ============================================================
         "beam_model_param_sets": [
             {
-                # M1: baseline balanced model
-                "beam_w_hit": 0.7,
-                "beam_w_short": 0.1,
-                "beam_lambda_short": 0.2,
-                "beam_w_max": 0.1,
-                "beam_w_rand": 0.1,
-            }           
+                "beam_w_hit": 0.50,
+                "beam_w_short": 0.30,
+                "beam_lambda_short": 0.20,
+                "beam_w_max": 0.10,
+                "beam_w_rand": 0.10,
+            },
         ],
 
-        "beam_extra_param_sets": [
+        # ============================================================
+        # Three complete validation candidates
+        #
+        # Measurement parameters and motion parameters stay paired.
+        # ============================================================
+        "candidate_param_sets": [
+            # Candidate A:
+            # Best translation and proposal-discrimination region
             {
-            # baseline
-                "beam_sigma_hit": 0.15,
-                "beam_alpha_meas": 0.1,
-                "beam_p_unknown": 0.2,
-                "beam_p_out_of_map": 0.1,
-                "beam_p_unexpected_known_free": 0.00,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            }           
+                "candidate_name": "A_translation_proposal",
+
+                "beam_sigma_hit": 0.08,
+                "beam_alpha_meas": 0.075,
+                "beam_p_unknown": 0.30,
+                "beam_unknown_thresh": 0.30,
+
+                "sigma_xy_motion": 0.12,
+                "sigma_theta": 0.11,
+            },
+
+            # Candidate B:
+            # Best rotation and seed-stability region
+            {
+                "candidate_name": "B_rotation_stability",
+
+                "beam_sigma_hit": 0.07,
+                "beam_alpha_meas": 0.075,
+                "beam_p_unknown": 0.10,
+                "beam_unknown_thresh": 0.45,
+
+                "sigma_xy_motion": 0.10,
+                "sigma_theta": 0.05,
+            },
+
+            # Candidate C:
+            # Robust middle region
+            {
+                "candidate_name": "C_robust_middle",
+
+                "beam_sigma_hit": 0.07,
+                "beam_alpha_meas": 0.075,
+                "beam_p_unknown": 0.30,
+                "beam_unknown_thresh": 0.30,
+
+                "sigma_xy_motion": 0.10,
+                "sigma_theta": 0.05,
+            },
         ],
-        
-        # Motion model params
-        "sigma_xy_motion": [0.12, 0.18],            # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
-        "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-        "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-        # Proposal params (bound sets).
-        # Each dict is one fixed combination of:
-        # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-        # so these three values are sampled together (no Cartesian product among them).
+
+        # ============================================================
+        # Remaining measurement parameters — fixed
+        # ============================================================
+        "beam_p_out_of_map": [0.15],
+        "beam_p_unexpected_known_free": [0.00],
+        "beam_p_pred_below_min": [0.02],
+        "beam_step": [2],
+
+        # Motion-control factors — fixed
+        "ctrl_motion_fac": [0.10],
+        "ctrl_turn_fac": [0.15],
+
+        # ============================================================
+        # Proposal geometry — fixed
+        # ============================================================
         "proposal_param_sets": [
             {
-                "proposal_sigma_xy": 0.02,      # Proposal window size in x/y direction [m]
-                "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
-                "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-            }
+                "proposal_sigma_xy": 0.06,
+                "proposal_sigma_theta": 0.025,
+                "n_samples_dir": 3,
+            },
         ],
-        # TODO: Delete proposal values when no longer needed later on
+
         "proposal_alpha": [1.0],
         "proposal_beta": [1.0],
 
-        # ScanMatcherParams (map extraction)
-        "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+        # Scan matcher / map extraction — fixed
+        "surface_radius_m": [0.2],
         "min_free_ratio": [0.4],
     }
+
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [1],                         # number of particles in the RBPF
+#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+
+#         # Measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Beam range finder measurement model params
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         "beam_model_param_sets": [
+#             {
+#                 # M1: baseline balanced model
+#                 "beam_w_hit": 0.7,
+#                 "beam_w_short": 0.1,
+#                 "beam_lambda_short": 0.2,
+#                 "beam_w_max": 0.1,
+#                 "beam_w_rand": 0.1,
+#             }           
+#         ],
+
+#         "beam_extra_param_sets": [
+#             {
+#             # baseline
+#                 "beam_sigma_hit": 0.15,
+#                 "beam_alpha_meas": 0.1,
+#                 "beam_p_unknown": 0.2,
+#                 "beam_p_out_of_map": 0.1,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             }           
+#         ],
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.12, 0.18],            # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.02,      # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             }
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.4],
+#     }
 
 
 
