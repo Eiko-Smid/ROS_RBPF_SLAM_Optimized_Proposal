@@ -428,23 +428,6 @@ class ScanMatchingOptimizer:
         if mp_context is not None:
             executor_kwargs["mp_context"] = mp_context
 
-        # # Run wroker processes
-        # with ProcessPoolExecutor(**executor_kwargs) as executor:
-        #     futures = [
-        #         executor.submit(_run_scan_matching_job, job)
-        #         for job in jobs
-        #     ]
-
-        # # Measure progress
-        # with tqdm(
-        #     total=total_n_runs,
-        #     desc="Scan matching optimization parallel",
-        #     unit="run",
-        # ) as pbar:
-        #     for future in as_completed(futures):
-        #         ranked_runs.append(future.result())
-        #         pbar.update(1)
-
         # Measure progress
         with tqdm(
             total=total_n_runs,
@@ -454,11 +437,7 @@ class ScanMatchingOptimizer:
             pbar.refresh()
 
             # Run wroker processes
-            with ProcessPoolExecutor(**executor_kwargs) as executor:
-                # futures = [
-                #     executor.submit(_run_rbpf_job, job)
-                #     for job in jobs
-                # ]
+            with ProcessPoolExecutor(**executor_kwargs) as executor:                
                 futures = []
 
                 for job in jobs:

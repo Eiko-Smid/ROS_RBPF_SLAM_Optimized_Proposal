@@ -632,15 +632,15 @@ Synchronized playback data
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -655,9 +655,9 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
-# SEED_LIST = [22]
+SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -1990,14 +1990,22 @@ def _grid_axes() -> dict:
         "meas_kernel_size": [1],
 
         # ============================================================
-        # Measurement classification — fixed
+        # Measurement-model classification
+        #
+        # beam_unknown_thresh must remain a normal axis with the
+        # unchanged generator. Both candidate values are therefore
+        # tested.
         # ============================================================
         "beam_occ_thresh": [1.4],
         "beam_free_thresh": [-1.4],
+        "beam_unknown_thresh": [
+            0.30,
+            0.45,
+        ],
         "beam_known_free_ratio_thresh": [0.70],
 
         # ============================================================
-        # Beam mixture — fixed
+        # Beam mixture — fixed for all candidates
         # ============================================================
         "beam_model_param_sets": [
             {
@@ -2010,63 +2018,69 @@ def _grid_axes() -> dict:
         ],
 
         # ============================================================
-        # Three complete validation candidates
+        # Retained measurement-model regions
         #
-        # Measurement parameters and motion parameters stay paired.
+        # Region A:
+        #   Best translation/proposal-discrimination region.
+        #
+        # Region B/C:
+        #   sigma_hit=0.07. The difference between B and C is
+        #   p_unknown and beam_unknown_thresh.
         # ============================================================
-        "candidate_param_sets": [
-            # Candidate A:
-            # Best translation and proposal-discrimination region
+        "beam_extra_param_sets": [
+            # Candidate A measurement region
             {
-                "candidate_name": "A_translation_proposal",
-
                 "beam_sigma_hit": 0.08,
                 "beam_alpha_meas": 0.075,
                 "beam_p_unknown": 0.30,
-                "beam_unknown_thresh": 0.30,
-
-                "sigma_xy_motion": 0.12,
-                "sigma_theta": 0.11,
+                "beam_p_out_of_map": 0.15,
+                "beam_p_unexpected_known_free": 0.00,
+                "beam_p_pred_below_min": 0.02,
+                "beam_step": 2,
             },
 
-            # Candidate B:
-            # Best rotation and seed-stability region
+            # Candidate B measurement region
             {
-                "candidate_name": "B_rotation_stability",
-
                 "beam_sigma_hit": 0.07,
                 "beam_alpha_meas": 0.075,
                 "beam_p_unknown": 0.10,
-                "beam_unknown_thresh": 0.45,
-
-                "sigma_xy_motion": 0.10,
-                "sigma_theta": 0.05,
+                "beam_p_out_of_map": 0.15,
+                "beam_p_unexpected_known_free": 0.00,
+                "beam_p_pred_below_min": 0.02,
+                "beam_step": 2,
             },
 
-            # Candidate C:
-            # Robust middle region
+            # Candidate C measurement region
             {
-                "candidate_name": "C_robust_middle",
-
                 "beam_sigma_hit": 0.07,
                 "beam_alpha_meas": 0.075,
                 "beam_p_unknown": 0.30,
-                "beam_unknown_thresh": 0.30,
-
-                "sigma_xy_motion": 0.10,
-                "sigma_theta": 0.05,
+                "beam_p_out_of_map": 0.15,
+                "beam_p_unexpected_known_free": 0.00,
+                "beam_p_pred_below_min": 0.02,
+                "beam_step": 2,
             },
         ],
 
         # ============================================================
-        # Remaining measurement parameters — fixed
+        # Retained motion-model regions
+        #
+        # Candidate A uses 0.12 / 0.11.
+        # Candidates B and C use 0.10 / 0.05.
+        #
+        # Because these are separate axes, the unchanged generator
+        # also creates the two cross-pairs.
         # ============================================================
-        "beam_p_out_of_map": [0.15],
-        "beam_p_unexpected_known_free": [0.00],
-        "beam_p_pred_below_min": [0.02],
-        "beam_step": [2],
+        "sigma_xy_motion": [
+            0.10,
+            0.12,
+        ],
 
-        # Motion-control factors — fixed
+        "sigma_theta": [
+            0.05,
+            0.11,
+        ],
+
         "ctrl_motion_fac": [0.10],
         "ctrl_turn_fac": [0.15],
 
@@ -2088,6 +2102,7 @@ def _grid_axes() -> dict:
         "surface_radius_m": [0.2],
         "min_free_ratio": [0.4],
     }
+
 
 # def _grid_axes() -> dict:
 #     return {

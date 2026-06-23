@@ -1,4 +1,6 @@
 from typing import List, Tuple, Dict
+import time
+
 import numpy as np
 
 from sklearn.neighbors import NearestNeighbors
@@ -18,6 +20,39 @@ class ProposalEstimator:
     IDX_y=1
     IDX_THETA=2
 
+    def __init__(self):
+        # Init timing stats
+        self._timing_stats = {
+            "sample_poses_sum_s": 0.0,
+            "sample_poses_count": 0,
+
+            "predict_pose_sum_s": 0.0,
+            "predict_pose_count": 0,
+
+            "measurement_model_sum_s": 0.0,
+            "measurement_model_count": 0,
+
+            "motion_model_sum_s": 0.0,
+            "motion_model_count": 0,
+
+            "compute_params_sum_s": 0.0,
+            "compute_params_count": 0,
+        }
+
+
+    def _record_timing(self, time_name: str, count_name: str, start_time: float) -> None:
+        '''
+        Helper method to record timing statistics for given name and duration in seconds.
+        '''
+        duration_s = time.perf_counter() - start_time
+
+        # Check if name is inside dict
+        if (time_name in self._timing_stats.keys()) and (count_name in self._timing_stats.keys()):
+            self._timing_stats[time_name] += duration_s        
+            self._timing_stats[count_name] += 1
+        else:
+            raise ValueError(f"Timing stats keys {time_name} or {count_name} not found in timing stats dictionary.")
+        
 
     def sample_poses(self, pose: Pose2D, sigma_xy: float, sigma_theta: float, n_samples: int) -> np.ndarray:
         x, y, theta = pose
@@ -573,26 +608,33 @@ class ProposalEstimator:
             "unexpected_known_free_count": 0,
         }
 
+        t_sample_poses_start = time.perf_counter()
         samples, n_samples = self.sample_poses_deterministic(
             pose=scan_match_pose,
             sigma_xy=sigma_xy,
             sigma_theta=sigma_theta,
             n_samples_dir=n_samples,
         )
+        # Compute sample poses time
+        t_sample_poses = time.perf_counter() - t_sample_poses_start
 
         # Predict particle pose based on odometry and old particle pose 
+        t_pred_pose_start = time.perf_counter()
         dl, dr = odom
         pred_pose = motion_model.predict_pose(
             pose=particle.pose,
             dl=dl,
             dr=dr,
         )
-       
+        # Compute pose prediction time
+        t_pred_pose = time.perf_counter() - t_pred_pose_start
+
         # Check if measurements contain nan values
         # if np.isnan(measurements).any():
         #     print("\nProposal: Measruement model contains nan value")
 
         # Compute measurement model likelihoods for each sample  
+        t_meas_model_start = time.perf_counter()
         log_likelihoods = np.empty(shape=(samples.shape[0],))
         for i, sample in enumerate(samples):
             results = measurement_model.likelihood(
@@ -622,12 +664,20 @@ class ProposalEstimator:
             return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
         else:
             meas_probs = np.exp(log_likelihoods - max_log_likelihood)
+        
+        # Compute measurement model computation time
+        t_meas_model = time.perf_counter() - t_meas_model_start
 
         # Compute motion probs
+        t_motion_model_start = time.perf_counter()
         motion_probs = motion_model.motion_probability_batch(
             x_new=samples,
             x_prev=pred_pose,
         )
+        t_motion_model = time.perf_counter() - t_motion_model_start
+
+        # Compute proposal params
+        t_compute_proposal_start = time.perf_counter()
 
         # Compute weights 
         weights = motion_probs * meas_probs
@@ -661,6 +711,8 @@ class ProposalEstimator:
 
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
+
+        t_compute_proposal = time.perf_counter() - t_compute_proposal_start
 
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
 

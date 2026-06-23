@@ -77,6 +77,25 @@ class BeamRangeFinderMeasModelParams:
     eps: float = 1e-12
 
 
+# Dataclass including the task load for the process pool in order to process partciles in parallel
+@dataclass(frozen=True)
+class ParticleUpdateClass:
+    particle_index: int
+    particle: Particle
+    motion_model: MotionModel
+    measurement_model: MeasurementModel
+
+    odom: Tuple[float, float]
+    measurements_proposal: List[Tuple[float, float]]
+    measurements_map_update: List[Tuple[float, float]]
+    true_pose: Optional[Pose2D] = None
+    proposal_sigma_xy: float = 1.0
+    proposal_sigma_theta: float = 1.0
+    proposal_n_samples: int = 10
+
+
+
+
 class RBPFFactory():
     IDX_x=0
     IDX_y=1
@@ -414,9 +433,9 @@ class RBPF:
 
     
     def init_process(
-            self,
-            particle: Particle,
-            measurements_map_update: List[Tuple[float, float]],
+        self,
+        particle: Particle,
+        measurements_map_update: List[Tuple[float, float]],
     ) -> Particle:        
         # Extend map if necessary
         t_map_ext_start = time.perf_counter()
@@ -855,7 +874,7 @@ class RBPF:
         # Resampling
         # Check if resampling is necessary
         if neff < self.neff_threshold:
-            # t_resampling_start = time.perf_counter()
+            t_resampling_start = time.perf_counter()
             # Get inidices of particles that have survived
             indices = self.resampler.low_variance_sampler(norm_weights)
 
@@ -874,12 +893,12 @@ class RBPF:
             # Replace old particle set by new set
             self.particles = new_partilces
 
-            # t_resampling_s = time.perf_counter() - t_resampling_start
-            # self._timing_stats["resampling_sum_s"] += t_resampling_s
-            # self._timing_stats["resampling_count"] += 1
+            t_resampling_s = time.perf_counter() - t_resampling_start
+            self._timing_stats["resampling_sum_s"] += t_resampling_s
+            self._timing_stats["resampling_count"] += 1
 
-        # Fill resampling timings after optional resampling.
-        self._last_step_info["timing_resampling_s"] = t_resampling_s
+            # Fill resampling timings after optional resampling.
+            self._last_step_info["timing_resampling_s"] = t_resampling_s
 
         return neff, weighted_mean_pose
 
@@ -1224,6 +1243,7 @@ class RBPF:
         proposal_alpha: float = 0.5,
         proposal_beta: float = 2.0,
     ):
+        # Init
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
         self._step_counter += 1
@@ -1340,8 +1360,10 @@ class RBPF:
             # self._timing_stats["resampling_sum_s"] += t_resampling_s
             # self._timing_stats["resampling_count"] += 1
 
-        # Fill resampling timings after optional resampling.
-        self._last_step_info["timing_resampling_s"] = t_resampling_s
+            # Fill resampling timings after optional resampling.
+            self._last_step_info["timing_resampling_s"] = t_resampling_s
+        else: 
+            self._last_step_info["timing_resampling_s"] = 0.0
 
         return neff, weighted_mean_pose
 
@@ -1393,7 +1415,7 @@ class RBPF:
         self._timing_stats["scan_match_update_pose_sum_s"] += t_scan_match_s
         self._timing_stats["scan_match_update_pose_count"] += 1
 
-
+        # Compute proposal if scan matching was successful
         if corr_pose is not None:
             # Compute optimized proposal
             t_prop_start = time.perf_counter()
@@ -1413,7 +1435,8 @@ class RBPF:
             t_prop_s = time.perf_counter() - t_prop_start
             self._timing_stats["proposal_estimation_sum_s"] += t_prop_s
             self._timing_stats["proposal_estimation_count"] += 1
-        # Fallback strategy if scan matching fails
+
+        # Fallback strategy if scan matching failed
         else:
             t_fallback_start = time.perf_counter()
 
@@ -1622,11 +1645,7 @@ class RBPF:
         Tuple[float, Pose2D]
             The effective number of particles (neff) and the weighted mean pose before resampling.
         '''
-        # Init Process (only first N iterations to get stable map points for scan matcher)
-        scan_match_failed_any = False
-        scan_match_fallback_failed_any = False
-        particle0_prop_metrics = None
-
+        
         # Init measurement model counters
         self.meas_model_counters_fallback = {
             "call_count": 0,
@@ -1639,8 +1658,20 @@ class RBPF:
             "unexpected_known_free_count": 0,
         }
 
+        # Init time measurements (Currently not in use, but Init always with None!)
+        t_update_particles_s = None
+        t_norm_neff_s = None
+        t_metrics_s = None
+        t_resampling_s = None
+
+        # Update step counter
         self._step_counter += 1
         step_idx = self._step_counter
+
+        # Init Process (only first N iterations to get stable map points for scan matcher)
+        scan_match_failed_any = False
+        scan_match_fallback_failed_any = False
+        particle0_prop_metrics = None
 
         # Run initialization process of rbpf
         if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
@@ -1724,8 +1755,16 @@ class RBPF:
         old_weights = [p.weight for p in self.particles]
         log_particle_weights = []
 
+        # Update particles
         for i, p in enumerate(self.particles):
-            self.particles[i], log_p_weight, scan_match_failed, scan_match_fallback_failed, prop_metrics = self.update_particle_range_finder_model(
+            # Update particle
+            (
+                self.particles[i], 
+                log_p_weight, 
+                scan_match_failed, 
+                scan_match_fallback_failed, 
+                prop_metrics 
+            ) = self.update_particle_range_finder_model(
                 particle=p,
                 motion_model=self.motion_model,
                 measurement_model=self.measurement_model,
@@ -1771,12 +1810,7 @@ class RBPF:
         particle_weight_max = float(np.max(norm_weights))
         particle_weight_mean = float(np.mean(norm_weights))        
 
-        # Set time measurements to None
-        t_update_s = None
-        t_norm_s = None
-        t_metrics_s = None
-        t_resampling_s = None
-
+        
         # Attention! partciels might already be resampled so don't access self.particals for computing metrics!
         self._last_step_info = {
             "step": step_idx,
@@ -1791,8 +1825,8 @@ class RBPF:
             "particle_weight_min": particle_weight_min,
             "particle_weight_max": particle_weight_max,
             "particle_weight_mean": particle_weight_mean,
-            "timing_update_particles_s": t_update_s,
-            "timing_normalize_neff_s": t_norm_s,
+            "timing_update_particles_s": t_update_particles_s,
+            "timing_normalize_neff_s": t_norm_neff_s,
             "timing_metrics_s": t_metrics_s,
             "timing_resampling_s": t_resampling_s,
             "proposal_metrics": particle0_prop_metrics,
@@ -1803,3 +1837,147 @@ class RBPF:
         self.resampling(norm_weights)
 
         return neff, weighted_mean_pose
+    
+
+
+    def step_parallel(
+        self,
+        odom: Tuple[float, float],
+        measurements_proposal: List[Tuple[float, float]],
+        measurements_map_update: List[Tuple[float, float]],
+        true_pose: Optional[Pose2D] = None,
+        proposal_sigma_xy: float = 1.0,
+        proposal_sigma_theta: float = 1.0,
+        proposal_n_samples: int = 10,
+    ) -> Tuple[float, Pose2D]:
+        # Init measurement model counters
+        self.meas_model_counters_fallback = {
+            "call_count": 0,
+            "valid_beam_count": 0,
+            "map_hit_count": 0,
+            "no_map_hit_count": 0,
+            "out_of_map_count": 0,
+            "unknown_ray_count": 0,
+            "known_free_ray_count": 0,
+            "unexpected_known_free_count": 0,
+        }
+
+        # Init time measurements (Currently not in use, but Init always with None!)
+        t_update_particles_s = None
+        t_norm_neff_s = None
+        t_metrics_s = None
+        t_resampling_s = None
+
+        # Update step counter
+        self._step_counter += 1
+        step_idx = self._step_counter
+
+        # Init Process (only first N iterations to get stable map points for scan matcher)
+        scan_match_failed_any = False
+        scan_match_fallback_failed_any = False
+        particle0_prop_metrics = None
+
+        # Run initialization process of rbpf
+        if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
+            if self._stop_init_process(odom):
+                dl, dr = odom
+                self.init_status = InitStatus.FAILED_ODOM_THRESHOLD
+                self.init_failure_reason = (
+                    f"Initialization skipped at step {step_idx}: "
+                    f"abs(dl)={abs(dl):.6f}, abs(dr)={abs(dr):.6f}, "
+                    f"threshold={self.odom_threshold:.6f}"
+                )
+            elif self.init_counter < self.init_count_threshold:
+                self.init_status = InitStatus.INITIALIZING
+
+                # Run init process for each particle
+                t_init_process = time.perf_counter()
+                for i, p in enumerate(self.particles):
+                    # Do init process
+                    self.particles[i] = self.init_process(
+                        particle=p,
+                        measurements_map_update=measurements_map_update,
+                    )
+                # Measure time
+                t_init_process_s = time.perf_counter() - t_init_process
+                self._timing_stats_scan_match_only["t_init_process_sum_s"] += t_init_process_s
+                self._timing_stats_scan_match_only["t_init_process_count"] += 1
+
+                self.init_counter += 1
+
+                if self.init_counter >= self.init_count_threshold:
+                    self.init_status = InitStatus.SUCCESS
+
+                # TODO: Delete this properly. No weights needed in intialization as long as all have been initalized 
+                # Keep step outputs structurally compatible during initialization
+                # without generating pose metrics in map-only init mode.
+                weights = np.array([p.weight for p in self.particles])
+                norm = np.sum(weights)
+                
+                if norm == 0:
+                    norm_weights = np.ones(len(weights)) / len(weights)
+                else:
+                    norm_weights = weights / norm
+
+                for i in range(len(self.particles)):
+                    self.particles[i].weight = norm_weights[i]
+
+                neff = float(self.resampler.compute_neff(norm_weights))
+
+                # Store step info
+                self._last_step_info = {
+                    "step": step_idx,
+                    "mode": "initialization",
+                    "init_status": self.init_status.value,
+                    "init_counter": self.init_counter,
+                    "init_count_threshold": self.init_count_threshold,
+                    "odom_threshold": self.odom_threshold,
+                    "init_failure_reason": self.init_failure_reason,
+                    "neff": neff,
+                    "true_pose": None,
+                    "scan_match_failed_any": None,
+                    "scan_match_fallback_failed_any": None,
+                    "best_particle_idx": None,
+                    "best_particle_pose": None,
+                    "best_particle_map": None,
+                    "weighted_mean_pose": None,
+                    "particle_weight_min": None,
+                    "particle_weight_max": None,
+                    "particle_weight_mean": None,
+                    "timing_update_particles_s": None,
+                    "timing_normalize_neff_s": None,
+                    "timing_metrics_s": None,
+                    "timing_resampling_s": None,
+                    "proposal_metrics": None,
+                    "measurement_model_counters_fallback": None
+                }
+
+                return neff, self.particles[0].pose
+        
+        # Normal RBPF update
+        # Process each particle
+        old_weights = [p.weight for p in self.particles]
+        log_particle_weights = []
+
+        # Define particle tasks
+        tasks = []
+
+        for particle_index, particle in enumerate(self.particles):
+            task = ParticleUpdateClass(
+                particle_index=particle_index,
+                particle=particle,
+
+                motion_model=self.motion_model,
+                measurement_model=self.measurement_model,   
+
+                odom=odom,
+                measurements_proposal=measurements_proposal,
+                measurements_map_update=measurements_map_update,
+
+                proposal_sigma_xy=proposal_sigma_xy,
+                proposal_sigma_theta=proposal_sigma_theta,
+                proposal_n_samples=proposal_n_samples,
+                )
+            tasks.append(task)
+
+        # 

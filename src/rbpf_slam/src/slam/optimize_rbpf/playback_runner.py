@@ -139,9 +139,6 @@ class PlaybackRunner:
             step_start_time = time.time()
             step_duration = None
 
-            # if np.isnan(step.scan).any():
-            #     print("\nPlayback runner: measurement model contains nan value before subsampling")
-
             # Subsample and clean measurements
             measurements_proposal = (
                 step.scan[::every_nth_filter] if every_nth_filter > 1 else step.scan
@@ -154,7 +151,7 @@ class PlaybackRunner:
             measurements_map = step.scan[::every_nth_map] if every_nth_map > 1 else step.scan
 
             if np.isnan(measurements_proposal).any():
-                print("\nPlayback runner: measurement model contains nan value after subsampling")
+                print("\nPlayback runner: measurement model contains nan value after subsampling scans")
 
             # Use inf vals for map update, too -> clear free space faster
             # measurements_map = [
@@ -277,7 +274,7 @@ class PlaybackRunner:
     
     def run_without_proposal_pose(self, playback_data: PlaybackData, params: ExperimentParams) -> RunResult:
         """
-        Executes one full RBPF run over all playback steps and returns evaluated results.
+        Scan Matching only variant of the rbpf runner. Created for training and evaluating the scan matcher.
         """
         # Create rbpf instance for the current parameter set
         rbpf = self.factory.create(
