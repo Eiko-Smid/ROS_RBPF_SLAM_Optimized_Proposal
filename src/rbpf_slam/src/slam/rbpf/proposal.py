@@ -596,7 +596,7 @@ class ProposalEstimator:
         norm = 0.0
         mu = np.zeros(3)
 
-        # Define measurement model counters for xjs
+        # Reset measurement model counters for diagnostics
         self.meas_model_counters = {
             "call_count": 0,
             "valid_beam_count": 0,

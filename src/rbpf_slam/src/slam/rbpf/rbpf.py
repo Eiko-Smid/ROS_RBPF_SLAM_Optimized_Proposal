@@ -16,6 +16,10 @@ from slam.rbpf.beam_range_finder_model import BeamRangeFinderModel
 
 from slam.rbpf.proposal import ProposalEstimator
 from slam.rbpf.resampler import Resampler
+
+from slam.rbpf.particle_process_pool import ParticleProcessPool
+
+
 # from slam.scan_matcher.scan_matcher_factory import ScanMatcherFactory
 from .scan_match_factory import (
     OccupancyParams,
@@ -79,7 +83,7 @@ class BeamRangeFinderMeasModelParams:
 
 # Dataclass including the task load for the process pool in order to process partciles in parallel
 @dataclass(frozen=True)
-class ParticleUpdateClass:
+class ParticleUpdateTask:
     particle_index: int
     particle: Particle
     motion_model: MotionModel
@@ -88,14 +92,149 @@ class ParticleUpdateClass:
     odom: Tuple[float, float]
     measurements_proposal: List[Tuple[float, float]]
     measurements_map_update: List[Tuple[float, float]]
-    true_pose: Optional[Pose2D] = None
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10
 
 
+@dataclass(frozen=True)
+class ParticleUpdateResult:
+    particle_index: int
+    updated_particle: Particle
+    log_p_weight: float
+    scan_match_failed: bool
+    scan_match_fallback_failed: bool
+    meas_model_fallback_res: Optional[dict] = None
+    prop_metrics: Optional[dict] = None
 
 
+def update_particle_worker(
+    task: ParticleUpdateTask
+) -> ParticleUpdateResult:
+    # Extract task
+    particle: Particle = task.particle
+    motion_model: MotionModel = task.motion_model
+    measurement_model: MeasurementModel = task.measurement_model
+    odom: Tuple[float, float] = task.odom
+    measurements_proposal: List[Tuple[float, float]] = task.measurements_proposal
+    measurements_map_update: List[Tuple[float, float]] = task.measurements_map_update
+    proposal_sigma_xy: float = task.proposal_sigma_xy
+    proposal_sigma_theta: float = task.proposal_sigma_theta
+    proposal_n_samples: int = task.proposal_n_samples
+
+    # Init proposal
+    proposal: ProposalEstimator = ProposalEstimator()
+
+    # Set metrics to None
+    prop_metrics = None 
+    scan_match_failed = False
+    scan_match_fallback_failed = False
+
+    # Init measurement model fallback counters for diagnostics
+    meas_model_fallback_res = {
+        "log_likelihood": 0.0,
+        "mean_abs_error": 0.0,
+        "valid_beam_count": 0,
+        "map_hit_count": 0,
+        "no_map_hit_count": 0,
+        "out_of_map_count": 0,
+        "unknown_ray_count": 0,
+        "known_free_ray_count": 0,
+        "unexpected_known_free_count": 0,
+        "skipped_beam_count": 0,
+    }
+
+    # Extract data
+    dl, dr = odom
+
+    # Scan match particle  
+    corr_pose, pred_pose = particle.scan_matcher.update_pose(
+        old_pose=particle.pose,
+        dl=dl,
+        dr=dr, 
+        measurements=measurements_proposal,
+    )
+
+    # Compute proposal if scan matching was successful
+    if corr_pose is not None:
+        # Compute optimized proposal    
+        new_pose, log_p_weight, prop_metrics = proposal.estimate_proposal_range_finder(
+            scan_match_pose=corr_pose,
+            particle=particle,
+            odom=odom,
+            measurements=measurements_proposal,
+            motion_model=motion_model,
+            measurement_model=measurement_model,
+            sigma_xy=proposal_sigma_xy,
+            sigma_theta=proposal_sigma_theta,
+            n_samples=proposal_n_samples,
+        )
+
+    # Fallback strategy if scan matching failed
+    else:
+        # Predict particle pose with motion model
+        scan_match_failed = True
+
+        new_pose = motion_model.predict_pose(
+            pose=particle.pose,
+            dl=dl,
+            dr=dr,
+        )
+
+        # Fallback to Measurement model 
+        meas_model_fallback_res = measurement_model.likelihood(
+            pose=new_pose,
+            measurements=measurements_proposal,
+            ogm=particle.scan_matcher.ogm,
+        )
+
+        # Extract likilihood 
+        log_p_weight = meas_model_fallback_res.get("log_likelihood", FALLBACK_LOG_FLOOR)
+        
+        if not np.isfinite(log_p_weight):
+            scan_match_fallback_failed = True
+            log_p_weight = FALLBACK_LOG_FLOOR
+    
+    # Update map
+    # Extend map if necessary
+    extension_needed = True
+    while(extension_needed):
+        extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(new_pose)
+
+    # Update map
+    particle.scan_matcher.ogm.update_map(
+        measurements=measurements_map_update,
+        pose=new_pose
+    )
+    
+    # Update particle
+    new_particle = Particle(
+        pose=new_pose,
+        weight=particle.weight,
+        scan_matcher=particle.scan_matcher,
+    )
+
+    # Update proposal metrics
+    if prop_metrics is None:
+        prop_metrics = {}
+    prop_metrics["scan_matcher_info"] = particle.scan_matcher.get_info()
+
+    
+    result = ParticleUpdateResult(
+        particle_index=task.particle_index,
+        updated_particle=new_particle,
+        log_p_weight=log_p_weight,
+        meas_model_fallback_res=meas_model_fallback_res,
+
+        scan_match_failed=scan_match_failed,
+        scan_match_fallback_failed=scan_match_fallback_failed,
+        prop_metrics=prop_metrics
+    )
+
+    return result
+
+
+    
 class RBPFFactory():
     IDX_x=0
     IDX_y=1
@@ -1500,10 +1639,9 @@ class RBPF:
         if prop_metrics is None:
             prop_metrics = {}
         prop_metrics["scan_matcher_info"] = particle.scan_matcher.get_info()
-        prop_metrics["measurement_model_counters_fallback"] = self.meas_model_counters_fallback
+        # prop_metrics["measurement_model_counters_fallback"] = self.meas_model_counters_fallback
 
         return new_particle, log_p_weight, scan_match_failed, scan_match_fallback_failed, prop_metrics
-
 
 
     @staticmethod
@@ -1809,9 +1947,8 @@ class RBPF:
         particle_weight_min = float(np.min(norm_weights))
         particle_weight_max = float(np.max(norm_weights))
         particle_weight_mean = float(np.mean(norm_weights))        
-
         
-        # Attention! partciels might already be resampled so don't access self.particals for computing metrics!
+        # Attention! particles might already be resampled so don't access self.particals for computing metrics!
         self._last_step_info = {
             "step": step_idx,
             "neff": neff,
@@ -1837,11 +1974,47 @@ class RBPF:
         self.resampling(norm_weights)
 
         return neff, weighted_mean_pose
-    
+
+
+
+    def process_particle_update_results(
+        self,
+        results: List[ParticleUpdateResult]
+    ) -> Tuple[np.ndarray, bool, bool]:
+        # Init
+        scan_match_failed_any = False
+        scan_match_fallback_failed_any = False
+        # best_p_prop_metrics = None   
+        
+        n_particles = len(self.particles)
+        log_p_weights = np.full(n_particles, np.nan, dtype=float)
+
+        # Process results
+        for res in results:
+            # Extract and validate index
+            p_idx = int(res.particle_index)
+            
+            if p_idx is None or p_idx < 0 or p_idx >= n_particles:
+                raise ValueError(f"Invalid particle index {p_idx} in ParticleUpdateResult.")
+            
+            # Update particle
+            self.particles[p_idx] = res.updated_particle
+            log_p_weights[p_idx] = res.log_p_weight
+
+            scan_match_failed_any = scan_match_failed_any or res.scan_match_failed
+            scan_match_fallback_failed_any = scan_match_fallback_failed_any or res.scan_match_fallback_failed
+
+            # Accumulate measurement fallback counters
+            if res.scan_match_failed is True:
+                self.update_measurement_model_counters_fallback(res.meas_model_fallback_res)           
+
+        return log_p_weights, scan_match_failed_any, scan_match_fallback_failed_any
+
 
 
     def step_parallel(
         self,
+        particle_process_pool: ParticleProcessPool,
         odom: Tuple[float, float],
         measurements_proposal: List[Tuple[float, float]],
         measurements_map_update: List[Tuple[float, float]],
@@ -1875,7 +2048,7 @@ class RBPF:
         # Init Process (only first N iterations to get stable map points for scan matcher)
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
-        particle0_prop_metrics = None
+        best_p_prop_metrics = None
 
         # Run initialization process of rbpf
         if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
@@ -1961,9 +2134,8 @@ class RBPF:
 
         # Define particle tasks
         tasks = []
-
         for particle_index, particle in enumerate(self.particles):
-            task = ParticleUpdateClass(
+            task = ParticleUpdateTask(
                 particle_index=particle_index,
                 particle=particle,
 
@@ -1980,4 +2152,70 @@ class RBPF:
                 )
             tasks.append(task)
 
-        # 
+        # Update particles parallel
+        results = particle_process_pool.map(
+            worker_func=update_particle_worker,
+            tasks=tasks
+        )
+
+        # Process results
+        (
+            log_particle_weights, 
+            scan_match_failed_any, 
+            scan_match_fallback_failed_any, 
+        ) = self.process_particle_update_results(results)
+
+        # Normalize weights
+        norm_weights = self.normalize_weights(
+            old_weights=old_weights,
+            log_weight_increments=log_particle_weights,
+        )
+        
+        # Update weights
+        for i in range(len(self.particles)):
+            self.particles[i].weight = norm_weights[i]
+         
+        # Compute metrics        
+        # neff
+        neff = self.resampler.compute_neff(norm_weights)
+        # Weighted mean pose before resampling.
+        weighted_mean_pose = self._compute_weighted_mean_pose_from_particles(self.particles)
+
+        # Get best particle pose before resampling
+        best_idx = int(np.argmax(norm_weights))
+        best_particle_pose = self.particles[best_idx].pose
+        
+        # Weight statistics before optional resampling.
+        particle_weight_min = float(np.min(norm_weights))
+        particle_weight_max = float(np.max(norm_weights))
+        particle_weight_mean = float(np.mean(norm_weights))    
+
+        # Extract proposal metrics from best particle
+        best_p_prop_metrics = results[best_idx].prop_metrics 
+
+        # Attention! particles might already be resampled so don't access self.particles for computing metrics!
+        self._last_step_info = {
+            "step": step_idx,
+            "neff": neff,
+            "true_pose": true_pose,
+            "scan_match_failed_any": scan_match_failed_any,
+            "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
+            "best_particle_idx": best_idx,
+            "best_particle_pose": best_particle_pose,
+            "best_particle_map": self.particles[best_idx].scan_matcher.ogm.return_log_odds_map(),
+            "weighted_mean_pose": weighted_mean_pose,
+            "particle_weight_min": particle_weight_min,
+            "particle_weight_max": particle_weight_max,
+            "particle_weight_mean": particle_weight_mean,
+            "timing_update_particles_s": t_update_particles_s,
+            "timing_normalize_neff_s": t_norm_neff_s,
+            "timing_metrics_s": t_metrics_s,
+            "timing_resampling_s": t_resampling_s,
+            "proposal_metrics": best_p_prop_metrics,
+            "measurement_model_counters_fallback": self.meas_model_counters_fallback,
+        }
+
+        # Resampling step
+        self.resampling(norm_weights)
+
+        return neff, weighted_mean_pose

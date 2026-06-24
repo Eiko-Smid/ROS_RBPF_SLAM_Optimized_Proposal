@@ -1974,203 +1974,203 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
-# Phase 5: Final candiddates stability test
-def _grid_axes() -> dict:
-    return {
-        # ============================================================
-        # General RBPF parameters — fixed
-        # ============================================================
-        "every_nth_beam_filter": [2],
-        "every_nth_beam_map": [2],
-        "n_particles": [1],
-        "neff_threshold": [1],
-
-        # Compatibility parameters — fixed
-        "sigma_measurement": [0.06],
-        "meas_kernel_size": [1],
-
-        # ============================================================
-        # Measurement-model classification
-        #
-        # beam_unknown_thresh must remain a normal axis with the
-        # unchanged generator. Both candidate values are therefore
-        # tested.
-        # ============================================================
-        "beam_occ_thresh": [1.4],
-        "beam_free_thresh": [-1.4],
-        "beam_unknown_thresh": [
-            0.30,
-            0.45,
-        ],
-        "beam_known_free_ratio_thresh": [0.70],
-
-        # ============================================================
-        # Beam mixture — fixed for all candidates
-        # ============================================================
-        "beam_model_param_sets": [
-            {
-                "beam_w_hit": 0.50,
-                "beam_w_short": 0.30,
-                "beam_lambda_short": 0.20,
-                "beam_w_max": 0.10,
-                "beam_w_rand": 0.10,
-            },
-        ],
-
-        # ============================================================
-        # Retained measurement-model regions
-        #
-        # Region A:
-        #   Best translation/proposal-discrimination region.
-        #
-        # Region B/C:
-        #   sigma_hit=0.07. The difference between B and C is
-        #   p_unknown and beam_unknown_thresh.
-        # ============================================================
-        "beam_extra_param_sets": [
-            # Candidate A measurement region
-            {
-                "beam_sigma_hit": 0.08,
-                "beam_alpha_meas": 0.075,
-                "beam_p_unknown": 0.30,
-                "beam_p_out_of_map": 0.15,
-                "beam_p_unexpected_known_free": 0.00,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # Candidate B measurement region
-            {
-                "beam_sigma_hit": 0.07,
-                "beam_alpha_meas": 0.075,
-                "beam_p_unknown": 0.10,
-                "beam_p_out_of_map": 0.15,
-                "beam_p_unexpected_known_free": 0.00,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-
-            # Candidate C measurement region
-            {
-                "beam_sigma_hit": 0.07,
-                "beam_alpha_meas": 0.075,
-                "beam_p_unknown": 0.30,
-                "beam_p_out_of_map": 0.15,
-                "beam_p_unexpected_known_free": 0.00,
-                "beam_p_pred_below_min": 0.02,
-                "beam_step": 2,
-            },
-        ],
-
-        # ============================================================
-        # Retained motion-model regions
-        #
-        # Candidate A uses 0.12 / 0.11.
-        # Candidates B and C use 0.10 / 0.05.
-        #
-        # Because these are separate axes, the unchanged generator
-        # also creates the two cross-pairs.
-        # ============================================================
-        "sigma_xy_motion": [
-            0.10,
-            0.12,
-        ],
-
-        "sigma_theta": [
-            0.05,
-            0.11,
-        ],
-
-        "ctrl_motion_fac": [0.10],
-        "ctrl_turn_fac": [0.15],
-
-        # ============================================================
-        # Proposal geometry — fixed
-        # ============================================================
-        "proposal_param_sets": [
-            {
-                "proposal_sigma_xy": 0.06,
-                "proposal_sigma_theta": 0.025,
-                "n_samples_dir": 3,
-            },
-        ],
-
-        "proposal_alpha": [1.0],
-        "proposal_beta": [1.0],
-
-        # Scan matcher / map extraction — fixed
-        "surface_radius_m": [0.2],
-        "min_free_ratio": [0.4],
-    }
-
-
+# # Phase 5: Final candiddates stability test
 # def _grid_axes() -> dict:
 #     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [1],                         # number of particles in the RBPF
-#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+#         # ============================================================
+#         # General RBPF parameters — fixed
+#         # ============================================================
+#         "every_nth_beam_filter": [2],
+#         "every_nth_beam_map": [2],
+#         "n_particles": [1],
+#         "neff_threshold": [1],
 
-#         # Measurement model params
-#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-#         # Beam range finder measurement model params
+#         # Compatibility parameters — fixed
+#         "sigma_measurement": [0.06],
+#         "meas_kernel_size": [1],
+
+#         # ============================================================
+#         # Measurement-model classification
+#         #
+#         # beam_unknown_thresh must remain a normal axis with the
+#         # unchanged generator. Both candidate values are therefore
+#         # tested.
+#         # ============================================================
 #         "beam_occ_thresh": [1.4],
 #         "beam_free_thresh": [-1.4],
-#         "beam_unknown_thresh": [0.3],
-#         "beam_known_free_ratio_thresh": [0.7],
+#         "beam_unknown_thresh": [
+#             0.30,
+#             0.45,
+#         ],
+#         "beam_known_free_ratio_thresh": [0.70],
 
+#         # ============================================================
+#         # Beam mixture — fixed for all candidates
+#         # ============================================================
 #         "beam_model_param_sets": [
 #             {
-#                 # M1: baseline balanced model
-#                 "beam_w_hit": 0.7,
-#                 "beam_w_short": 0.1,
-#                 "beam_lambda_short": 0.2,
-#                 "beam_w_max": 0.1,
-#                 "beam_w_rand": 0.1,
-#             }           
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
 #         ],
 
+#         # ============================================================
+#         # Retained measurement-model regions
+#         #
+#         # Region A:
+#         #   Best translation/proposal-discrimination region.
+#         #
+#         # Region B/C:
+#         #   sigma_hit=0.07. The difference between B and C is
+#         #   p_unknown and beam_unknown_thresh.
+#         # ============================================================
 #         "beam_extra_param_sets": [
+#             # Candidate A measurement region
 #             {
-#             # baseline
-#                 "beam_sigma_hit": 0.15,
-#                 "beam_alpha_meas": 0.1,
-#                 "beam_p_unknown": 0.2,
-#                 "beam_p_out_of_map": 0.1,
+#                 "beam_sigma_hit": 0.08,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
 #                 "beam_p_unexpected_known_free": 0.00,
 #                 "beam_p_pred_below_min": 0.02,
 #                 "beam_step": 2,
-#             }           
+#             },
+
+#             # Candidate B measurement region
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
+
+#             # Candidate C measurement region
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.30,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },
 #         ],
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.12, 0.18],            # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
+
+#         # ============================================================
+#         # Retained motion-model regions
+#         #
+#         # Candidate A uses 0.12 / 0.11.
+#         # Candidates B and C use 0.10 / 0.05.
+#         #
+#         # Because these are separate axes, the unchanged generator
+#         # also creates the two cross-pairs.
+#         # ============================================================
+#         "sigma_xy_motion": [
+#             0.10,
+#             0.12,
+#         ],
+
+#         "sigma_theta": [
+#             0.05,
+#             0.11,
+#         ],
+
+#         "ctrl_motion_fac": [0.10],
+#         "ctrl_turn_fac": [0.15],
+
+#         # ============================================================
+#         # Proposal geometry — fixed
+#         # ============================================================
 #         "proposal_param_sets": [
 #             {
-#                 "proposal_sigma_xy": 0.02,      # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             }
+#                 "proposal_sigma_xy": 0.06,
+#                 "proposal_sigma_theta": 0.025,
+#                 "n_samples_dir": 3,
+#             },
 #         ],
-#         # TODO: Delete proposal values when no longer needed later on
+
 #         "proposal_alpha": [1.0],
 #         "proposal_beta": [1.0],
 
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         # Scan matcher / map extraction — fixed
+#         "surface_radius_m": [0.2],
 #         "min_free_ratio": [0.4],
 #     }
+
+
+def _grid_axes() -> dict:
+    return {
+        # General rbpf params
+        "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+        "every_nth_beam_map": [2],                  # use every nth beam for map update
+        "n_particles": [1],                         # number of particles in the RBPF
+        "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+
+        # Measurement model params
+        "sigma_measurement": [0.06],                # measurement uncertainty [m]
+        "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+        # Beam range finder measurement model params
+        "beam_occ_thresh": [1.4],
+        "beam_free_thresh": [-1.4],
+        "beam_unknown_thresh": [0.3],
+        "beam_known_free_ratio_thresh": [0.7],
+
+        "beam_model_param_sets": [
+            {
+                # M1: baseline balanced model
+                "beam_w_hit": 0.7,
+                "beam_w_short": 0.1,
+                "beam_lambda_short": 0.2,
+                "beam_w_max": 0.1,
+                "beam_w_rand": 0.1,
+            }           
+        ],
+
+        "beam_extra_param_sets": [
+            {
+            # baseline
+                "beam_sigma_hit": 0.15,
+                "beam_alpha_meas": 0.1,
+                "beam_p_unknown": 0.2,
+                "beam_p_out_of_map": 0.1,
+                "beam_p_unexpected_known_free": 0.00,
+                "beam_p_pred_below_min": 0.02,
+                "beam_step": 2,
+            }           
+        ],
+        
+        # Motion model params
+        "sigma_xy_motion": [0.12, 0.18],            # motion model uncertainty in x and y direction [m]
+        "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
+        "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+        "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+        # Proposal params (bound sets).
+        # Each dict is one fixed combination of:
+        # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+        # so these three values are sampled together (no Cartesian product among them).
+        "proposal_param_sets": [
+            {
+                "proposal_sigma_xy": 0.02,      # Proposal window size in x/y direction [m]
+                "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+                "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+            }
+        ],
+        # TODO: Delete proposal values when no longer needed later on
+        "proposal_alpha": [1.0],
+        "proposal_beta": [1.0],
+
+        # ScanMatcherParams (map extraction)
+        "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+        "min_free_ratio": [0.4],
+    }
 
 
 
