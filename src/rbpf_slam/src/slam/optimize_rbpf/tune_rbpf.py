@@ -637,10 +637,10 @@ Synchronized playback data
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_1_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -653,7 +653,7 @@ KEEP_STEP_RESULTS = False
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
@@ -2492,6 +2492,7 @@ def rbpf_tuning_pipeline():
 
     # Load dataset and run tuning pipline
     # TODO: Put for loop into optimizer. Then do tqdm bar over all -> Full progress bar !
+    optm_durations = []
     for playback_ds in PLAYBACK_DATA_LIST:
         # Load data
         print(f"\nLoading playback data:\nsuffix: {playback_ds.playback_suffix} \ndir: {playback_ds.playback_dir}")
@@ -2515,17 +2516,19 @@ def rbpf_tuning_pipeline():
         )
 
         # Run optimizer
-        ranked_runs = rbpf_optimizer.optimize(
+        ranked_runs, optm_duration_s = rbpf_optimizer.optimize(
             playback_data=playback_data,
             param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
             seeds=SEED_LIST,
             dataset_id=playback_ds.playback_suffix,
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),
             use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
+            keep_step_results=KEEP_STEP_RESULTS,
         )
 
         # Store ranked runs
         ranked_run_list.extend(ranked_runs)
+        optm_durations.append(optm_duration_s)
 
     # Aggregate results
     # Convert ranked runs to pandas DataFrame for easier analysis 
@@ -2578,7 +2581,6 @@ def rbpf_tuning_pipeline():
         override=OVERRIDE_EXISTING_RESULTS,
         float_decimals=CSV_FLOAT_DECIMALS,
     )
-
 
     # Save independent per-step diagnostic traces for each ranked run.
     if KEEP_STEP_RESULTS:
@@ -2655,16 +2657,7 @@ def rbpf_tuning_pipeline_multiprocessing():
             max_range=MAX_SENSOR_RANGE,
         )
 
-        # Run optimizer
-        # ranked_runs = rbpf_optimizer.optimize(
-        #     playback_data=playback_data,
-        #     param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
-        #     seeds=SEED_LIST,
-        #     dataset_id=playback_ds.playback_suffix,
-        #     map_name=raw_playback_data.metadata.get("map", "unknown_map"),
-        #     use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
-        # )
-
+        # Run optimizer in parallel
         ranked_runs, optm_duration = rbpf_optimizer.optimize_parallel(
             playback_data=playback_data,
             param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
@@ -2764,8 +2757,8 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 
 def main():
-    # rbpf_tuning_pipeline()
-    rbpf_tuning_pipeline_multiprocessing()
+    rbpf_tuning_pipeline()
+    # rbpf_tuning_pipeline_multiprocessing()
     
     
 

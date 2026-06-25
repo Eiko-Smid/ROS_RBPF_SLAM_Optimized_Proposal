@@ -13,8 +13,10 @@ from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion
 # from nav_msgs.msg import OccupancyGrid
-from rvc_commander.msg import Measurement
-from rvc_commander.msg import LogOddsMap
+# from rvc_commander.msg import Measurement
+# from rvc_commander.msg import LogOddsMap
+from rbpf_slam.msg import Measurement
+from rbpf_slam.msg import LogOddsMap
 
 
 # @njit

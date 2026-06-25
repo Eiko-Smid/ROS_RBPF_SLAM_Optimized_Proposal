@@ -3,7 +3,7 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 import time
 
 import json
@@ -297,7 +297,8 @@ class RBPFOptimizer:
         dataset_id: Optional [int] = None,
         map_name: Optional[str] = None,
         use_seed_list_for_measurement_noise: bool = True,
-    ) -> List[RankedRun]:
+        keep_step_results: bool = False,
+    ) -> Tuple[List[RankedRun], float]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
         """
@@ -311,7 +312,7 @@ class RBPFOptimizer:
 
         if total_runs == 0:
             print("No parameter combinations provided. Nothing to optimize.")
-            return []
+            return [], None
 
         print(f"Starting RBPF optimization with {total_runs * len(seed_list)} run(s)...")
         ranked_runs: List[RankedRun] = []
@@ -346,7 +347,8 @@ class RBPFOptimizer:
                 )
 
                 # Run the rbpf filter on one parameter set and compute the rating score
-                run_result = self.runner.run(run_playback_data, params)
+                # run_result = self.runner.run(run_playback_data, params)
+                run_result = self.runner.run_rbpf_parallel(run_playback_data, params)
                 score = self.scorer.score(run_result.summary)
 
                 # Store run results
@@ -355,7 +357,7 @@ class RBPFOptimizer:
                         params=params,
                         summary=run_result.summary,
                         score=score,
-                        step_results=run_result.step_results,
+                        step_results=run_result.step_results if keep_step_results else [],
                         seed=run_seed,
                         dataset_id=dataset_id,
                         map_name=map_name,
@@ -372,7 +374,7 @@ class RBPFOptimizer:
         # Sort runs by score (ascending order)
         # ranked_runs.sort(key=lambda x: x.score)
         
-        return ranked_runs
+        return ranked_runs, optm_duration_s
     
 
     def optimize_without_proposal_pose(

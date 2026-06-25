@@ -7,10 +7,11 @@ from typing import Optional, List, Dict
 class ParticleProcessPool:
     def __init__(self, n_workers: Optional[int] = None):
         # Init n workers
-        if n_workers is not None and n_workers > 0:
+        max_n_workers = mp.cpu_count()
+        if n_workers is not None and n_workers > 0 and n_workers <= max_n_workers:
             self.n_workers = int(n_workers)
         else:
-            self.n_workers = mp.cpu_count()
+            self.n_workers = max_n_workers
 
         # Define process pool
         self._pool: Optional[Pool] = None
