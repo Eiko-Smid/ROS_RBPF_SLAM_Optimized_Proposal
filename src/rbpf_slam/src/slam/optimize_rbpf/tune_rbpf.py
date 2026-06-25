@@ -637,10 +637,10 @@ Synchronized playback data
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -650,10 +650,10 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 NUMBER_OF_WORKERS = 1
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
-
 CSV_FLOAT_DECIMALS = 6
+
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
@@ -2604,6 +2604,148 @@ def rbpf_tuning_pipeline():
 
 
 
+def rbpf_tuning_pipeline_threading():
+    # Define vars
+    ranked_run_list = []
+    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
+    agg_dataset_param_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
+    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
+    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
+
+    # Init
+    # Init playback loader and converter
+    playback_loader = PlaybackLoader()
+    playback_conv = PlaybackConverter()
+    
+    # Init optimizer
+    rbpf_optimizer = build_optimizer()
+    
+    # Build result writer
+    result_writer = ResultWriter()
+    ranked_run_conv = RankedRunConverter()
+    result_aggregator = ResultAggregator()
+
+    # Store compact parameter overview (grid axes + one representative ExperimentParams)
+    write_parameter_overview(
+        path=PARAMETER_OVERVIEW_PATH,
+        n_repeats=N_OPTIMIZATION_REPEATS,
+        override=OVERRIDE_EXISTING_RESULTS,
+    )
+
+    # Load dataset and run tuning pipline
+    # TODO: Put for loop into optimizer. Then do tqdm bar over all -> Full progress bar !
+    optm_durations = []
+    for playback_ds in PLAYBACK_DATA_LIST:
+        # Load data
+        print(f"\nLoading playback data:\nsuffix: {playback_ds.playback_suffix} \ndir: {playback_ds.playback_dir}")
+        raw_playback_data = playback_loader.load(
+            file_suffix=playback_ds.playback_suffix,
+            filedir=playback_ds.playback_dir,
+            n_steps=N_PLAYBACK_STEPS,
+            ensure_start_pose=True,
+            prompt_for_missing_start_pose=True,
+        )
+
+        start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+        print(f"Using start pose for tuning: {start_pose}")
+    
+        # Convert playback data
+        playback_data = playback_conv.convert(
+            raw_playback_data,
+            measurement_stddev=None,
+            min_range=MIN_SENSOR_RANGE,
+            max_range=MAX_SENSOR_RANGE,
+        )
+
+        # Run optimizer
+        ranked_runs, optm_duration_s = rbpf_optimizer.optimize_threading(
+            playback_data=playback_data,
+            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
+            seeds=SEED_LIST,
+            dataset_id=playback_ds.playback_suffix,
+            map_name=raw_playback_data.metadata.get("map", "unknown_map"),
+            use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
+            keep_step_results=KEEP_STEP_RESULTS,
+        )
+
+        # Store ranked runs
+        ranked_run_list.extend(ranked_runs)
+        optm_durations.append(optm_duration_s)
+
+    # Aggregate results
+    # Convert ranked runs to pandas DataFrame for easier analysis 
+    ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
+
+    # Rank results by score
+    rank_scored_df = result_aggregator.rank_by_score(
+        ranked_run_df=ranked_run_df,
+        score_col="score",   
+        ascending=True,
+    )
+
+    # Groupe and rank by playback data and seed
+    agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
+
+    # Froupe and rank by paramters 
+    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
+
+    # Build ranked parameter overview with one row per parameter_hash.
+    ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
+        agg_param_df=agg_param_df,
+        ranked_runs=ranked_run_list,
+    )
+
+    # Save results
+    result_writer.write_dataframe_csv(
+        path=ranked_scored_path,
+        df=rank_scored_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    result_writer.write_dataframe_csv(
+        path=agg_dataset_param_path,
+        df=agg_dataset_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    result_writer.write_dataframe_csv(
+        path=agg_param_path,
+        df=agg_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    result_writer.write_dataframe_csv(
+        path=ranked_param_overview_path,
+        df=ranked_param_overview_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
+
+    # Save independent per-step diagnostic traces for each ranked run.
+    if KEEP_STEP_RESULTS:
+        result_writer.write_run_steps_csv(
+            output_path=STEP_TRACE_PATH,
+            ranked_runs=ranked_run_list,
+            override=OVERRIDE_EXISTING_RESULTS,
+            float_decimals=CSV_FLOAT_DECIMALS,
+        )
+
+    # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
+    # TODO: Add proposal weights again
+    # result_writer.write_proposal_weights_csv(
+    #     output_path=PROPOSAL_WEIGHTS_PATH,
+    #     ranked_runs=ranked_run_list,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    # )
+
+    print("\nTuning optimization completed.")
+
+
+
 def rbpf_tuning_pipeline_multiprocessing():
     # Define vars
     ranked_run_list = []
@@ -2758,10 +2900,13 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 def main():
     # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
-    rbpf_tuning_pipeline()
+    # rbpf_tuning_pipeline()
+
+    # RBPF tuning pipeline with RBPF step parallelization (threading)
+    # rbpf_tuning_pipeline_threading()
 
     # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    # rbpf_tuning_pipeline_multiprocessing()
+    rbpf_tuning_pipeline_multiprocessing()
     
     
 

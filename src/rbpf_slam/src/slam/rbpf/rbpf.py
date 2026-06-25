@@ -18,7 +18,7 @@ from slam.rbpf.proposal import ProposalEstimator
 from slam.rbpf.resampler import Resampler
 
 from .particle_process_pool import ParticleProcessPool
-from . import particle_process_pool as worker_state
+# from . import particle_process_pool as worker_state
 
 
 # from slam.scan_matcher.scan_matcher_factory import ScanMatcherFactory
@@ -87,8 +87,8 @@ class BeamRangeFinderMeasModelParams:
 class ParticleUpdateTask:
     particle_index: int
     particle: Particle
-    # motion_model: MotionModel
-    # measurement_model: MeasurementModel
+    motion_model: MotionModel
+    measurement_model: MeasurementModel
 
     odom: Tuple[float, float]
     measurements_proposal: List[Tuple[float, float]]
@@ -114,8 +114,8 @@ def update_particle_worker(
 ) -> ParticleUpdateResult:
     # Extract task
     particle: Particle = task.particle
-    # motion_model: MotionModel = task.motion_model
-    # measurement_model: MeasurementModel = task.measurement_model
+    motion_model: MotionModel = task.motion_model
+    meas_model: MeasurementModel = task.measurement_model
     odom: Tuple[float, float] = task.odom
     measurements_proposal: List[Tuple[float, float]] = task.measurements_proposal
     measurements_map_update: List[Tuple[float, float]] = task.measurements_map_update
@@ -123,19 +123,22 @@ def update_particle_worker(
     proposal_sigma_theta: float = task.proposal_sigma_theta
     proposal_n_samples: int = task.proposal_n_samples
 
+    # Init proposal
+    proposal = ProposalEstimator()
+
     # Init worker objs
-    motion_model = worker_state._WORKER_MOTION_MODEL
-    meas_model = worker_state._WORKER_MEAS_MODEL
-    proposal = worker_state._WORKER_PROPOSAL
+    # motion_model = worker_state._WORKER_MOTION_MODEL
+    # meas_model = worker_state._WORKER_MEAS_MODEL
+    # proposal = worker_state._WORKER_PROPOSAL
     
-    if motion_model is None:
-        raise RuntimeError("Worker motion model is not initialized. Therefore update_particle_worker cannot proceed.")
+    # if motion_model is None:
+    #     raise RuntimeError("Worker motion model is not initialized. Therefore update_particle_worker cannot proceed.")
     
-    if meas_model is None:
-        raise RuntimeError("Worker measurement model is not initialized. Therefore update_particle_worker cannot proceed.")
+    # if meas_model is None:
+    #     raise RuntimeError("Worker measurement model is not initialized. Therefore update_particle_worker cannot proceed.")
     
-    if proposal is None:
-        raise RuntimeError("Worker proposal estimator is not initialized. Therefore update_particle_worker cannot proceed.")
+    # if proposal is None:
+    #     raise RuntimeError("Worker proposal estimator is not initialized. Therefore update_particle_worker cannot proceed.")
 
 
     # Set metrics to None
@@ -2153,8 +2156,8 @@ class RBPF:
                 particle_index=particle_index,
                 particle=particle,
 
-                # motion_model=self.motion_model,
-                # measurement_model=self.measurement_model,   
+                motion_model=self.motion_model,
+                measurement_model=self.measurement_model,   
 
                 odom=odom,
                 measurements_proposal=measurements_proposal,

@@ -758,6 +758,6 @@ class ProposalEstimator:
         # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
         new_p_pose = mu
 
-        new_p_pose = self.sample_from_proposal(mu, cov)
+        # new_p_pose = self.sample_from_proposal(mu, cov)
 
         return new_p_pose, log_eta, info

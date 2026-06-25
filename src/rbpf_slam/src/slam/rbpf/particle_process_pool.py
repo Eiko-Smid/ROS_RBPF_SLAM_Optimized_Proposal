@@ -3,7 +3,7 @@ from multiprocessing.pool import Pool
 
 import logging
 
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple, Any, Union, Callable
 
 from .motion_model import MotionModel
 from .measurement_model import MeasurementModel
@@ -41,8 +41,8 @@ class ParticleProcessPool:
     def __init__(
             self,
             n_workers: int,
-            initializer: Optional[callable] = None,
-            initargs: Optional[tuple] = None,
+            initializer: Optional[Callable] = None,
+            initargs: Tuple = (),
     ):
         # Init n workers
         max_n_workers = mp.cpu_count()
