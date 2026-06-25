@@ -270,7 +270,7 @@ from rbpf_slam.msg import LogOddsMap
 
 
 
-@njit
+@njit(cache=True, nogil=True)
 def update_map_numba_unique_cells(
     log_odds_map,
     measurements,
@@ -443,7 +443,7 @@ def update_map_numba_unique_cells(
     return 0, beam_out_map_count
 
 
-@njit
+@njit(cache=True, nogil=True)
 def update_map_numba_inf_free_space(
     log_odds_map: np.ndarray,
     measurements: np.ndarray,   # shape (N, 2) -> [range, bearing]
@@ -600,7 +600,7 @@ def update_map_numba_inf_free_space(
     return 0, beam_out_map_count
 
 
-@njit
+@njit(cache=True, nogil=True)
 def extract_map_numba(
     log_odds_map: np.ndarray,
     i_pose: int,
@@ -707,7 +707,7 @@ def extract_map_numba(
     return map_points[:count]
 
 
-@njit
+@njit(cache=True, nogil=True)
 def update_map_numba(
     log_odds_map: np.ndarray,
     measurements: np.ndarray,   # shape (N, 2) -> [range, bearing]
@@ -865,7 +865,7 @@ def update_map_numba(
 
 
 
-@njit
+@njit(cache=True, nogil=True)
 def update_map_numba_old_bresenham(
     log_odds_map,
     measurements,

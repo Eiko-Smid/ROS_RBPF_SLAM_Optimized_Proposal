@@ -13,7 +13,7 @@ from sklearn.neighbors import NearestNeighbors
 from heapq import heappush, heappop
 
 
-@njit
+@njit(cache=True, nogil=True)
 def compute_normals_numba(points, indices):
     '''
     Get's a pointcloud and computes the normals for each point by finding the k nearest neighbors for each point

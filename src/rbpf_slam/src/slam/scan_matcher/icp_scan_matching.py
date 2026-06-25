@@ -47,7 +47,7 @@ class ICPResult:
     n_correspondences: int
 
 
-@njit
+@njit(cache=True, nogil=True)
 def compute_normals_numba(points, indices):
     '''
     Get's a pointcloud and computes the normals for each point by finding the k nearest neighbors for each point

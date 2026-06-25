@@ -17,7 +17,7 @@ from rvc_commander.msg import Measurement
 from rvc_commander.msg import LogOddsMap
 
 
-@njit
+@njit(cache=True, nogil=True)
 def extract_map_numba(
     log_map,
     i_pose,

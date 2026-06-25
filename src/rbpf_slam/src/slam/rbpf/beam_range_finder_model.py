@@ -18,7 +18,7 @@ from slam.scan_matcher.ogm_scan_matching import OGM
 #     return 0.5 * (1.0 + erf(x / sqrt(2.0)))
 
 
-@njit
+@njit(cache=True, nogil=True)
 def _beam_model_prob(
     z: float,
     z_exp: float,
@@ -110,7 +110,7 @@ def _beam_model_prob(
     return prob
 
 
-@njit
+@njit(cache=True, nogil=True)
 def _raytrace_first_occupied_cell(
     log_odds_map: np.ndarray,
     pose_i: int,
@@ -216,7 +216,7 @@ def _raytrace_first_occupied_cell(
     return found, -1, -1, out_of_map, free_count, unknown_count, total_count
 
 
-@njit
+@njit(cache=True, nogil=True)
 def raytracing_log_likelihood_numba(
     # OGM params
     log_odds_map: np.ndarray,

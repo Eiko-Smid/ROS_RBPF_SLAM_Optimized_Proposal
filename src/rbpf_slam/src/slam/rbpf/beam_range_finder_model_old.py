@@ -9,7 +9,7 @@ from slam.infrastructure.defs import Pose2D
 from slam.scan_matcher.ogm_scan_matching import OGM
 
 
-@njit
+@njit(cache=True, nogil=True)
 def _raytrace_first_occupied_cell(
     log_odds_map: np.ndarray,
     pose_i: int,
@@ -77,7 +77,7 @@ def _raytrace_first_occupied_cell(
     return False, -1, -1, False
 
 
-@njit
+@njit(cache=True, nogil=True)
 def raytracing_log_likelihood_numba(
     log_odds_map: np.ndarray,
     measurements: np.ndarray,      # shape (N, 2): [range, bearing]
