@@ -42,16 +42,17 @@ class ProposalEstimator:
 
     def _record_timing(self, time_name: str, count_name: str, start_time: float) -> None:
         '''
-        Helper method to record timing statistics for given name and duration in seconds.
+        Helper method to record timing statistics for given name and duration in seconds.Currently disabled, does nothing!
         '''
-        duration_s = time.perf_counter() - start_time
+        # duration_s = time.perf_counter() - start_time
 
-        # Check if name is inside dict
-        if (time_name in self._timing_stats.keys()) and (count_name in self._timing_stats.keys()):
-            self._timing_stats[time_name] += duration_s        
-            self._timing_stats[count_name] += 1
-        else:
-            raise ValueError(f"Timing stats keys {time_name} or {count_name} not found in timing stats dictionary.")
+        # # Check if name is inside dict
+        # if (time_name in self._timing_stats.keys()) and (count_name in self._timing_stats.keys()):
+        #     self._timing_stats[time_name] += duration_s        
+        #     self._timing_stats[count_name] += 1
+        # else:
+        #     raise ValueError(f"Timing stats keys {time_name} or {count_name} not found in timing stats dictionary.")
+        pass    
         
 
     def sample_poses(self, pose: Pose2D, sigma_xy: float, sigma_theta: float, n_samples: int) -> np.ndarray:
@@ -382,7 +383,6 @@ class ProposalEstimator:
 
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose
     
-
 
     def compute_proposal_param_batch_copy(
         self,
@@ -757,5 +757,7 @@ class ProposalEstimator:
         # Estimate new particle pose
         # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
         new_p_pose = mu
+
+        new_p_pose = self.sample_from_proposal(mu, cov)
 
         return new_p_pose, log_eta, info

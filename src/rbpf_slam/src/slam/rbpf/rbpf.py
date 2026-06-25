@@ -17,7 +17,8 @@ from slam.rbpf.beam_range_finder_model import BeamRangeFinderModel
 from slam.rbpf.proposal import ProposalEstimator
 from slam.rbpf.resampler import Resampler
 
-from slam.rbpf.particle_process_pool import ParticleProcessPool
+from .particle_process_pool import ParticleProcessPool
+from . import particle_process_pool as worker_state
 
 
 # from slam.scan_matcher.scan_matcher_factory import ScanMatcherFactory
@@ -86,8 +87,8 @@ class BeamRangeFinderMeasModelParams:
 class ParticleUpdateTask:
     particle_index: int
     particle: Particle
-    motion_model: MotionModel
-    measurement_model: MeasurementModel
+    # motion_model: MotionModel
+    # measurement_model: MeasurementModel
 
     odom: Tuple[float, float]
     measurements_proposal: List[Tuple[float, float]]
@@ -113,8 +114,8 @@ def update_particle_worker(
 ) -> ParticleUpdateResult:
     # Extract task
     particle: Particle = task.particle
-    motion_model: MotionModel = task.motion_model
-    measurement_model: MeasurementModel = task.measurement_model
+    # motion_model: MotionModel = task.motion_model
+    # measurement_model: MeasurementModel = task.measurement_model
     odom: Tuple[float, float] = task.odom
     measurements_proposal: List[Tuple[float, float]] = task.measurements_proposal
     measurements_map_update: List[Tuple[float, float]] = task.measurements_map_update
@@ -122,8 +123,20 @@ def update_particle_worker(
     proposal_sigma_theta: float = task.proposal_sigma_theta
     proposal_n_samples: int = task.proposal_n_samples
 
-    # Init proposal
-    proposal: ProposalEstimator = ProposalEstimator()
+    # Init worker objs
+    motion_model = worker_state._WORKER_MOTION_MODEL
+    meas_model = worker_state._WORKER_MEAS_MODEL
+    proposal = worker_state._WORKER_PROPOSAL
+    
+    if motion_model is None:
+        raise RuntimeError("Worker motion model is not initialized. Therefore update_particle_worker cannot proceed.")
+    
+    if meas_model is None:
+        raise RuntimeError("Worker measurement model is not initialized. Therefore update_particle_worker cannot proceed.")
+    
+    if proposal is None:
+        raise RuntimeError("Worker proposal estimator is not initialized. Therefore update_particle_worker cannot proceed.")
+
 
     # Set metrics to None
     prop_metrics = None 
@@ -164,7 +177,7 @@ def update_particle_worker(
             odom=odom,
             measurements=measurements_proposal,
             motion_model=motion_model,
-            measurement_model=measurement_model,
+            measurement_model=meas_model,
             sigma_xy=proposal_sigma_xy,
             sigma_theta=proposal_sigma_theta,
             n_samples=proposal_n_samples,
@@ -182,7 +195,7 @@ def update_particle_worker(
         )
 
         # Fallback to Measurement model 
-        meas_model_fallback_res = measurement_model.likelihood(
+        meas_model_fallback_res = meas_model.likelihood(
             pose=new_pose,
             measurements=measurements_proposal,
             ogm=particle.scan_matcher.ogm,
@@ -2133,14 +2146,15 @@ class RBPF:
         log_particle_weights = []
 
         # Define particle tasks
+        start_time_creating_tasks = time.perf_counter()
         tasks = []
         for particle_index, particle in enumerate(self.particles):
             task = ParticleUpdateTask(
                 particle_index=particle_index,
                 particle=particle,
 
-                motion_model=self.motion_model,
-                measurement_model=self.measurement_model,   
+                # motion_model=self.motion_model,
+                # measurement_model=self.measurement_model,   
 
                 odom=odom,
                 measurements_proposal=measurements_proposal,
@@ -2151,19 +2165,26 @@ class RBPF:
                 proposal_n_samples=proposal_n_samples,
                 )
             tasks.append(task)
-
+        
+        duration_t_creating_task_ms = (time.perf_counter() - start_time_creating_tasks) * 1000.0
+        
         # Update particles parallel
+        start_time_updating_particles = time.perf_counter()
         results = particle_process_pool.map(
             worker_func=update_particle_worker,
             tasks=tasks
         )
+        duration_t_updating_particles_ms = (time.perf_counter() - start_time_updating_particles) * 1000.0
 
         # Process results
+        start_time_processing_results = time.perf_counter()
         (
             log_particle_weights, 
             scan_match_failed_any, 
             scan_match_fallback_failed_any, 
         ) = self.process_particle_update_results(results)
+
+        duration_t_processing_results_ms = (time.perf_counter() - start_time_processing_results) * 1000.0
 
         # Normalize weights
         norm_weights = self.normalize_weights(
@@ -2217,5 +2238,10 @@ class RBPF:
 
         # Resampling step
         self.resampling(norm_weights)
+
+        # print(f"\nTime for parallel particle update:") 
+        # print(f"  creating tasks: {duration_t_creating_task_ms:.6f} ms")
+        # print(f"  updating particles: {duration_t_updating_particles_ms:.6f} ms")
+        # print(f"  processing results: {duration_t_processing_results_ms:.6f} ms")
 
         return neff, weighted_mean_pose

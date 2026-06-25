@@ -10,7 +10,7 @@ from .evaluator import RunResult, RBPFEvaluator
 from ..rbpf.rbpf import RBPFFactory
 from ..rbpf.motion_model import MotionModel
 from ..rbpf.scan_match_factory import ScanMatchFactory
-from ..rbpf.particle_process_pool import ParticleProcessPool
+from ..rbpf.particle_process_pool import ParticleProcessPool, _init_worker
 
 
 Pose2D = Tuple[float, float, float]
@@ -29,6 +29,7 @@ class RawOdometryPropagator:
             odom_poses.append((float(pose[0]), float(pose[1]), float(pose[2])))
 
         return odom_poses
+
 
 
 class PlaybackRunner:
@@ -274,7 +275,8 @@ class PlaybackRunner:
 
     def run_rbpf_parallel(self, playback_data: PlaybackData, params: ExperimentParams) -> RunResult:
         """
-        Executes one full RBPF run over all playback steps and returns evaluated results.
+        Executes one full RBPF run over all playback steps and returns evaluated results. This version uses
+        the RBPF parallel step method with a multiprocessing pool for parallel particle updates. 
         """
         # Create rbpf instance for the current parameter set
         rbpf = self.factory.create(
@@ -313,8 +315,16 @@ class PlaybackRunner:
         every_nth_filter = max(1, int(params.every_nth_scan_filter))
         every_nth_map = max(1, int(params.every_nth_scan_map))
 
-        # Init multi processing pool        
-        with ParticleProcessPool(n_workers=4) as pool:
+        # Init multi processing pool
+        with ParticleProcessPool(
+            n_workers=4,
+            initializer=_init_worker,
+            initargs=(
+                rbpf.motion_model,
+                rbpf.measurement_model,
+                rbpf.proposal,
+            ),
+        ) as pool:
         
             for step_idx, step in enumerate(steps):
                 step_start_time = time.time()
@@ -337,8 +347,7 @@ class PlaybackRunner:
                 # Use inf vals for map update, too -> clear free space faster
                 # measurements_map = [
                 #     (r, b) for r, b in measurements_map if np.isfinite(r) and not np.isnan(r)
-                # ]
-                
+                # ]                
 
                 # Run rbpf filter step
                 rbpf.step_parallel(

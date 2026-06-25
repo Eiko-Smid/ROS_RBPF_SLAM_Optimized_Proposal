@@ -637,23 +637,23 @@ Synchronized playback data
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_5_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
-NUMBER_OF_WORKERS = 4
+NUMBER_OF_WORKERS = 1
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
@@ -712,25 +712,25 @@ class PlaybackDataset:
 #     ),    
 # ]
 
+# PLAYBACK_DATA_LIST = [
+#     # Turtle bot map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885725",
+#     ), 
+#     # AWS indoor map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885274",
+#     ),    
+# ]
+
 PLAYBACK_DATA_LIST = [
-    # Turtle bot map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885725",
-    ), 
-    # AWS indoor map
     PlaybackDataset(
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
         playback_suffix="1781885274",
-    ),    
+    )
 ]
-
-# PLAYBACK_DATA_LIST = [
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1779375646",
-#     )
-# ]
 
 
 def _to_jsonable(value):
@@ -2109,7 +2109,7 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [1],                         # number of particles in the RBPF
+        "n_particles": [20],                         # number of particles in the RBPF
         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
         # Measurement model params
@@ -2124,30 +2124,30 @@ def _grid_axes() -> dict:
 
         "beam_model_param_sets": [
             {
-                # M1: baseline balanced model
-                "beam_w_hit": 0.7,
-                "beam_w_short": 0.1,
-                "beam_lambda_short": 0.2,
-                "beam_w_max": 0.1,
-                "beam_w_rand": 0.1,
-            }           
+                "beam_w_hit": 0.50,
+                "beam_w_short": 0.30,
+                "beam_lambda_short": 0.20,
+                "beam_w_max": 0.10,
+                "beam_w_rand": 0.10,
+            },
         ],
 
         "beam_extra_param_sets": [
+               # Candidate B measurement region
             {
-            # baseline
-                "beam_sigma_hit": 0.15,
-                "beam_alpha_meas": 0.1,
-                "beam_p_unknown": 0.2,
-                "beam_p_out_of_map": 0.1,
+                "beam_sigma_hit": 0.07,
+                "beam_alpha_meas": 0.075,
+                "beam_p_unknown": 0.10,
+                "beam_p_out_of_map": 0.15,
                 "beam_p_unexpected_known_free": 0.00,
                 "beam_p_pred_below_min": 0.02,
                 "beam_step": 2,
-            }           
+            },
+       
         ],
         
         # Motion model params
-        "sigma_xy_motion": [0.12, 0.18],            # motion model uncertainty in x and y direction [m]
+        "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
         "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
@@ -2757,7 +2757,10 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 
 def main():
+    # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
     rbpf_tuning_pipeline()
+
+    # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
     # rbpf_tuning_pipeline_multiprocessing()
     
     
