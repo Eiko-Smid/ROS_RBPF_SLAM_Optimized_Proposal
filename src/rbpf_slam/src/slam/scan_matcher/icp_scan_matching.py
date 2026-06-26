@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 from math import sin, cos, atan2, pi, inf
 from sklearn.neighbors import NearestNeighbors
+from scipy.spatial import cKDTree
+
 from heapq import heappush, heappop
 
 
@@ -363,7 +365,7 @@ class IterativeClosestPoint():
     
         '''    
         # Init NN
-        self.neighbor= NearestNeighbors(n_neighbors=n_neighbors, algorithm='kd_tree')        
+        # self.neighbor= NearestNeighbors(n_neighbors=n_neighbors, algorithm='kd_tree')        
         
         # Init params
         # Max dist for correspondences. All correspondences with a bigger distance will be rejected as outliers
@@ -1188,6 +1190,339 @@ class IterativeClosestPoint():
     
 
     def find_transformation(
+            self, 
+            new_data_pointpairs: np.ndarray, 
+            true_data_pointpairs: np.ndarray
+        ) -> ICPResult:
+        '''
+        Get's the new data points and the true datapoints and trys to minimize the error between the two
+        pointclouds by finding the best transformation. Returns the transformation parameters and stores 
+        relevant information in the 'info' member variable. The info contains the data for each transformation
+        run.
+
+        Parameters:
+        ----------
+        new_data_pointpairs: np.ndarray
+            Nx2 numpy array of the new data points.
+        true_data_pointpairs: np.ndarray
+            Mx2 numpy array of the true data points.
+        
+        Returns:
+        ----------
+        Result: ICPResult
+            A dataclass containing:
+                - transformation: 3x1 numpy array of the final transformation parameters (tx, ty, theta).
+                - use_transformation: Indicator whether to use tranformation (true) or not (false). 
+                - reason: str providing the reason for stopping ICP 
+                - mean_error: float representing the mean error of the correspondences from the best iteration
+                - n_iterations: int representing the number of ICP iterations performed.
+                - n_correspondences: int representing the number of correspondences of the best iteration
+        '''
+        # Init vars
+        # TFs
+        transformation = np.zeros((3, 1))
+        dtransformation = transformation.copy()
+        best_transformation = transformation.copy()
+
+        # Errors
+        squared_error = inf         # Squared error of ICP metric
+        mean_err = inf              # Mean of the Squared error  
+        best_mean_error = np.inf    # Best mean error found
+
+        # Init info values
+        self.n_points_true_after_spatial_downsampling = None
+        self.n_points_true_after_subsampling = None
+
+        # number of correspondences from best iteration
+        n_corresp_best_iter = 0     
+
+        # Init timings
+        self.t_downsampling_pointcloud = 0.0
+        self.t_compute_normals = 0.0
+        self.t_outlier_rejection = 0.0
+        self.t_prepare_system = 0.0
+        self.t_solve_least_squares = 0.0
+        
+        # Lists to store results
+        self.squared_error_list= []
+        self.transformation_parameter_list = [transformation.copy()]
+        self.transformed_new_data_list = [new_data_pointpairs.copy()]
+        latest_new_data= new_data_pointpairs.copy()
+        self.list_of_cleaned_corresp = []
+        self.list_of_cleaned_corresp_numb = []
+        self.list_of_corresp_numb = []
+        
+        # Store number of points for logging
+        self.n_points_true_data = true_data_pointpairs.shape[0]
+        self.n_points_new_data = new_data_pointpairs.shape[0]
+
+        # Santize pointclouds
+        new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
+        true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
+        true_pointcloud_downsampled_geometrically = None
+
+        # Check if we have enough points for icp
+        if (
+            new_data_pointpairs.shape[0] < self.min_points or
+            true_data_pointpairs.shape[0] < self.min_points
+        ):
+            self.stop_condition.stop_reason = "Too few input points"
+            return self._finalize_result(ICPResult(
+                transformation=np.zeros((3,1)),
+                use_transformation=False,
+                reason="Too few input points",
+                mean_error=best_mean_error,
+                n_iterations=0,
+                n_correspondences=0
+            ), extended=True)
+
+
+        # Downsampling
+        start_t_downsampling = time.perf_counter()
+        if not self.skip_downsampling and true_data_pointpairs.shape[0] > self.max_n_points:
+            # Downsample points with geometrically relavance      
+            true_pointcloud_downsampled_geometrically = self.downsample_pointcloud_spatial(
+                pointcloud=true_data_pointpairs,
+                grid_size=self.downssample_grid_size
+            )
+
+            # Downsample true data points
+            true_data_pointpairs = self.dowmsample_pointcloud_deterministic(
+                pointcloud=true_pointcloud_downsampled_geometrically,
+                max_n_points=self.max_n_points
+            )
+            
+        # get number of points after downsampling for logging
+        if true_pointcloud_downsampled_geometrically is not None:
+            self.n_points_true_after_spatial_downsampling = true_pointcloud_downsampled_geometrically.shape[0]
+
+        self.n_points_true_after_subsampling = true_data_pointpairs.shape[0]
+
+        if true_data_pointpairs.shape[0] < self.min_points:
+            self.stop_condition.stop_reason = "Too few input points"
+            return self._finalize_result(ICPResult(
+                transformation=np.zeros((3,1)),
+                use_transformation=False,
+                reason="Too few input points",
+                mean_error=best_mean_error,
+                n_iterations=0,
+                n_correspondences=0
+            ), extended=True)
+
+        self.t_downsampling_pointcloud = time.perf_counter() - start_t_downsampling
+        
+        # Train Nearest Neighbor with true data points         
+        # self.neighbor.fit(true_data_pointpairs)
+        
+        # Compute normals of true data points
+        # Guard against sparse local maps: sklearn requires n_neighbors <= n_samples.
+        n_neighbors_normals = min(self.neighbors, true_data_pointpairs.shape[0])
+        self.tree = cKDTree(
+            true_data_pointpairs,
+            leafsize=32,
+        )
+
+        _, indices_normal = self.tree.query(
+            true_data_pointpairs,
+            k=n_neighbors_normals,
+        )
+        
+        start_t_compute_normals = time.perf_counter()
+        true_data_normals = compute_normals_numba(
+            true_data_pointpairs,
+            indices_normal
+        )
+        self.t_compute_normals = time.perf_counter() - start_t_compute_normals
+
+        # Reset stop condition
+        self.stop_condition.reset()
+                
+        while True:
+            # Check stop condition       
+            if self.stop_condition.stop_icp(mean_err, dtransformation):
+                break
+
+            # Find Nearest Neighbor by euclidean distance
+            distances, corresp_new_data = self.tree.query(
+                latest_new_data,
+                k=1,
+            )
+            
+            # Clean correspondences by outlier rejection 
+            start_t_outlier_rejection = time.perf_counter()           
+            cleaned_corresp, sum_error = self.vectorized_outlier_rejection(
+                distances=distances[:, None],
+                indices=corresp_new_data[:, None],
+            )
+
+            n_correspond = cleaned_corresp.shape[0]
+
+            # Check if we have enough correspondences to continue
+            if n_correspond < self.min_corresp:
+                if self.stop_condition.iteration == 1:
+                    # Return because it doesn't make sense to go on if we had not enough correspondences from beginning on. 
+                    # Report the attempted iteration count and the observed correspondence count for diagnostics.
+                    # mean_error stays inf because no valid ICP system was solved yet.
+                    return self._finalize_result(ICPResult(
+                        transformation=np.zeros((3,1)),
+                        use_transformation=False,
+                        reason="Too few correspondences in first iteration",
+                        mean_error=np.inf,
+                        n_iterations=self.stop_condition.iteration,
+                        n_correspondences=n_correspond
+                    ), extended=True)
+                else:
+                    # If we end up here might have had good correespondecnes before and wanne use those!
+                    self.stop_condition.stop_reason = "Too few correspondences"
+                    break
+
+            self.t_outlier_rejection = time.perf_counter() - start_t_outlier_rejection
+                
+            # Prepare the system
+            start_t_prepare_system = time.perf_counter()
+            H, g, squared_error = self.prepare_system_point_to_plane_vec(
+                transformation,
+                latest_new_data,
+                true_data_pointpairs,
+                cleaned_corresp,
+                true_data_normals,
+            )            
+
+            # Saftey check for H and g
+            if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+                return self._finalize_result(ICPResult(
+                    transformation=best_transformation,
+                    use_transformation=False,
+                    reason="Non-finite H or g",
+                    mean_error=best_mean_error,
+                    n_iterations=self.stop_condition.iteration,
+                    n_correspondences=n_corresp_best_iter
+                ), extended=True)
+
+            # Reject non-solvable systems via configurable Hessian thresholds.
+            if np.linalg.matrix_rank(H) < self.min_hessian_rank or np.linalg.cond(H) > self.max_hessian_condition:
+                return self._finalize_result(ICPResult(
+                    transformation=best_transformation,
+                    use_transformation=False,
+                    reason="Ill-conditioned Hessian",
+                    mean_error=best_mean_error,
+                    n_iterations=self.stop_condition.iteration,
+                    n_correspondences=n_corresp_best_iter
+                ), extended=True)
+            
+            self.t_prepare_system = time.perf_counter() - start_t_prepare_system
+
+            # Compute least Squares Solution
+            start_t_solve_least_squares = time.perf_counter()
+            dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
+            
+            # Safety check for dtransformation
+            if not np.all(np.isfinite(dtransformation)):
+                return self._finalize_result(ICPResult(
+                    transformation=best_transformation,
+                    use_transformation=False,
+                    reason="Non-finite transformation update",
+                    mean_error=best_mean_error,
+                    n_iterations=self.stop_condition.iteration,
+                    n_correspondences=n_corresp_best_iter
+                ), extended=True)
+
+            # Update transformation 
+            # This must be done in a multiplicative way to ensure proper handling of rotations 
+            T = self.vec3_to_mat3(transformation)
+            dT = self.vec3_to_mat3(dtransformation)
+            T = dT @ T
+            transformation = self.mat3_to_vec3(T)     
+
+            self.t_solve_least_squares = time.perf_counter() - start_t_solve_least_squares
+
+            # transformation += dtransformation
+
+            # # Normalize angles
+            # transformation[self.IDX_THETA] = atan2(sin(transformation[self.IDX_THETA]), cos(transformation[self.IDX_THETA])) 
+                           
+            # Update rotation and translation matrix
+            rotation_matrix= self.compute_rotation_matrix(transformation[self.IDX_THETA])
+            translation= transformation[0:self.IDX_THETA]
+            
+            # Transform new data points by rotation and translation 
+            latest_new_data_T= np.dot(rotation_matrix, new_data_pointpairs.T) + translation
+            latest_new_data= latest_new_data_T.T
+
+            # Compute mean err metric for stop condition check
+            if np.isfinite(squared_error):
+                mean_err = squared_error / n_correspond
+            else:
+                mean_err = inf
+
+            # Track best iteration 
+            if mean_err < best_mean_error:
+                best_mean_error = mean_err
+                best_transformation = transformation.copy()
+                n_corresp_best_iter = n_correspond
+            
+            # Append data to lists
+            self.transformed_new_data_list.append(latest_new_data)
+            self.list_of_cleaned_corresp.append(cleaned_corresp)
+            self.list_of_cleaned_corresp_numb.append(len(cleaned_corresp))
+            # self.list_of_corresp_numb.append(len(correspondences))
+            self.squared_error_list.append(squared_error)
+            self.transformation_parameter_list.append(transformation.copy())
+        
+        # Append last correspondence
+        if self.list_of_cleaned_corresp:
+            self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
+            self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
+            # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
+
+        # Final safety checks
+        if not np.isfinite(best_mean_error):
+            return self._finalize_result(ICPResult(
+                transformation=best_transformation,
+                use_transformation=False,
+                reason="Infinite mean error",
+                mean_error=best_mean_error,
+                n_iterations=self.stop_condition.iteration,
+                n_correspondences=n_corresp_best_iter
+            ), extended=True)
+    
+        # Rejact large jumps in transofrmation
+        trans_norm = np.linalg.norm(best_transformation[:2])
+        rot = abs(best_transformation[2,0])
+
+        # Check if translation and rotation jump are too large -> reject
+        if trans_norm > self.max_translation_jump or rot > self.max_rotation_jump:
+            return self._finalize_result(ICPResult(
+                transformation=best_transformation,
+                use_transformation=False,
+                reason="Best Transformation too large",
+                mean_error=best_mean_error,
+                n_iterations=self.stop_condition.iteration,
+                n_correspondences=n_corresp_best_iter
+            ), extended=True)
+
+        # Reject high residual error using explicit configurable threshold.
+        if best_mean_error > self.max_acceptable_mean_error:
+            return self._finalize_result(ICPResult(
+                transformation=best_transformation,
+                use_transformation=False,
+                reason="Best mean error too large",
+                mean_error=best_mean_error,
+                n_iterations=self.stop_condition.iteration,
+                n_correspondences=n_corresp_best_iter
+            ), extended=True)
+
+        return self._finalize_result(ICPResult(
+            transformation=best_transformation,
+            use_transformation=True,
+            reason="All safety checks passed",
+            mean_error=best_mean_error,
+            n_iterations=self.stop_condition.iteration,
+            n_correspondences=n_corresp_best_iter
+        ), extended=True)
+
+
+    def find_transformation_copy(
             self, 
             new_data_pointpairs: np.ndarray, 
             true_data_pointpairs: np.ndarray
