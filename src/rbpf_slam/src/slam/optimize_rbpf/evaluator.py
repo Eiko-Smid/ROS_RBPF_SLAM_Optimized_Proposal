@@ -44,6 +44,19 @@ class StepResult:
     particle_weight_mean: Optional[float] = None
     step_duration: Optional[float] = None
     
+    # Scan matcher time durations
+    time_duration_scan_matching: Optional[float] = None
+    time_duration_prediction: Optional[float] = None
+    time_duration_map_extraction: Optional[float] = None
+    time_duration_correct_pose: Optional[float] = None
+
+    # ICP time durations
+    t_downsampling_pointcloud: Optional[float] = None
+    t_compute_normal: Optional[float] = None
+    t_outlier_rejection: Optional[float] = None
+    t_prepare_system: Optional[float] = None
+    t_solve_least_squares: Optional[float] = None
+    
     trans_err_mu_true: Optional[float] = None
     rot_err_mu_true: Optional[float] = None
     pose_err_mu_true: Optional[float] = None
@@ -456,6 +469,19 @@ class RBPFEvaluator:
         n_raw_map_points = None
         n_used_map_points = None
         map_point_keep_ratio = None
+        
+        # Scan mather time durations
+        time_duration_scan_matching = None
+        time_duration_prediction = None
+        time_duration_map_extraction = None
+        time_duration_correct_pose = None
+
+        # ICP time durations
+        t_downsampling_pointcloud = None
+        t_compute_normal = None
+        t_outlier_rejection = None
+        t_prepare_system = None
+        t_solve_least_squares = None
 
         # Measurement model counter values
         # Proposal
@@ -523,7 +549,30 @@ class RBPFEvaluator:
             # Extract scan matcher info
             scan_matcher_info = proposal_metrics.get("scan_matcher_info")
             if isinstance(scan_matcher_info, dict):
+                # Extract scan matcher info
                 raw_map_points_val = scan_matcher_info.get("map_points_count")
+                t_scan_matching_val = scan_matcher_info.get("time_duration_scan_matching")
+                t_prediction_val = scan_matcher_info.get("time_duration_prediction")
+                t_map_extraction_val = scan_matcher_info.get("time_duration_map_extraction")
+                t_correct_pose_val = scan_matcher_info.get("time_duration_correct_pose")
+
+                # Extract icp timings
+                t_downsampling_pointcloud_val = scan_matcher_info.get("t_downsampling_pointcloud")
+                t_compute_normal_val = scan_matcher_info.get("t_compute_normals")
+                t_outlier_rejection_val = scan_matcher_info.get("t_outlier_rejection")
+                t_prepare_system_val = scan_matcher_info.get("t_prepare_system")
+                t_solve_least_squares_val = scan_matcher_info.get("t_solve_least_squares")     
+
+                if t_downsampling_pointcloud_val is not None and np.isfinite(t_downsampling_pointcloud_val):
+                    t_downsampling_pointcloud = float(t_downsampling_pointcloud_val)
+                if t_compute_normal_val is not None and np.isfinite(t_compute_normal_val):
+                    t_compute_normal = float(t_compute_normal_val)
+                if t_outlier_rejection_val is not None and np.isfinite(t_outlier_rejection_val):
+                    t_outlier_rejection = float(t_outlier_rejection_val)
+                if t_prepare_system_val is not None and np.isfinite(t_prepare_system_val):
+                    t_prepare_system = float(t_prepare_system_val)
+                if t_solve_least_squares_val is not None and np.isfinite(t_solve_least_squares_val):
+                    t_solve_least_squares = float(t_solve_least_squares_val)           
 
                 if scan_matcher_info.get("n_points_true_data") is not None:
                     used_map_points_val = scan_matcher_info.get("n_points_true_data")
@@ -538,6 +587,15 @@ class RBPFEvaluator:
 
                 if n_used_map_points is not None and n_raw_map_points is not None:
                     map_point_keep_ratio = float(n_used_map_points) / float(max(n_raw_map_points, 1))
+
+                if t_scan_matching_val is not None and np.isfinite(t_scan_matching_val):
+                    time_duration_scan_matching = float(t_scan_matching_val)
+                if t_prediction_val is not None and np.isfinite(t_prediction_val):
+                    time_duration_prediction = float(t_prediction_val)
+                if t_map_extraction_val is not None and np.isfinite(t_map_extraction_val):
+                    time_duration_map_extraction = float(t_map_extraction_val)
+                if t_correct_pose_val is not None and np.isfinite(t_correct_pose_val):
+                    time_duration_correct_pose = float(t_correct_pose_val)
 
             # Compute mu, sm error metrics
             if mu is not None and scan_match_pose is not None:
@@ -887,6 +945,19 @@ class RBPFEvaluator:
             particle_weight_max=float(particle_weight_max) if particle_weight_max is not None else None,
             particle_weight_mean=float(particle_weight_mean) if particle_weight_mean is not None else None,
             step_duration=float(step_duration) if step_duration is not None else None,
+
+            # Scan matcher time durations
+            time_duration_scan_matching=time_duration_scan_matching,
+            time_duration_prediction=time_duration_prediction,
+            time_duration_map_extraction=time_duration_map_extraction,
+            time_duration_correct_pose=time_duration_correct_pose,
+
+            # ICP time durations
+            t_downsampling_pointcloud=t_downsampling_pointcloud,
+            t_compute_normal=t_compute_normal,
+            t_outlier_rejection=t_outlier_rejection,
+            t_prepare_system=t_prepare_system,
+            t_solve_least_squares=t_solve_least_squares,
             
             trans_err_mu_true=trans_err_mu_true,
             rot_err_mu_true=rot_err_mu_true,
@@ -1019,6 +1090,38 @@ class RBPFEvaluator:
         particle_weight_max_values = self._finite_values([s.particle_weight_max for s in step_results if s.particle_weight_max is not None])
         particle_weight_mean_values = self._finite_values([s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None])
         step_durations = self._finite_values([s.step_duration for s in step_results if s.step_duration is not None])
+        
+        # Filter and store time durations scan matching
+        time_duration_scan_matching_values = self._finite_values(
+            [s.time_duration_scan_matching for s in step_results if s.time_duration_scan_matching is not None]
+        )
+        time_duration_prediction_values = self._finite_values(
+            [s.time_duration_prediction for s in step_results if s.time_duration_prediction is not None]
+        )
+        time_duration_map_extraction_values = self._finite_values(
+            [s.time_duration_map_extraction for s in step_results if s.time_duration_map_extraction is not None]
+        )
+        time_duration_correct_pose_values = self._finite_values(
+            [s.time_duration_correct_pose for s in step_results if s.time_duration_correct_pose is not None]
+        )
+
+        # Filter and store time durations ICP
+        t_downsampling_pointcloud_values = self._finite_values(
+            [s.t_downsampling_pointcloud for s in step_results if s.t_downsampling_pointcloud is not None]
+        )
+        t_compute_normal_values = self._finite_values(
+            [s.t_compute_normal for s in step_results if s.t_compute_normal is not None]
+        )
+        t_outlier_rejection_values = self._finite_values(
+            [s.t_outlier_rejection for s in step_results if s.t_outlier_rejection is not None]
+        )
+        t_prepare_system_values = self._finite_values(
+            [s.t_prepare_system for s in step_results if s.t_prepare_system is not None]
+        )
+        t_solve_least_squares_values = self._finite_values(
+            [s.t_solve_least_squares for s in step_results if s.t_solve_least_squares is not None]
+        )   
+
         n_raw_map_points_values = self._finite_values(
             [s.n_raw_map_points for s in step_results if s.n_raw_map_points is not None]
         )
@@ -1217,7 +1320,20 @@ class RBPFEvaluator:
             "mean_particle_weight_min": float(np.mean(particle_weight_min_values)) if particle_weight_min_values else 0.0,
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
             "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
+
+            # Mean time durations scan matching
             "mean_step_duration": float(np.mean(step_durations)) if step_durations else float("nan"),
+            "mean_time_duration_scan_matching": float(np.mean(time_duration_scan_matching_values)) if time_duration_scan_matching_values else float("nan"),
+            "mean_time_duration_prediction": float(np.mean(time_duration_prediction_values)) if time_duration_prediction_values else float("nan"),
+            "mean_time_duration_map_extraction": float(np.mean(time_duration_map_extraction_values)) if time_duration_map_extraction_values else float("nan"),
+            "mean_time_duration_correct_pose": float(np.mean(time_duration_correct_pose_values)) if time_duration_correct_pose_values else float("nan"),
+            # Mean time durations ICP
+            "mean_t_downsampling_pointcloud": float(np.mean(t_downsampling_pointcloud_values)) if t_downsampling_pointcloud_values else float("nan"),
+            "mean_t_compute_normal": float(np.mean(t_compute_normal_values)) if t_compute_normal_values else float("nan"),
+            "mean_t_outlier_rejection": float(np.mean(t_outlier_rejection_values)) if t_outlier_rejection_values else float("nan"),
+            "mean_t_prepare_system": float(np.mean(t_prepare_system_values)) if t_prepare_system_values else float("nan"),
+            "mean_t_solve_least_squares": float(np.mean(t_solve_least_squares_values)) if t_solve_least_squares_values else float("nan"),
+
             "median_extracted_map_points": float(np.median(n_raw_map_points_values)) if n_raw_map_points_values else float("nan"),
             "median_map_point_keep_ratio": float(np.median(map_point_keep_ratio_values)) if map_point_keep_ratio_values else float("nan"),
             

@@ -653,7 +653,7 @@ KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
@@ -2109,7 +2109,7 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [20],                         # number of particles in the RBPF
+        "n_particles": [5],                         # number of particles in the RBPF
         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
         # Measurement model params

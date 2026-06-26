@@ -1825,7 +1825,7 @@ class RBPF:
         # Init Process (only first N iterations to get stable map points for scan matcher)
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
-        particle0_prop_metrics = None
+        best_p_prop_metrics = None
 
         # Run initialization process of rbpf
         if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
@@ -1907,6 +1907,7 @@ class RBPF:
         # Normal RBPF update
         # Process each particle
         old_weights = [p.weight for p in self.particles]
+        prop_metrics_list = []
         log_particle_weights = []
 
         # Update particles
@@ -1932,14 +1933,15 @@ class RBPF:
             )
 
             log_particle_weights.append(log_p_weight)
+            prop_metrics_list.append(prop_metrics)
 
             # Store info if scan matcher or its fallback failed
             scan_match_failed_any = scan_match_failed_any or scan_match_failed
             scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
             
             # Use first particle metrics as proposal metrics
-            if i == 0:
-                particle0_prop_metrics = prop_metrics
+            # if i == 0:
+            #     particle0_prop_metrics = prop_metrics
 
         # Normalize weights
         norm_weights = self.normalize_weights(
@@ -1962,7 +1964,10 @@ class RBPF:
         # Weight statistics before optional resampling.
         particle_weight_min = float(np.min(norm_weights))
         particle_weight_max = float(np.max(norm_weights))
-        particle_weight_mean = float(np.mean(norm_weights))        
+        particle_weight_mean = float(np.mean(norm_weights))   
+
+        # Extract proposal metrics from best particle
+        best_p_prop_metrics = prop_metrics_list[best_idx]    
         
         # Attention! particles might already be resampled so don't access self.particals for computing metrics!
         self._last_step_info = {
@@ -1982,7 +1987,7 @@ class RBPF:
             "timing_normalize_neff_s": t_norm_neff_s,
             "timing_metrics_s": t_metrics_s,
             "timing_resampling_s": t_resampling_s,
-            "proposal_metrics": particle0_prop_metrics,
+            "proposal_metrics": best_p_prop_metrics,
             "measurement_model_counters_fallback": self.meas_model_counters_fallback,
         }
 

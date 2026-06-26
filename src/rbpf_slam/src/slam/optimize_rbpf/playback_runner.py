@@ -270,6 +270,45 @@ class PlaybackRunner:
             f"    ogm.update_map: {_to_ms(timing_summary.get('mean_timing_map_update_s'))} ms "
             f"(count={timing_summary.get('timing_map_update_count')})"
         )
+        print("Scan matcher timing summary (mean per run):")
+        print(
+            f"  scan matching (total): "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_scan_matching'))} ms"
+        )
+        print(
+            f"  prediction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_prediction'))} ms"
+        )
+        print(
+            f"  map extraction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_map_extraction'))} ms"
+        )
+        print(
+            f"  correct pose: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_correct_pose'))} ms"
+        )
+
+        print("ICP timing summary (mean per run):")
+        print(
+            f"  downsampling pointcloud: "
+            f"{_to_ms(run_result.summary.get('mean_t_downsampling_pointcloud'))} ms"
+        )
+        print(
+            f"  compute normal: "
+            f"{_to_ms(run_result.summary.get('mean_t_compute_normal'))} ms"
+        )
+        print(
+            f"  outlier rejection: "
+            f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
+        )
+        print(
+            f"  prepare system: "
+            f"{_to_ms(run_result.summary.get('mean_t_prepare_system'))} ms"
+        )
+        print(
+            f"  solve least squares: "
+            f"{_to_ms(run_result.summary.get('mean_t_solve_least_squares'))} ms"
+        )
 
         return run_result
     
@@ -437,6 +476,44 @@ class PlaybackRunner:
         print(
             f"    ogm.update_map: {_to_ms(timing_summary.get('mean_timing_map_update_s'))} ms "
             f"(count={timing_summary.get('timing_map_update_count')})"
+        )
+        print("Scan matcher timing summary (mean per run):")
+        print(
+            f"  scan matching (total): "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_scan_matching'))} ms"
+        )
+        print(
+            f"  prediction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_prediction'))} ms"
+        )
+        print(
+            f"  map extraction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_map_extraction'))} ms"
+        )
+        print(
+            f"  correct pose: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_correct_pose'))} ms"
+        )
+        print("ICP timing summary (mean per run):")
+        print(
+            f"  downsampling pointcloud: "
+            f"{_to_ms(run_result.summary.get('mean_t_downsampling_pointcloud'))} ms"
+        )
+        print(
+            f"  compute normal: "
+            f"{_to_ms(run_result.summary.get('mean_t_compute_normal'))} ms"
+        )
+        print(
+            f"  outlier rejection: "
+            f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
+        )
+        print(
+            f"  prepare system: "
+            f"{_to_ms(run_result.summary.get('mean_t_prepare_system'))} ms"
+        )
+        print(
+            f"  solve least squares: "
+            f"{_to_ms(run_result.summary.get('mean_t_solve_least_squares'))} ms"
         )
 
         return run_result
@@ -606,6 +683,44 @@ class PlaybackRunner:
             f"    ogm.update_map: {_to_ms(timing_summary.get('mean_timing_map_update_s'))} ms "
             f"(count={timing_summary.get('timing_map_update_count')})"
         )
+        print("Scan matcher timing summary (mean per run):")
+        print(
+            f"  scan matching (total): "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_scan_matching'))} ms"
+        )
+        print(
+            f"  prediction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_prediction'))} ms"
+        )
+        print(
+            f"  map extraction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_map_extraction'))} ms"
+        )
+        print(
+            f"  correct pose: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_correct_pose'))} ms"
+        )
+        print("ICP timing summary (mean per run):")
+        print(
+            f"  downsampling pointcloud: "
+            f"{_to_ms(run_result.summary.get('mean_t_downsampling_pointcloud'))} ms"
+        )
+        print(
+            f"  compute normal: "
+            f"{_to_ms(run_result.summary.get('mean_t_compute_normal'))} ms"
+        )
+        print(
+            f"  outlier rejection: "
+            f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
+        )
+        print(
+            f"  prepare system: "
+            f"{_to_ms(run_result.summary.get('mean_t_prepare_system'))} ms"
+        )
+        print(
+            f"  solve least squares: "
+            f"{_to_ms(run_result.summary.get('mean_t_solve_least_squares'))} ms"
+        )
 
         return run_result
 
@@ -767,6 +882,45 @@ class PlaybackRunner:
         print(
             f"    ogm.update_map: {_to_ms(timing_summary.get('mean_timing_map_update_s'))} ms "
             f"(count={timing_summary.get('timing_map_update_count')})"
+        )
+        print("Scan matcher timing summary (mean per run):")
+        print(
+            f"  scan matching (total): "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_scan_matching'))} ms"
+        )
+        print(
+            f"  prediction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_prediction'))} ms"
+        )
+        print(
+            f"  map extraction: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_map_extraction'))} ms"
+        )
+        print(
+            f"  correct pose: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_correct_pose'))} ms"
+        )
+
+        print("ICP timing summary (mean per run):")
+        print(
+            f"  downsampling pointcloud: "
+            f"{_to_ms(run_result.summary.get('mean_t_downsampling_pointcloud'))} ms"
+        )
+        print(
+            f"  compute normal: "
+            f"{_to_ms(run_result.summary.get('mean_t_compute_normal'))} ms"
+        )
+        print(
+            f"  outlier rejection: "
+            f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
+        )
+        print(
+            f"  prepare system: "
+            f"{_to_ms(run_result.summary.get('mean_t_prepare_system'))} ms"
+        )
+        print(
+            f"  solve least squares: "
+            f"{_to_ms(run_result.summary.get('mean_t_solve_least_squares'))} ms"
         )
 
         return run_result

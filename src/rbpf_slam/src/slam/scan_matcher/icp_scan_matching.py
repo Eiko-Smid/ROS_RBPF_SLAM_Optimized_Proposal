@@ -17,7 +17,6 @@ from heapq import heappush, heappop
 
 
 '''
-
 Additonal TODOs for ICP implementation:
 
 1) Add counter for each stop reason in icp (Done)
@@ -421,7 +420,14 @@ class IterativeClosestPoint():
             "best_transf_too_large": 0,
             "best_mean_err_too_large": 0,
         }
-        self.last_result_reason = None        
+        self.last_result_reason = None    
+
+        # Add time measurements
+        self.t_downsampling_pointcloud = None
+        self.t_compute_normals = None
+        self.t_outlier_rejection = None
+        self.t_prepare_system = None
+        self.t_solve_least_squares = None
 
         # Store infos in members
         self.transformed_new_data_list = []
@@ -459,28 +465,17 @@ class IterativeClosestPoint():
         return result
 
 
-    # def register_external_failure(self, reason: str) -> None:
-    #     """
-    #     Register a scan-matching failure that happens before ICP iterations start.
-
-    #     This keeps legacy counters and stop_reason_counts aligned with caller-level
-    #     scan_match_failed statistics.
-    #     """
-    #     if not reason:
-    #         return
-    #     self._register_result_reason(reason)
-    #     self.stop_condition.stop_reason = reason
-    #     self.store_info(extended=False)
-    #     self.stop_condition.reset()
-
-
     def store_info(self, extended: bool = False):
         '''
         Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
         '''
-        # Store stop condition info and general icp info
+        # Store stop condition info 
         self.stop_condition.store_info()
+
+        # Reset icp info
         self.info = dict(self.stop_condition.get_info())
+
+        # Update icp info
         self.info["max_correspondence_distance"] = self.max_correspond_dist
         self.info["min_points"] = self.min_points
         self.info["min_corresp"] = self.min_corresp
@@ -496,6 +491,13 @@ class IterativeClosestPoint():
         self.info["n_points_true_after_spatial_downsampling"] = self.n_points_true_after_spatial_downsampling
         self.info["last_result_reason"] = self.last_result_reason
         self.info["stop_reason_counts"] = dict(self.reason_counts)
+
+        # Time measurements
+        self.info["t_downsampling_pointcloud"] = self.t_downsampling_pointcloud
+        self.info["t_compute_normals"] = self.t_compute_normals
+        self.info["t_outlier_rejection"] = self.t_outlier_rejection
+        self.info["t_prepare_system"] = self.t_prepare_system
+        self.info["t_solve_least_squares"] = self.t_solve_least_squares
 
         # Add legacy counters to info  
         for key, value in self.legacy_counters.items():
@@ -1231,6 +1233,13 @@ class IterativeClosestPoint():
 
         # number of correspondences from best iteration
         n_corresp_best_iter = 0     
+
+        # Init timings
+        self.t_downsampling_pointcloud = 0.0
+        self.t_compute_normals = 0.0
+        self.t_outlier_rejection = 0.0
+        self.t_prepare_system = 0.0
+        self.t_solve_least_squares = 0.0
         
         # Lists to store results
         self.squared_error_list= []
@@ -1267,6 +1276,7 @@ class IterativeClosestPoint():
 
 
         # Downsampling
+        start_t_downsampling = time.perf_counter()
         if not self.skip_downsampling and true_data_pointpairs.shape[0] > self.max_n_points:
             # Downsample points with geometrically relavance      
             true_pointcloud_downsampled_geometrically = self.downsample_pointcloud_spatial(
@@ -1279,7 +1289,7 @@ class IterativeClosestPoint():
                 pointcloud=true_pointcloud_downsampled_geometrically,
                 max_n_points=self.max_n_points
             )
-
+            
         # get number of points after downsampling for logging
         if true_pointcloud_downsampled_geometrically is not None:
             self.n_points_true_after_spatial_downsampling = true_pointcloud_downsampled_geometrically.shape[0]
@@ -1297,8 +1307,9 @@ class IterativeClosestPoint():
                 n_correspondences=0
             ), extended=True)
 
+        self.t_downsampling_pointcloud = time.perf_counter() - start_t_downsampling
         
-        # Train Nearest Neighbor with true data points 
+        # Train Nearest Neighbor with true data points         
         self.neighbor.fit(true_data_pointpairs)
         
         # Compute normals of true data points
@@ -1308,10 +1319,13 @@ class IterativeClosestPoint():
             true_data_pointpairs,
             n_neighbors=n_neighbors_normals,
         )
+        
+        start_t_compute_normals = time.perf_counter()
         true_data_normals = compute_normals_numba(
             true_data_pointpairs,
             indices_normal
         )
+        self.t_compute_normals = time.perf_counter() - start_t_compute_normals
 
         # Reset stop condition
         self.stop_condition.reset()
@@ -1324,7 +1338,8 @@ class IterativeClosestPoint():
             # Find Nearest Neighbor by euclidean distance
             distances, corresp_new_data = self.neighbor.kneighbors(latest_new_data, n_neighbors=1)
             
-            # Clean correspondences by outlier rejection
+            # Clean correspondences by outlier rejection 
+            start_t_outlier_rejection = time.perf_counter()           
             cleaned_corresp, sum_error = self.vectorized_outlier_rejection(                
                 distances=distances,
                 indices=corresp_new_data,
@@ -1350,8 +1365,11 @@ class IterativeClosestPoint():
                     # If we end up here might have had good correespondecnes before and wanne use those!
                     self.stop_condition.stop_reason = "Too few correspondences"
                     break
+
+            self.t_outlier_rejection = time.perf_counter() - start_t_outlier_rejection
                 
             # Prepare the system
+            start_t_prepare_system = time.perf_counter()
             H, g, squared_error = self.prepare_system_point_to_plane_vec(
                 transformation,
                 latest_new_data,
@@ -1359,6 +1377,7 @@ class IterativeClosestPoint():
                 cleaned_corresp,
                 true_data_normals,
             )
+            
 
             # Saftey check for H and g
             if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
@@ -1382,9 +1401,12 @@ class IterativeClosestPoint():
                     n_correspondences=n_corresp_best_iter
                 ), extended=True)
             
-            # Compute least Squares Solution
-            dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
+            self.t_prepare_system = time.perf_counter() - start_t_prepare_system
 
+            # Compute least Squares Solution
+            start_t_solve_least_squares = time.perf_counter()
+            dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
+            
             # Safety check for dtransformation
             if not np.all(np.isfinite(dtransformation)):
                 return self._finalize_result(ICPResult(
@@ -1402,6 +1424,8 @@ class IterativeClosestPoint():
             dT = self.vec3_to_mat3(dtransformation)
             T = dT @ T
             transformation = self.mat3_to_vec3(T)     
+
+            self.t_solve_least_squares = time.perf_counter() - start_t_solve_least_squares
 
             # transformation += dtransformation
 
