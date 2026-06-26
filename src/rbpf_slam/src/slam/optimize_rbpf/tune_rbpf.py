@@ -2903,10 +2903,10 @@ def main():
     # rbpf_tuning_pipeline()
 
     # RBPF tuning pipeline with RBPF step parallelization (threading)
-    rbpf_tuning_pipeline_threading()
+    # rbpf_tuning_pipeline_threading()
 
     # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    # rbpf_tuning_pipeline_multiprocessing()
+    rbpf_tuning_pipeline_multiprocessing()
     
     
 
