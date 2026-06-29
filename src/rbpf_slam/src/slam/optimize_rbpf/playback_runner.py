@@ -137,6 +137,10 @@ class PlaybackRunner:
         #     f"Running RBPF with params: {params.tag} "
         #     f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
         # )
+
+        # Test numba icp functions
+        rbpf.particles[0].scan_matcher.icp.test_prepare_system_numba_against_numpy()
+        
         
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
@@ -306,14 +310,17 @@ class PlaybackRunner:
             f"  compute normal: "
             f"{_to_ms(run_result.summary.get('mean_t_compute_normal'))} ms"
         )
-        print(
-            f"  outlier rejection: "
-            f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
-        )
+        
         print(
             f"  find nn outlier rejection: "
             f"{_to_ms(run_result.summary.get('mean_t_find_nn_outlier_rejec'))} ms"
         )
+
+        print(
+            f"  outlier rejection: "
+            f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
+        )
+        
         print(
             f"  prepare system: "
             f"{_to_ms(run_result.summary.get('mean_t_prepare_system'))} ms"

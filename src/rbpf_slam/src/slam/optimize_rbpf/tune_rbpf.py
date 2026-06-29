@@ -33,6 +33,8 @@ from ..rbpf.scan_match_factory import (
     ScanMatchFactory
 )
 
+from ..scan_matcher.icp_scan_matching import warmup_numba_functions
+
 from .evaluator import RBPFEvaluator
 from .playback_runner import PlaybackRunner, RawOdometryPropagator
 from .scorer import RunScorer
@@ -2899,6 +2901,9 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 
 def main():
+    # Initialize numba functions
+    warmup_numba_functions()
+
     # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
     # rbpf_tuning_pipeline()
 
