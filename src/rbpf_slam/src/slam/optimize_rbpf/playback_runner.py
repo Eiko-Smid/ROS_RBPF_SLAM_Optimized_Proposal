@@ -287,8 +287,17 @@ class PlaybackRunner:
             f"  correct pose: "
             f"{_to_ms(run_result.summary.get('mean_time_duration_correct_pose'))} ms"
         )
+        
 
         print("ICP timing summary (mean per run):")
+        print(
+            f"  init icp transform: "
+            f"{_to_ms(run_result.summary.get('mean_t_init_icp_trans'))} ms"
+        )
+        print(
+            f"  init and train nn tree normals: "
+            f"{_to_ms(run_result.summary.get('mean_t_init_and_train_nn_tree_normals'))} ms"
+        )
         print(
             f"  downsampling pointcloud: "
             f"{_to_ms(run_result.summary.get('mean_t_downsampling_pointcloud'))} ms"
@@ -302,12 +311,29 @@ class PlaybackRunner:
             f"{_to_ms(run_result.summary.get('mean_t_outlier_rejection'))} ms"
         )
         print(
+            f"  find nn outlier rejection: "
+            f"{_to_ms(run_result.summary.get('mean_t_find_nn_outlier_rejec'))} ms"
+        )
+        print(
             f"  prepare system: "
             f"{_to_ms(run_result.summary.get('mean_t_prepare_system'))} ms"
         )
         print(
             f"  solve least squares: "
             f"{_to_ms(run_result.summary.get('mean_t_solve_least_squares'))} ms"
+        )
+        print(
+            f"  transf update and results: "
+            f"{_to_ms(run_result.summary.get('mean_t_transf_update_and_results'))} ms"
+        )
+        print(
+            f"  find trans total: "
+            f"{_to_ms(run_result.summary.get('mean_t_find_trans'))} ms"
+        )
+
+        print(
+            f"  update pose: "
+            f"{_to_ms(run_result.summary.get('mean_time_duration_update_pose'))} ms"
         )
 
         return run_result

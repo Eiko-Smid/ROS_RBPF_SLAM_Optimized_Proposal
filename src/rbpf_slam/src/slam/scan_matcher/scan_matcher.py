@@ -56,6 +56,7 @@ class ScanMatcher():
         self.last_t_prediction_s = None
         self.last_t_map_extraction_s = None
         self.last_t_correct_pose_s = None
+        self.last_t_update_pose = None
 
 
     def get_pose(self) -> Pose2D:
@@ -124,6 +125,7 @@ class ScanMatcher():
         info["time_duration_map_extraction"] = self.last_t_map_extraction_s
         # TODO: Replace this with useful thing. Dont use timing to detect this
         info["time_duration_correct_pose"] = self.last_t_correct_pose_s
+        info["time_duration_update_pose"] = self.last_t_update_pose
         return info
     
 
@@ -239,10 +241,12 @@ class ScanMatcher():
             return None 
 
         # Transform pose -> Correction
+        t_update_pose = time.perf_counter()
         pose = self.icp.correct_pose(
             pose=pose,
             transf_param=result.transformation,
         )
+        self.last_t_update_pose = time.perf_counter() - t_update_pose
 
         return pose
 
@@ -292,6 +296,7 @@ class ScanMatcher():
         self.last_t_prediction_s = None
         self.last_t_map_extraction_s = None
         self.last_t_correct_pose_s = None
+        self.last_t_update_pose = None
 
         # Predict psoe based on wheel encoder information
         t_prediction_start = time.perf_counter()

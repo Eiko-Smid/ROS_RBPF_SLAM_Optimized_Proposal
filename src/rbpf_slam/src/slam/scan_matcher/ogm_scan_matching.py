@@ -1386,17 +1386,16 @@ class OGM:
         return (x, y)    
 
 
-
     #_______________________________________________________________________________________________________________
     # Main Algorithm
     #_______________________________________________________________________________________________________________
 
     def find_reflecting_grid_cell(self, measurement: Tuple[float, float], pose: Tuple[float, float, float]) -> Optional[Tuple[int, int]]:
-        '''Gets a (range, bearing) measurement and a (x, y, heading) pose and calculates 
-        the indices of the reflecting grid cell. Also checks if the measurement range is 
-        in the area of the sensor range and if the range is infinite. If there is no 
-        plausible measurement, then the function return None, otherwise the reflected 
-        grid cell.'''
+        '''
+        Gets a (range, bearing) measurement and a (x, y, heading) pose and calculates the indices of the reflecting grid
+        cell. Also checks if the measurement range is in the area of the sensor range and if the range is infinite. If 
+        there is no plausible measurement, then the function return None, otherwise the reflected grid cell.
+        '''
         x, y, heading= pose
         range, bearing= measurement
         reflecting_cell= ()
@@ -1420,8 +1419,10 @@ class OGM:
     
     @staticmethod
     def bresenham_line_drawing(start_grid_idx: Tuple[int, int], end_grid_idx: Tuple[int, int]) -> List[Tuple[int, int]]:
-        '''Calculates all cell indices between start_grid_idx and end_grid_idx cell. 
-        Input values are indices of first and last grid (line, column) (assuming integers).'''
+        '''
+        Calculates all cell indices between start_grid_idx and end_grid_idx cell. Input values are indices of first and 
+        last grid (line, column) (assuming integers).
+        '''
         #  y= lines, x = column 
         y_start, x_start= start_grid_idx
         y_end, x_end= end_grid_idx

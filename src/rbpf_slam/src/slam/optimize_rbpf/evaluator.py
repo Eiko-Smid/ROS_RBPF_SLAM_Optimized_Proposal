@@ -49,13 +49,19 @@ class StepResult:
     time_duration_prediction: Optional[float] = None
     time_duration_map_extraction: Optional[float] = None
     time_duration_correct_pose: Optional[float] = None
+    time_duration_update_pose: Optional[float] = None
 
     # ICP time durations
+    t_init_icp_trans: Optional[float] = None
+    t_init_and_train_nn_tree_normals: Optional[float] = None
     t_downsampling_pointcloud: Optional[float] = None
     t_compute_normal: Optional[float] = None
     t_outlier_rejection: Optional[float] = None
+    t_find_nn_outlier_rejec: Optional[float] = None
     t_prepare_system: Optional[float] = None
     t_solve_least_squares: Optional[float] = None
+    t_transf_update_and_results: Optional[float] = None
+    t_find_trans: Optional[float] = None
     
     trans_err_mu_true: Optional[float] = None
     rot_err_mu_true: Optional[float] = None
@@ -475,13 +481,19 @@ class RBPFEvaluator:
         time_duration_prediction = None
         time_duration_map_extraction = None
         time_duration_correct_pose = None
+        time_duration_update_pose = None
 
         # ICP time durations
+        t_init_icp_trans = None
+        t_init_and_train_nn_tree_normals = None
         t_downsampling_pointcloud = None
         t_compute_normal = None
         t_outlier_rejection = None
+        t_find_nn_outlier_rejec = None
         t_prepare_system = None
         t_solve_least_squares = None
+        t_transf_update_and_results = None
+        t_find_trans = None
 
         # Measurement model counter values
         # Proposal
@@ -555,13 +567,24 @@ class RBPFEvaluator:
                 t_prediction_val = scan_matcher_info.get("time_duration_prediction")
                 t_map_extraction_val = scan_matcher_info.get("time_duration_map_extraction")
                 t_correct_pose_val = scan_matcher_info.get("time_duration_correct_pose")
+                t_update_pose_val = scan_matcher_info.get("time_duration_update_pose")
 
                 # Extract icp timings
+                t_init_icp_trans_val = scan_matcher_info.get("t_init_icp_trans")
+                t_init_and_train_nn_tree_normals_val = scan_matcher_info.get("t_init_and_train_nn_tree_normals")
                 t_downsampling_pointcloud_val = scan_matcher_info.get("t_downsampling_pointcloud")
                 t_compute_normal_val = scan_matcher_info.get("t_compute_normals")
                 t_outlier_rejection_val = scan_matcher_info.get("t_outlier_rejection")
+                t_find_nn_outlier_rejec_val = scan_matcher_info.get("t_find_nn_outlier_rejec")
                 t_prepare_system_val = scan_matcher_info.get("t_prepare_system")
                 t_solve_least_squares_val = scan_matcher_info.get("t_solve_least_squares")     
+                t_transf_update_and_results_val = scan_matcher_info.get("t_transf_update_and_results")
+                t_find_trans_val = scan_matcher_info.get("t_find_trans")
+
+                if t_init_icp_trans_val is not None and np.isfinite(t_init_icp_trans_val):
+                    t_init_icp_trans = float(t_init_icp_trans_val)
+                if t_init_and_train_nn_tree_normals_val is not None and np.isfinite(t_init_and_train_nn_tree_normals_val):
+                    t_init_and_train_nn_tree_normals = float(t_init_and_train_nn_tree_normals_val)
 
                 if t_downsampling_pointcloud_val is not None and np.isfinite(t_downsampling_pointcloud_val):
                     t_downsampling_pointcloud = float(t_downsampling_pointcloud_val)
@@ -569,10 +592,16 @@ class RBPFEvaluator:
                     t_compute_normal = float(t_compute_normal_val)
                 if t_outlier_rejection_val is not None and np.isfinite(t_outlier_rejection_val):
                     t_outlier_rejection = float(t_outlier_rejection_val)
+                if t_find_nn_outlier_rejec_val is not None and np.isfinite(t_find_nn_outlier_rejec_val):
+                    t_find_nn_outlier_rejec = float(t_find_nn_outlier_rejec_val)
                 if t_prepare_system_val is not None and np.isfinite(t_prepare_system_val):
                     t_prepare_system = float(t_prepare_system_val)
                 if t_solve_least_squares_val is not None and np.isfinite(t_solve_least_squares_val):
-                    t_solve_least_squares = float(t_solve_least_squares_val)           
+                    t_solve_least_squares = float(t_solve_least_squares_val)
+                if t_transf_update_and_results_val is not None and np.isfinite(t_transf_update_and_results_val):
+                    t_transf_update_and_results = float(t_transf_update_and_results_val)
+                if t_find_trans_val is not None and np.isfinite(t_find_trans_val):
+                    t_find_trans = float(t_find_trans_val)
 
                 if scan_matcher_info.get("n_points_true_data") is not None:
                     used_map_points_val = scan_matcher_info.get("n_points_true_data")
@@ -596,6 +625,8 @@ class RBPFEvaluator:
                     time_duration_map_extraction = float(t_map_extraction_val)
                 if t_correct_pose_val is not None and np.isfinite(t_correct_pose_val):
                     time_duration_correct_pose = float(t_correct_pose_val)
+                if t_update_pose_val is not None and np.isfinite(t_update_pose_val):
+                    time_duration_update_pose = float(t_update_pose_val)
 
             # Compute mu, sm error metrics
             if mu is not None and scan_match_pose is not None:
@@ -951,13 +982,19 @@ class RBPFEvaluator:
             time_duration_prediction=time_duration_prediction,
             time_duration_map_extraction=time_duration_map_extraction,
             time_duration_correct_pose=time_duration_correct_pose,
+            time_duration_update_pose=time_duration_update_pose,
 
             # ICP time durations
+            t_init_icp_trans=t_init_icp_trans,
+            t_init_and_train_nn_tree_normals=t_init_and_train_nn_tree_normals,
             t_downsampling_pointcloud=t_downsampling_pointcloud,
             t_compute_normal=t_compute_normal,
             t_outlier_rejection=t_outlier_rejection,
+            t_find_nn_outlier_rejec=t_find_nn_outlier_rejec,
             t_prepare_system=t_prepare_system,
             t_solve_least_squares=t_solve_least_squares,
+            t_transf_update_and_results=t_transf_update_and_results,
+            t_find_trans=t_find_trans,
             
             trans_err_mu_true=trans_err_mu_true,
             rot_err_mu_true=rot_err_mu_true,
@@ -1104,8 +1141,17 @@ class RBPFEvaluator:
         time_duration_correct_pose_values = self._finite_values(
             [s.time_duration_correct_pose for s in step_results if s.time_duration_correct_pose is not None]
         )
+        time_duration_update_pose_values = self._finite_values(
+            [s.time_duration_update_pose for s in step_results if s.time_duration_update_pose is not None]
+        )
 
         # Filter and store time durations ICP
+        t_init_icp_trans_values = self._finite_values(
+            [s.t_init_icp_trans for s in step_results if s.t_init_icp_trans is not None]
+        )
+        t_init_and_train_nn_tree_normals_values = self._finite_values(
+            [s.t_init_and_train_nn_tree_normals for s in step_results if s.t_init_and_train_nn_tree_normals is not None]
+        )
         t_downsampling_pointcloud_values = self._finite_values(
             [s.t_downsampling_pointcloud for s in step_results if s.t_downsampling_pointcloud is not None]
         )
@@ -1115,12 +1161,21 @@ class RBPFEvaluator:
         t_outlier_rejection_values = self._finite_values(
             [s.t_outlier_rejection for s in step_results if s.t_outlier_rejection is not None]
         )
+        t_find_nn_outlier_rejec_values = self._finite_values(
+            [s.t_find_nn_outlier_rejec for s in step_results if s.t_find_nn_outlier_rejec is not None]
+        )
         t_prepare_system_values = self._finite_values(
             [s.t_prepare_system for s in step_results if s.t_prepare_system is not None]
         )
         t_solve_least_squares_values = self._finite_values(
             [s.t_solve_least_squares for s in step_results if s.t_solve_least_squares is not None]
-        )   
+        )
+        t_transf_update_and_results_values = self._finite_values(
+            [s.t_transf_update_and_results for s in step_results if s.t_transf_update_and_results is not None]
+        )
+        t_find_trans_values = self._finite_values(
+            [s.t_find_trans for s in step_results if s.t_find_trans is not None]
+        )
 
         n_raw_map_points_values = self._finite_values(
             [s.n_raw_map_points for s in step_results if s.n_raw_map_points is not None]
@@ -1327,12 +1382,18 @@ class RBPFEvaluator:
             "mean_time_duration_prediction": float(np.mean(time_duration_prediction_values)) if time_duration_prediction_values else float("nan"),
             "mean_time_duration_map_extraction": float(np.mean(time_duration_map_extraction_values)) if time_duration_map_extraction_values else float("nan"),
             "mean_time_duration_correct_pose": float(np.mean(time_duration_correct_pose_values)) if time_duration_correct_pose_values else float("nan"),
+            "mean_time_duration_update_pose": float(np.mean(time_duration_update_pose_values)) if time_duration_update_pose_values else float("nan"),
             # Mean time durations ICP
+            "mean_t_init_icp_trans": float(np.mean(t_init_icp_trans_values)) if t_init_icp_trans_values else float("nan"),
+            "mean_t_init_and_train_nn_tree_normals": float(np.mean(t_init_and_train_nn_tree_normals_values)) if t_init_and_train_nn_tree_normals_values else float("nan"),
             "mean_t_downsampling_pointcloud": float(np.mean(t_downsampling_pointcloud_values)) if t_downsampling_pointcloud_values else float("nan"),
             "mean_t_compute_normal": float(np.mean(t_compute_normal_values)) if t_compute_normal_values else float("nan"),
             "mean_t_outlier_rejection": float(np.mean(t_outlier_rejection_values)) if t_outlier_rejection_values else float("nan"),
+            "mean_t_find_nn_outlier_rejec": float(np.mean(t_find_nn_outlier_rejec_values)) if t_find_nn_outlier_rejec_values else float("nan"),
             "mean_t_prepare_system": float(np.mean(t_prepare_system_values)) if t_prepare_system_values else float("nan"),
             "mean_t_solve_least_squares": float(np.mean(t_solve_least_squares_values)) if t_solve_least_squares_values else float("nan"),
+            "mean_t_transf_update_and_results": float(np.mean(t_transf_update_and_results_values)) if t_transf_update_and_results_values else float("nan"),
+            "mean_t_find_trans": float(np.mean(t_find_trans_values)) if t_find_trans_values else float("nan"),
 
             "median_extracted_map_points": float(np.median(n_raw_map_points_values)) if n_raw_map_points_values else float("nan"),
             "median_map_point_keep_ratio": float(np.median(map_point_keep_ratio_values)) if map_point_keep_ratio_values else float("nan"),

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import time
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 
-from numba import njit
+from numba import njit, prange
 import numpy as np
 
 from dataclasses import dataclass
@@ -18,25 +18,6 @@ from scipy.spatial import cKDTree
 from heapq import heappush, heappop
 
 
-'''
-Additonal TODOs for ICP implementation:
-
-1) Add counter for each stop reason in icp (Done)
-- Counters are needed to analyze the icp algorithm and see if some reasons break the algorithm too often or maybe not often enough
-
-2) Define parameters for thresholds that are hardcoded right now (Done)
-
-3) Detect scan matching failing reason (Done)
-
-- Most of the times one of these were the reason:
-    - transformation value was too large
-    - best mean error too large
-
-4)  Repace parameter self.MIN_POINTS = 3 (Done)
-
-- Added min points threshold as well as well as min correspondences threshold.  
-'''
-
 
 @dataclass
 class ICPResult:
@@ -46,6 +27,72 @@ class ICPResult:
     mean_error: float
     n_iterations: int
     n_correspondences: int
+
+
+
+# @njit(cache=True, nogil=True, parallel=True)
+# def compute_normals_numba_parallel(points, indices):
+#     n_points = points.shape[0]
+#     k = indices.shape[1]
+
+#     normals = np.zeros((n_points, 2), dtype=np.float64)
+
+#     for i in prange(n_points):
+#         cx = 0.0
+#         cy = 0.0
+
+#         for j in range(k):
+#             idx = indices[i, j]
+#             cx += points[idx, 0]
+#             cy += points[idx, 1]
+
+#         cx /= k
+#         cy /= k
+
+#         c00 = 0.0
+#         c01 = 0.0
+#         c11 = 0.0
+
+#         for j in range(k):
+#             idx = indices[i, j]
+
+#             dx = points[idx, 0] - cx
+#             dy = points[idx, 1] - cy
+
+#             c00 += dx * dx
+#             c01 += dx * dy
+#             c11 += dy * dy
+
+#         lambda_coeff = c00 + c11
+#         quadratic_const = c00 * c11 - c01 * c01
+
+#         disc = lambda_coeff * lambda_coeff * 0.25 - quadratic_const
+
+#         if disc < 0.0:
+#             disc = 0.0
+
+#         tmp = np.sqrt(disc)
+#         lambda_min = lambda_coeff * 0.5 - tmp
+
+#         vx = c01
+#         vy = lambda_min - c00
+
+#         norm = np.sqrt(vx * vx + vy * vy)
+
+#         if norm <= 1e-12:
+#             if c00 <= c11:
+#                 vx = 1.0
+#                 vy = 0.0
+#             else:
+#                 vx = 0.0
+#                 vy = 1.0
+
+#             norm = 1.0
+
+#         normals[i, 0] = vx / norm
+#         normals[i, 1] = vy / norm
+
+#     return normals
 
 
 @njit(cache=True, nogil=True)
@@ -141,6 +188,219 @@ def compute_normals_numba(points, indices):
         normals[i, 1] = vy / norm
 
     return normals
+
+
+@njit(cache=True, nogil=True)
+def prepare_system_point_to_plane_numba(
+    transformation_parameter: np.ndarray,
+    latest_new_data: np.ndarray,
+    true_data_pointpairs: np.ndarray,
+    correspondences: np.ndarray,
+    true_data_normals: np.ndarray,
+    epsilon: float = 1e-9,
+):
+    """
+    Prepare the weighted point-to-plane least-squares system used by ICP.
+
+    For every valid correspondence, this function computes the point-to-plane
+    residual and its Jacobian. It then accumulates:
+
+        H = sum(weight * J.T @ J)
+        g = sum(weight * J.T * residual)
+
+    The system can later be solved using:
+
+        dtransformation = np.linalg.lstsq(H, -g, rcond=None)[0]
+
+    Parameters
+    ----------
+    transformation_parameter : np.ndarray
+        Current ICP transformation parameters. Expected shape is either
+        (3,) or (3, 1), containing:
+
+            [translation_x, translation_y, rotation_theta]
+
+        Only the rotation angle is required for the Jacobian calculation.
+
+    latest_new_data : np.ndarray
+        Array of shape (N, 2) containing the currently transformed scan points.
+
+    true_data_pointpairs : np.ndarray
+        Array of shape (M, 2) containing the reference/map points.
+
+    correspondences : np.ndarray
+        Integer array of shape (K, 2). Each row contains:
+
+            [index_in_latest_new_data, index_in_true_data_pointpairs]
+
+    true_data_normals : np.ndarray
+        Array of shape (M, 2) containing the normal vector associated with
+        every reference/map point.
+
+    epsilon : float
+        Minimum allowed squared normal magnitude. Normals smaller than this
+        threshold are ignored.
+
+    Returns
+    -------
+    H : np.ndarray
+        Hessian approximation with shape (3, 3).
+
+    g : np.ndarray
+        Gradient vector with shape (3, 1).
+
+    squared_error : float
+        Sum of squared point-to-plane residuals over all valid correspondences.
+
+    Notes
+    -----
+    Invalid correspondences are skipped when:
+
+    - an index is outside the valid array range;
+    - a scan point contains NaN or infinity;
+    - a map point contains NaN or infinity;
+    - a normal contains NaN or infinity;
+    - a normal has near-zero magnitude;
+    - the computed residual or Jacobian is non-finite.
+    """
+
+    # Initialize the Hessian, gradient and accumulated error.
+    H = np.zeros((3, 3), dtype=np.float64)
+    g = np.zeros((3, 1), dtype=np.float64)
+    squared_error = 0.0
+
+    n_correspondences = correspondences.shape[0]
+
+    if n_correspondences == 0:
+        return H, g, squared_error
+
+    # Support both transformation shapes: (3,) and (3, 1).
+    if transformation_parameter.ndim == 1:
+        theta = transformation_parameter[2]
+    else:
+        theta = transformation_parameter[2, 0]
+
+    sin_theta = np.sin(theta)
+    cos_theta = np.cos(theta)
+
+    n_new_points = latest_new_data.shape[0]
+    n_true_points = true_data_pointpairs.shape[0]
+    n_normals = true_data_normals.shape[0]
+
+    # Process every correspondence independently.
+    for correspondence_idx in range(n_correspondences):
+
+        # Extract correspondence indices.
+        i = correspondences[correspondence_idx, 0]
+        j = correspondences[correspondence_idx, 1]
+
+        # Protect against invalid indices.
+        if i < 0 or i >= n_new_points:
+            continue
+
+        if j < 0 or j >= n_true_points or j >= n_normals:
+            continue
+
+        # Current transformed scan point.
+        x = latest_new_data[i, 0]
+        y = latest_new_data[i, 1]
+
+        # Corresponding reference/map point.
+        true_x = true_data_pointpairs[j, 0]
+        true_y = true_data_pointpairs[j, 1]
+
+        # Surface normal of the reference point.
+        normal_x = true_data_normals[j, 0]
+        normal_y = true_data_normals[j, 1]
+
+        # Skip non-finite input values.
+        if not (
+            np.isfinite(x)
+            and np.isfinite(y)
+            and np.isfinite(true_x)
+            and np.isfinite(true_y)
+            and np.isfinite(normal_x)
+            and np.isfinite(normal_y)
+        ):
+            continue
+
+        # Reject zero or nearly-zero normal vectors.
+        normal_squared_norm = (
+            normal_x * normal_x
+            + normal_y * normal_y
+        )
+
+        if normal_squared_norm <= epsilon * epsilon:
+            continue
+
+        # Difference between transformed scan point and map point.
+        diff_x = x - true_x
+        diff_y = y - true_y
+
+        # Point-to-plane residual:
+        #
+        #     e = n.T @ (scan_point - map_point)
+        #
+        normal_error = (
+            normal_x * diff_x
+            + normal_y * diff_y
+        )
+
+        if not np.isfinite(normal_error):
+            continue
+
+        # Robust correspondence weight.
+        weight = 1.0 / (1.0 + normal_error * normal_error)
+
+        # Jacobian with respect to [tx, ty, theta].
+        #
+        # J = [normal_x, normal_y, d_error / d_theta]
+        #
+        jacobian_0 = normal_x
+        jacobian_1 = normal_y
+
+        jacobian_2 = (
+            normal_x * (-x * sin_theta - y * cos_theta)
+            + normal_y * (x * cos_theta - y * sin_theta)
+        )
+
+        if not np.isfinite(jacobian_2):
+            continue
+
+        # Accumulate the symmetric Hessian:
+        #
+        #     H += weight * J.T @ J
+        #
+        H[0, 0] += weight * jacobian_0 * jacobian_0
+        H[0, 1] += weight * jacobian_0 * jacobian_1
+        H[0, 2] += weight * jacobian_0 * jacobian_2
+
+        H[1, 1] += weight * jacobian_1 * jacobian_1
+        H[1, 2] += weight * jacobian_1 * jacobian_2
+
+        H[2, 2] += weight * jacobian_2 * jacobian_2
+
+        # Accumulate the gradient:
+        #
+        #     g += weight * J.T * residual
+        #
+        weighted_error = weight * normal_error
+
+        g[0, 0] += jacobian_0 * weighted_error
+        g[1, 0] += jacobian_1 * weighted_error
+        g[2, 0] += jacobian_2 * weighted_error
+
+        # Accumulate the unweighted squared residual, equivalent to the
+        # previous vectorized implementation.
+        squared_error += normal_error * normal_error
+
+    # Fill the lower half because the Hessian is symmetric.
+    H[1, 0] = H[0, 1]
+    H[2, 0] = H[0, 2]
+    H[2, 1] = H[1, 2]
+
+    return H, g, squared_error
+
 
 
 class ICPStopCondition:
@@ -425,11 +685,22 @@ class IterativeClosestPoint():
         self.last_result_reason = None    
 
         # Add time measurements
-        self.t_downsampling_pointcloud = None
-        self.t_compute_normals = None
-        self.t_outlier_rejection = None
-        self.t_prepare_system = None
-        self.t_solve_least_squares = None
+        self.t_init_icp_transf = 0.0
+        self.t_init_and_train_nn_tree_normals = 0.0
+        self.t_downsampling_pointcloud = 0.0
+        self.t_compute_normals = 0.0
+        self.t_outlier_rejection = 0.0
+        self.t_find_nn_outlier_rejec = 0.0 
+        self.t_prepare_system = 0.0
+        self.t_solve_least_squares = 0.0
+        self.t_transf_update_and_results = 0.0
+        self.t_find_trans = 0.0
+
+        self.count_outlier_rejec = 0
+        self.count_t_find_nn_outlier_rejec = 0
+        self.count_prepare_system = 0
+        self.count_solve_least_squares = 0
+        self.count_transf_update_and_results = 0
 
         # Store infos in members
         self.transformed_new_data_list = []
@@ -467,6 +738,63 @@ class IterativeClosestPoint():
         return result
 
 
+    @staticmethod
+    def _compute_mean_time(time: float, count: Optional[int] = None):
+        if time is None or time <= 0.0 or count is None or count <= 0:
+            return None
+        return time / count
+    
+
+    @staticmethod
+    def _filter_time(time: float):
+        if time is None or time <= 0.0:
+            return None
+        return time
+
+
+    def _evaluate_timings(self):
+        timings = [
+            self.t_init_icp_transf,
+            self.t_init_and_train_nn_tree_normals,
+            self.t_downsampling_pointcloud,
+            self.t_compute_normals,
+            self.t_outlier_rejection,
+            self.t_find_nn_outlier_rejec, 
+            self.t_prepare_system,
+            self.t_solve_least_squares,
+            self.t_transf_update_and_results,
+        ]
+
+        # Filter timings
+        cleaned_timings = [t for t in timings if t is not None]
+
+        if not cleaned_timings:
+            return None
+        
+        # Compute total time for icp step
+        self.t_find_trans = sum(cleaned_timings)
+
+        # Compute mean timings for iteration timings
+        mean_t_outlier_rejec = self._compute_mean_time(self.t_outlier_rejection, self.count_outlier_rejec)
+        mean_t_find_nn_outlier_rejec = self._compute_mean_time(self.t_find_nn_outlier_rejec, self.count_t_find_nn_outlier_rejec)
+        mean_t_prepare_system = self._compute_mean_time(self.t_prepare_system, self.count_prepare_system)
+        mean_t_solve_least_squares = self._compute_mean_time(self.t_solve_least_squares, self.count_solve_least_squares)
+        mean_t_transf_update_and_results = self._compute_mean_time(self.t_transf_update_and_results, self.count_transf_update_and_results)
+        
+        # Store timings
+        self.info["t_init_icp_trans"] = self._filter_time(self.t_init_icp_transf)
+        self.info["t_init_and_train_nn_tree_normals"] = self._filter_time(self.t_init_and_train_nn_tree_normals)
+        self.info["t_downsampling_pointcloud"] = self._filter_time(self.t_downsampling_pointcloud)
+        self.info["t_compute_normals"] = self._filter_time(self.t_compute_normals)
+        self.info["t_outlier_rejection"] = self._filter_time(mean_t_outlier_rejec)
+        self.info["t_find_nn_outlier_rejec"] = self._filter_time(mean_t_find_nn_outlier_rejec)
+        self.info["t_prepare_system"] = self._filter_time(mean_t_prepare_system)
+        self.info["t_solve_least_squares"] = self._filter_time(mean_t_solve_least_squares)
+        self.info["t_transf_update_and_results"] = self._filter_time(mean_t_transf_update_and_results)
+        # Overall timings
+        self.info["t_find_trans"] = self._filter_time(self.t_find_trans)
+                
+
     def store_info(self, extended: bool = False):
         '''
         Stores the current state of the ICP stop condition and other relevant information in the 'info' member variable.
@@ -495,11 +823,7 @@ class IterativeClosestPoint():
         self.info["stop_reason_counts"] = dict(self.reason_counts)
 
         # Time measurements
-        self.info["t_downsampling_pointcloud"] = self.t_downsampling_pointcloud
-        self.info["t_compute_normals"] = self.t_compute_normals
-        self.info["t_outlier_rejection"] = self.t_outlier_rejection
-        self.info["t_prepare_system"] = self.t_prepare_system
-        self.info["t_solve_least_squares"] = self.t_solve_least_squares
+        self._evaluate_timings()
 
         # Add legacy counters to info  
         for key, value in self.legacy_counters.items():
@@ -1218,6 +1542,7 @@ class IterativeClosestPoint():
                 - n_iterations: int representing the number of ICP iterations performed.
                 - n_correspondences: int representing the number of correspondences of the best iteration
         '''
+        start_t_init_transf = time.perf_counter()
         # Init vars
         # TFs
         transformation = np.zeros((3, 1))
@@ -1236,12 +1561,24 @@ class IterativeClosestPoint():
         # number of correspondences from best iteration
         n_corresp_best_iter = 0     
 
-        # Init timings
+        # Init timings and counter
+        self.t_init_icp_transf = 0.0
+        self.t_init_and_train_nn_tree_normals = 0.0
         self.t_downsampling_pointcloud = 0.0
         self.t_compute_normals = 0.0
         self.t_outlier_rejection = 0.0
+        self.t_find_nn_outlier_rejec = 0.0 
         self.t_prepare_system = 0.0
         self.t_solve_least_squares = 0.0
+        self.t_transf_update_and_results = 0.0
+        self.t_find_trans = 0.0
+        
+        self.count_outlier_rejec = 0
+        self.count_t_find_nn_outlier_rejec = 0
+        self.count_prepare_system = 0
+        self.count_solve_least_squares = 0
+        self.count_transf_update_and_results = 0
+
         
         # Lists to store results
         self.squared_error_list= []
@@ -1260,6 +1597,8 @@ class IterativeClosestPoint():
         new_data_pointpairs = self.sanitize_pointcloud(new_data_pointpairs)
         true_data_pointpairs = self.sanitize_pointcloud(true_data_pointpairs)
         true_pointcloud_downsampled_geometrically = None
+
+        self.t_init_icp_transf = time.perf_counter() - start_t_init_transf
 
         # Check if we have enough points for icp
         if (
@@ -1298,6 +1637,8 @@ class IterativeClosestPoint():
 
         self.n_points_true_after_subsampling = true_data_pointpairs.shape[0]
 
+        self.t_downsampling_pointcloud = time.perf_counter() - start_t_downsampling
+
         if true_data_pointpairs.shape[0] < self.min_points:
             self.stop_condition.stop_reason = "Too few input points"
             return self._finalize_result(ICPResult(
@@ -1309,24 +1650,26 @@ class IterativeClosestPoint():
                 n_correspondences=0
             ), extended=True)
 
-        self.t_downsampling_pointcloud = time.perf_counter() - start_t_downsampling
-        
-        # Train Nearest Neighbor with true data points         
-        # self.neighbor.fit(true_data_pointpairs)
-        
-        # Compute normals of true data points
-        # Guard against sparse local maps: sklearn requires n_neighbors <= n_samples.
+                
+        # Train Nearest Neighbor with true data points 
+        t_start_init_and_train_nn_tree_normals = time.perf_counter()
         n_neighbors_normals = min(self.neighbors, true_data_pointpairs.shape[0])
         self.tree = cKDTree(
             true_data_pointpairs,
-            leafsize=32,
+            leafsize=16,
+            balanced_tree=False,
+            compact_nodes=False, 
+            copy_data=False,
         )
 
         _, indices_normal = self.tree.query(
             true_data_pointpairs,
-            k=n_neighbors_normals,
+            k=n_neighbors_normals
         )
+
+        self.t_init_and_train_nn_tree_normals = time.perf_counter() - t_start_init_and_train_nn_tree_normals
         
+        # Compute normals of true data points
         start_t_compute_normals = time.perf_counter()
         true_data_normals = compute_normals_numba(
             true_data_pointpairs,
@@ -1343,19 +1686,26 @@ class IterativeClosestPoint():
                 break
 
             # Find Nearest Neighbor by euclidean distance
+            start_t_find_nn_outlier_rejec = time.perf_counter()
             distances, corresp_new_data = self.tree.query(
                 latest_new_data,
                 k=1,
+                # eps=0.0,
             )
+            t_find_nn_outlier_rejec = time.perf_counter() - start_t_find_nn_outlier_rejec
+            self.t_find_nn_outlier_rejec += t_find_nn_outlier_rejec
+            self.count_t_find_nn_outlier_rejec += 1
             
             # Clean correspondences by outlier rejection 
-            start_t_outlier_rejection = time.perf_counter()           
+            start_t_outlier_rejection = time.perf_counter()   
             cleaned_corresp, sum_error = self.vectorized_outlier_rejection(
                 distances=distances[:, None],
                 indices=corresp_new_data[:, None],
             )
 
             n_correspond = cleaned_corresp.shape[0]
+            self.t_outlier_rejection += time.perf_counter() - start_t_outlier_rejection
+            self.count_outlier_rejec += 1
 
             # Check if we have enough correspondences to continue
             if n_correspond < self.min_corresp:
@@ -1374,19 +1724,29 @@ class IterativeClosestPoint():
                 else:
                     # If we end up here might have had good correespondecnes before and wanne use those!
                     self.stop_condition.stop_reason = "Too few correspondences"
-                    break
-
-            self.t_outlier_rejection = time.perf_counter() - start_t_outlier_rejection
+                    break            
                 
             # Prepare the system
             start_t_prepare_system = time.perf_counter()
-            H, g, squared_error = self.prepare_system_point_to_plane_vec(
-                transformation,
-                latest_new_data,
-                true_data_pointpairs,
-                cleaned_corresp,
-                true_data_normals,
-            )            
+            # H, g, squared_error = self.prepare_system_point_to_plane_vec(
+            #     transformation,
+            #     latest_new_data,
+            #     true_data_pointpairs,
+            #     cleaned_corresp,
+            #     true_data_normals,
+            # )   
+
+            cleaned_corresp = np.asarray(cleaned_corresp, dtype=np.int64)
+            H, g, squared_error = prepare_system_point_to_plane_numba(
+                transformation_parameter=transformation,
+                latest_new_data=latest_new_data,
+                true_data_pointpairs=true_data_pointpairs,
+                correspondences=cleaned_corresp,
+                true_data_normals=true_data_normals,
+            )
+
+            self.t_prepare_system += time.perf_counter() - start_t_prepare_system
+            self.count_prepare_system += 1
 
             # Saftey check for H and g
             if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
@@ -1408,13 +1768,14 @@ class IterativeClosestPoint():
                     mean_error=best_mean_error,
                     n_iterations=self.stop_condition.iteration,
                     n_correspondences=n_corresp_best_iter
-                ), extended=True)
+                ), extended=True)            
             
-            self.t_prepare_system = time.perf_counter() - start_t_prepare_system
 
             # Compute least Squares Solution
             start_t_solve_least_squares = time.perf_counter()
             dtransformation= np.linalg.lstsq(H, -g, rcond=None)[0]
+            self.t_solve_least_squares += time.perf_counter() - start_t_solve_least_squares
+            self.count_solve_least_squares += 1
             
             # Safety check for dtransformation
             if not np.all(np.isfinite(dtransformation)):
@@ -1429,12 +1790,11 @@ class IterativeClosestPoint():
 
             # Update transformation 
             # This must be done in a multiplicative way to ensure proper handling of rotations 
+            start_t_transf_update_and_results = time.perf_counter()
             T = self.vec3_to_mat3(transformation)
             dT = self.vec3_to_mat3(dtransformation)
             T = dT @ T
-            transformation = self.mat3_to_vec3(T)     
-
-            self.t_solve_least_squares = time.perf_counter() - start_t_solve_least_squares
+            transformation = self.mat3_to_vec3(T)                 
 
             # transformation += dtransformation
 
@@ -1464,7 +1824,7 @@ class IterativeClosestPoint():
             # Append data to lists
             self.transformed_new_data_list.append(latest_new_data)
             self.list_of_cleaned_corresp.append(cleaned_corresp)
-            self.list_of_cleaned_corresp_numb.append(len(cleaned_corresp))
+            self.list_of_cleaned_corresp_numb.append(cleaned_corresp.shape[0])
             # self.list_of_corresp_numb.append(len(correspondences))
             self.squared_error_list.append(squared_error)
             self.transformation_parameter_list.append(transformation.copy())
@@ -1474,6 +1834,9 @@ class IterativeClosestPoint():
             self.list_of_cleaned_corresp.append(self.list_of_cleaned_corresp[-1])
             self.list_of_cleaned_corresp_numb.append(self.list_of_cleaned_corresp_numb[-1])
             # self.list_of_corresp_numb.append(self.list_of_corresp_numb[-1])
+
+        self.t_transf_update_and_results += time.perf_counter() - start_t_transf_update_and_results
+        self.count_transf_update_and_results += 1
 
         # Final safety checks
         if not np.isfinite(best_mean_error):
@@ -1520,6 +1883,7 @@ class IterativeClosestPoint():
             n_iterations=self.stop_condition.iteration,
             n_correspondences=n_corresp_best_iter
         ), extended=True)
+
 
 
     def find_transformation_copy(

@@ -32,6 +32,22 @@ from .scan_match_factory import (
     ScanMatchFactory,
 )
 
+'''
+Future TODos
+
+Delete the following methods:
+
+    - update_particle_without_proposal_pose
+    - step_rbpf_without_proposal_pose
+    - step
+    - update_particle
+
+    - Rename the current sued methods if possible
+
+
+'''
+
+
 INVALID_LOG_LIKELIHOOD = -1.0e12
 FALLBACK_LOG_FLOOR = -80.0
 
