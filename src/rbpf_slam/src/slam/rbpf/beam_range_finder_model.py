@@ -1,7 +1,11 @@
 from typing import List, Tuple
+import os
 
 import numpy as np
-from numba import njit, prange
+from numba import njit
+
+import numba
+
 from math import floor, sqrt, exp, log, pi, erf
 
 from .measurement_model import MeasurementModel
@@ -574,7 +578,7 @@ def raytracing_log_likelihood_numba(
         unknown_ray_count,
         known_free_ray_count,
         unexpected_known_free_count,
-        skipped_beam_count,
+        skipped_beam_count, 
     )
 
 
@@ -623,16 +627,17 @@ def meas_model_likelihood_numba(
     log_likelihoods = np.empty(n_poses, dtype=np.float64)
     mean_abs_errors = np.empty(n_poses, dtype=np.float64)
 
-    # valid_beam_counts = np.empty(n_poses, dtype=np.int64)
-    # map_hit_counts = np.empty(n_poses, dtype=np.int64)
-    # no_map_hit_counts = np.empty(n_poses, dtype=np.int64)
-    # out_of_map_counts = np.empty(n_poses, dtype=np.int64)
-    # unknown_ray_counts = np.empty(n_poses, dtype=np.int64)
-    # known_free_ray_counts = np.empty(n_poses, dtype=np.int64)
-    # unexpected_known_free_counts = np.empty(n_poses, dtype=np.int64)
-    # skipped_beam_counts = np.empty(n_poses, dtype=np.int64)
+    valid_beam_counts = np.empty(n_poses, dtype=np.int64)
+    map_hit_counts = np.empty(n_poses, dtype=np.int64)
+    no_map_hit_counts = np.empty(n_poses, dtype=np.int64)
+    out_of_map_counts = np.empty(n_poses, dtype=np.int64)
+    unknown_ray_counts = np.empty(n_poses, dtype=np.int64)
+    known_free_ray_counts = np.empty(n_poses, dtype=np.int64)
+    unexpected_known_free_counts = np.empty(n_poses, dtype=np.int64)
+    skipped_beam_counts = np.empty(n_poses, dtype=np.int64)
 
     # Define counters
+    call_count = 0
     valid_beam_count = 0
     map_hit_count = 0
     no_map_hit_count = 0
@@ -642,15 +647,15 @@ def meas_model_likelihood_numba(
     unexpected_known_free_count = 0
     skipped_beam_count = 0
 
-    call_count = 0
-    valid_beam_counts = 0
-    map_hit_counts = 0
-    no_map_hit_counts = 0
-    out_of_map_counts = 0
-    unknown_ray_counts = 0
-    known_free_ray_counts = 0
-    unexpected_known_free_counts = 0
-    skipped_beam_counts = 0
+    # call_count = 0
+    # valid_beam_counts = 0
+    # map_hit_counts = 0
+    # no_map_hit_counts = 0
+    # out_of_map_counts = 0
+    # unknown_ray_counts = 0
+    # known_free_ray_counts = 0
+    # unexpected_known_free_counts = 0
+    # skipped_beam_counts = 0
 
 
     for i in range(n_poses):
@@ -659,14 +664,14 @@ def meas_model_likelihood_numba(
             log_likelihoods[i],
             mean_abs_errors[i],
             
-            valid_beam_count,
-            map_hit_count,
-            no_map_hit_count,
-            out_of_map_count,
-            unknown_ray_count,
-            known_free_ray_count,
-            unexpected_known_free_count,
-            skipped_beam_count,
+            valid_beam_counts[i],
+            map_hit_counts[i],
+            no_map_hit_counts[i],
+            out_of_map_counts[i],
+            unknown_ray_counts[i],
+            known_free_ray_counts[i],
+            unexpected_known_free_counts[i],
+            skipped_beam_counts[i],
         ) = raytracing_log_likelihood_numba(
             log_odds_map=log_odds_map,
             shift_x=shift_x,
@@ -702,39 +707,41 @@ def meas_model_likelihood_numba(
             beam_step=beam_step,
             eps=eps,
         )
-        
+
+    # Accumulate counters
+    for i in range(n_poses):
         call_count += 1
-        valid_beam_counts += valid_beam_count
-        map_hit_counts += map_hit_count
-        no_map_hit_counts += no_map_hit_count
-        out_of_map_counts += out_of_map_count
-        unknown_ray_counts += unknown_ray_count
-        known_free_ray_counts += known_free_ray_count
-        unexpected_known_free_counts += unexpected_known_free_count
-        skipped_beam_counts += skipped_beam_count
-    
-    # Accumulate measurement model counters
-    # valid_beam_count = int(np.sum(valid_beam_counts)) 
-    # map_hit_count = int(np.sum(map_hit_counts))
-    # no_map_hit_count = int(np.sum(no_map_hit_counts))
-    # out_of_map_count = int(np.sum(out_of_map_counts))
-    # unknown_ray_count = int(np.sum(unknown_ray_counts))
-    # known_free_ray_count = int(np.sum(known_free_ray_counts))
-    # unexpected_known_free_count = int(np.sum(unexpected_known_free_counts))
-    # skipped_beam_count = int(np.sum(skipped_beam_counts))
+        valid_beam_count += valid_beam_counts[i]
+        map_hit_count += map_hit_counts[i]
+        no_map_hit_count += no_map_hit_counts[i]
+        out_of_map_count += out_of_map_counts[i]
+        unknown_ray_count += unknown_ray_counts[i]
+        known_free_ray_count += known_free_ray_counts[i]
+        unexpected_known_free_count += unexpected_known_free_counts[i]
+        skipped_beam_count += skipped_beam_counts[i]
+
+        # call_count += 1
+        # valid_beam_counts += valid_beam_count
+        # map_hit_counts += map_hit_count
+        # no_map_hit_counts += no_map_hit_count
+        # out_of_map_counts += out_of_map_count
+        # unknown_ray_counts += unknown_ray_count
+        # known_free_ray_counts += known_free_ray_count
+        # unexpected_known_free_counts += unexpected_known_free_count
+
 
     return (
         log_likelihoods,
         mean_abs_errors,
         call_count,
-        valid_beam_counts,
-        map_hit_counts,
-        no_map_hit_counts,
-        out_of_map_counts,
-        unknown_ray_counts,
-        known_free_ray_counts,
-        unexpected_known_free_counts,
-        skipped_beam_counts,
+        valid_beam_count,
+        map_hit_count,
+        no_map_hit_count,
+        out_of_map_count,
+        unknown_ray_count,
+        known_free_ray_count,
+        unexpected_known_free_count,
+        skipped_beam_count
     )
 
 
@@ -962,7 +969,8 @@ class BeamRangeFinderModel(MeasurementModel):
                 "unexpected_known_free_count": 0,
                 "skipped_beam_count": 0,
             }
-        
+    
+        # Compute measurement likelihood for all given poses
         results = meas_model_likelihood_numba(
             log_odds_map=ogm.return_log_odds_map(),
             

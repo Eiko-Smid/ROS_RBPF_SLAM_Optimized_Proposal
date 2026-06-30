@@ -67,6 +67,8 @@ def _init_rbpf_worker(playback_data: PlaybackData) -> None:
 
     _WORKER_SCORER = RunScorer()
 
+    print(f"Worker PID: {os.getpid()}", flush=True)
+
 
 def _run_rbpf_job(job: dict) -> RankedRun:
     """
