@@ -74,7 +74,12 @@ class ProposalEstimator:
 
 
     @staticmethod
-    def sample_poses_deterministic(pose: Pose2D, sigma_xy: float, sigma_theta: float, n_samples_dir: int = 3) -> Tuple[np.ndarray, int]:
+    def sample_poses_deterministic(
+        pose: Pose2D,
+        sigma_xy: float, 
+        sigma_theta: float,
+        n_samples_dir: int = 3
+    ) -> Tuple[np.ndarray, int]:
         # List to store xj
         n_xj = n_samples_dir**3
         samples = np.zeros((n_xj, 3))
@@ -640,20 +645,41 @@ class ProposalEstimator:
 
         # Compute measurement model likelihoods for each sample  
         t_meas_model_start = time.perf_counter()
-        log_likelihoods = np.empty(shape=(samples.shape[0],))
-        for i, sample in enumerate(samples):
-            results = measurement_model.likelihood(
-                pose=sample,
-                measurements=measurements,
-                ogm=particle.scan_matcher.ogm,
-            )
-            # Extract log-likelihood 
-            log_likelihood = results.get("log_likelihood", INVALID_LOG_LIKELIHOOD)
-            log_likelihoods[i] = log_likelihood
+        # log_likelihoods = np.empty(shape=(samples.shape[0],))
+        # for i, sample in enumerate(samples):
+        #     results = measurement_model.likelihood(
+        #         pose=sample,
+        #         measurements=measurements,
+        #         ogm=particle.scan_matcher.ogm,
+        #     )
+        #     # Extract log-likelihood 
+        #     log_likelihood = results.get("log_likelihood", INVALID_LOG_LIKELIHOOD)
+        #     log_likelihoods[i] = log_likelihood
 
-            # Update measurement model counters for diagnostics
-            self.update_measurement_model_counters(results)
-            
+        #     # Update measurement model counters for diagnostics
+        #     self.update_measurement_model_counters(results)
+
+        meas_model_results = measurement_model.likelihood_batch_numba(
+            poses=samples,
+            measurements=measurements,
+            ogm=particle.scan_matcher.ogm
+        )
+
+        # Extract results
+        # Extract likelihood
+        log_likelihoods = meas_model_results[0]
+        mean_abs_errors = meas_model_results[1]
+
+        # Extract counters
+        self.meas_model_counters["call_count"] = meas_model_results[2]
+        self.meas_model_counters["valid_beam_count"] = meas_model_results[3]
+        self.meas_model_counters["map_hit_count"] = meas_model_results[4]
+        self.meas_model_counters["no_map_hit_count"] = meas_model_results[5]
+        self.meas_model_counters["out_of_map_count"] = meas_model_results[6]
+        self.meas_model_counters["unknown_ray_count"] = meas_model_results[7]
+        self.meas_model_counters["known_free_ray_count"] = meas_model_results[8]
+        self.meas_model_counters["unexpected_known_free_count"] = meas_model_results[9]
+                    
         # Convert log-likelihoods to probabilities in save manner
         max_log_likelihood = np.max(log_likelihoods)
 
@@ -673,7 +699,6 @@ class ProposalEstimator:
         else:
             meas_probs = np.exp(log_likelihoods - max_log_likelihood)
                 
-
         # Compute motion probs
         t_motion_model_start = time.perf_counter()
         motion_probs = motion_model.motion_probability_batch(

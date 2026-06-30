@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from math import floor, sqrt, exp, log, pi, erf
 
 from .measurement_model import MeasurementModel
@@ -578,6 +578,167 @@ def raytracing_log_likelihood_numba(
     )
 
 
+@njit(cache=True, nogil=True)
+def meas_model_likelihood_numba(
+    # OGM params
+    log_odds_map: np.ndarray,
+    shift_x: float,
+    shift_y: float,
+    occ_thresh: float,
+    free_thresh: float,
+    
+    grid_resolution: float,
+    
+    min_sensor_range: float,
+    max_sensor_range: float,
+    measurements: np.ndarray,      # shape (N, 2): [range, bearing]
+    
+    poses: np.ndarray,
+    
+    # Occupancy classification
+    unknown_ratio_thresh: float,
+    known_free_ratio_thresh: float,
+
+    # Book beam model params
+    sigma_hit: float,
+    lambda_short: float,
+    w_hit: float,
+    w_short: float,
+    w_max: float,
+    w_rand: float,
+
+    # Default probs for special cases
+    p_unknown: float,
+    p_out_of_map: float,
+    p_unexpected_known_free: float,
+    p_pred_below_min: float,
+
+    # Numerical / scaling
+    alpha_meas: float,
+    beam_step: int,
+    eps: float,
+):
+    # Define results arrays
+    n_poses = poses.shape[0]
+    log_likelihoods = np.empty(n_poses, dtype=np.float64)
+    mean_abs_errors = np.empty(n_poses, dtype=np.float64)
+
+    # valid_beam_counts = np.empty(n_poses, dtype=np.int64)
+    # map_hit_counts = np.empty(n_poses, dtype=np.int64)
+    # no_map_hit_counts = np.empty(n_poses, dtype=np.int64)
+    # out_of_map_counts = np.empty(n_poses, dtype=np.int64)
+    # unknown_ray_counts = np.empty(n_poses, dtype=np.int64)
+    # known_free_ray_counts = np.empty(n_poses, dtype=np.int64)
+    # unexpected_known_free_counts = np.empty(n_poses, dtype=np.int64)
+    # skipped_beam_counts = np.empty(n_poses, dtype=np.int64)
+
+    # Define counters
+    valid_beam_count = 0
+    map_hit_count = 0
+    no_map_hit_count = 0
+    out_of_map_count = 0
+    unknown_ray_count = 0
+    known_free_ray_count = 0
+    unexpected_known_free_count = 0
+    skipped_beam_count = 0
+
+    call_count = 0
+    valid_beam_counts = 0
+    map_hit_counts = 0
+    no_map_hit_counts = 0
+    out_of_map_counts = 0
+    unknown_ray_counts = 0
+    known_free_ray_counts = 0
+    unexpected_known_free_counts = 0
+    skipped_beam_counts = 0
+
+
+    for i in range(n_poses):
+        # Compute raytracing likelihood
+        (
+            log_likelihoods[i],
+            mean_abs_errors[i],
+            
+            valid_beam_count,
+            map_hit_count,
+            no_map_hit_count,
+            out_of_map_count,
+            unknown_ray_count,
+            known_free_ray_count,
+            unexpected_known_free_count,
+            skipped_beam_count,
+        ) = raytracing_log_likelihood_numba(
+            log_odds_map=log_odds_map,
+            shift_x=shift_x,
+            shift_y=shift_y,
+            occ_thresh=occ_thresh,
+            free_thresh=free_thresh,
+            grid_resolution=grid_resolution,
+            
+            min_sensor_range=min_sensor_range,
+            max_sensor_range=max_sensor_range,
+            measurements=measurements,
+            
+            x=poses[i][0],
+            y=poses[i][1],
+            heading=poses[i][2],
+            
+            unknown_ratio_thresh=unknown_ratio_thresh,
+            known_free_ratio_thresh=known_free_ratio_thresh,
+            
+            sigma_hit=sigma_hit,
+            lambda_short=lambda_short,
+            w_hit=w_hit,
+            w_short=w_short,
+            w_max=w_max,
+            w_rand=w_rand,
+            
+            p_unknown=p_unknown,
+            p_out_of_map=p_out_of_map,
+            p_unexpected_known_free=p_unexpected_known_free,
+            p_pred_below_min=p_pred_below_min,
+            
+            alpha_meas=alpha_meas,
+            beam_step=beam_step,
+            eps=eps,
+        )
+        
+        call_count += 1
+        valid_beam_counts += valid_beam_count
+        map_hit_counts += map_hit_count
+        no_map_hit_counts += no_map_hit_count
+        out_of_map_counts += out_of_map_count
+        unknown_ray_counts += unknown_ray_count
+        known_free_ray_counts += known_free_ray_count
+        unexpected_known_free_counts += unexpected_known_free_count
+        skipped_beam_counts += skipped_beam_count
+    
+    # Accumulate measurement model counters
+    # valid_beam_count = int(np.sum(valid_beam_counts)) 
+    # map_hit_count = int(np.sum(map_hit_counts))
+    # no_map_hit_count = int(np.sum(no_map_hit_counts))
+    # out_of_map_count = int(np.sum(out_of_map_counts))
+    # unknown_ray_count = int(np.sum(unknown_ray_counts))
+    # known_free_ray_count = int(np.sum(known_free_ray_counts))
+    # unexpected_known_free_count = int(np.sum(unexpected_known_free_counts))
+    # skipped_beam_count = int(np.sum(skipped_beam_counts))
+
+    return (
+        log_likelihoods,
+        mean_abs_errors,
+        call_count,
+        valid_beam_counts,
+        map_hit_counts,
+        no_map_hit_counts,
+        out_of_map_counts,
+        unknown_ray_counts,
+        known_free_ray_counts,
+        unexpected_known_free_counts,
+        skipped_beam_counts,
+    )
+
+
+
 class BeamRangeFinderModel(MeasurementModel):
     """
     Probabilistic Robotics Beam Range Finder Model for occupancy-grid SLAM.
@@ -775,6 +936,69 @@ class BeamRangeFinderModel(MeasurementModel):
             "unexpected_known_free_count": int(unexpected_known_free_count),
             "skipped_beam_count": int(skipped_beam_count),
         }
+
+
+    def likelihood_batch_numba(
+        self,
+        poses: np.ndarray,
+        measurements: np.ndarray,
+        ogm: OGM,
+    ):
+        measurements_np = np.asarray(measurements, dtype=np.float64)
+
+        # Empty scan -> neutral update.
+        # No measurement information means no weight change.
+        if measurements_np.size == 0:
+            return {
+                "log_likelihood": 0.0,
+                "mean_abs_error": 0.0,
+                "call_count": 0,
+                "valid_beam_count": 0,
+                "map_hit_count": 0,
+                "no_map_hit_count": 0,
+                "out_of_map_count": 0,
+                "unknown_ray_count": 0,
+                "known_free_ray_count": 0,
+                "unexpected_known_free_count": 0,
+                "skipped_beam_count": 0,
+            }
+        
+        results = meas_model_likelihood_numba(
+            log_odds_map=ogm.return_log_odds_map(),
+            
+            shift_x=ogm.shift_x,
+            shift_y=ogm.shift_y,
+            occ_thresh=self.occ_thresh,
+            free_thresh=self.free_thresh,
+            grid_resolution=ogm.grid_resolution_m,
+            
+            min_sensor_range=ogm.min_sensor_range,
+            max_sensor_range=ogm.max_sensor_range,
+            measurements=measurements_np,
+
+            poses=poses,
+            
+            unknown_ratio_thresh=self.unknown_ratio_thresh,
+            known_free_ratio_thresh=self.known_free_ratio_thresh,
+
+            sigma_hit=self.sigma_hit,
+            lambda_short=self.lambda_short,
+            w_hit=self.w_hit,
+            w_short=self.w_short,
+            w_max=self.w_max,
+            w_rand=self.w_rand,
+
+            p_unknown=self.p_unknown,
+            p_out_of_map=self.p_out_of_map,
+            p_unexpected_known_free=self.p_unexpected_known_free,
+            p_pred_below_min=self.p_pred_below_min,
+
+            alpha_meas=self.alpha_meas,
+            beam_step=self.beam_step,
+            eps=self.eps,
+        )
+
+        return results
 
 
     def likelihood_batch(

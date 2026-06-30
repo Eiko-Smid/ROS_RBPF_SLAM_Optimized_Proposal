@@ -8,6 +8,7 @@ from sklearn.neighbors import NearestNeighbors
 
 from slam.scan_matcher.scan_matcher import ScanMatcher
 from slam.infrastructure.defs import Pose2D
+from slam.scan_matcher.ogm_scan_matching import OGM
 
 
 class MeasurementModel(ABC):
@@ -39,6 +40,16 @@ class MeasurementModel(ABC):
         '''
         raise NotImplementedError
     
+
+    @abstractmethod
+    def likelihood_batch_numba(
+        self, 
+        poses: np.ndarray,
+        measurements: List[Tuple[float, float]],
+        ogm: OGM,
+    ):
+        pass    
+
 
     @abstractmethod
     def likelihood_batch(
