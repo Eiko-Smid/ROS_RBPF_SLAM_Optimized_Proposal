@@ -138,8 +138,6 @@ class PlaybackRunner:
         #     f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
         # )
 
-        # Test numba icp functions
-        rbpf.particles[0].scan_matcher.icp.test_prepare_system_numba_against_numpy()
         
         
         for step_idx, step in enumerate(steps):
@@ -291,7 +289,6 @@ class PlaybackRunner:
             f"  correct pose: "
             f"{_to_ms(run_result.summary.get('mean_time_duration_correct_pose'))} ms"
         )
-        
 
         print("ICP timing summary (mean per run):")
         print(
@@ -342,6 +339,33 @@ class PlaybackRunner:
             f"  update pose: "
             f"{_to_ms(run_result.summary.get('mean_time_duration_update_pose'))} ms"
         )
+
+        print("Proposal timing summary (mean per run):")
+        print(
+            f"  sample poses: "
+            f"{_to_ms(run_result.summary.get('mean_t_sample_poses'))} ms"
+        )
+        print(
+            f"  predict poses: "
+            f"{_to_ms(run_result.summary.get('mean_t_pred_poses'))} ms"
+        )
+        print(
+            f"  motion model: "
+            f"{_to_ms(run_result.summary.get('mean_t_motion_model'))} ms"
+        )
+        print(
+            f"  measurement model: "
+            f"{_to_ms(run_result.summary.get('mean_t_meas_model'))} ms"
+        )
+        print(
+            f"  compute proposal params: "
+            f"{_to_ms(run_result.summary.get('mean_t_compute_prop_params'))} ms"
+        )
+        print(
+            f"  sample from proposal: "
+            f"{_to_ms(run_result.summary.get('mean_t_sample_from_prop'))} ms"
+        )
+        
 
         return run_result
     

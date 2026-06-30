@@ -190,6 +190,7 @@ def compute_normals_numba(points, indices):
     return normals
 
 
+# TODO: Delte this, no speedup gained. Also adapt the initalization function and erase it from there!
 @njit(cache=True, nogil=True)
 def prepare_system_point_to_plane_numba(
     transformation_parameter: np.ndarray,
@@ -1924,22 +1925,22 @@ class IterativeClosestPoint():
                 
             # Prepare the system
             start_t_prepare_system = time.perf_counter()
-            # H, g, squared_error = self.prepare_system_point_to_plane_vec(
-            #     transformation,
-            #     latest_new_data,
-            #     true_data_pointpairs,
-            #     cleaned_corresp,
-            #     true_data_normals,
-            # )   
+            H, g, squared_error = self.prepare_system_point_to_plane_vec(
+                transformation,
+                latest_new_data,
+                true_data_pointpairs,
+                cleaned_corresp,
+                true_data_normals,
+            )   
 
-            cleaned_corresp = np.asarray(cleaned_corresp, dtype=np.int64)
-            H, g, squared_error = prepare_system_point_to_plane_numba(
-                transformation_parameter=transformation,
-                latest_new_data=latest_new_data,
-                true_data_pointpairs=true_data_pointpairs,
-                correspondences=cleaned_corresp,
-                true_data_normals=true_data_normals,
-            )
+            # cleaned_corresp = np.asarray(cleaned_corresp, dtype=np.int64)
+            # H, g, squared_error = prepare_system_point_to_plane_numba(
+            #     transformation_parameter=transformation,
+            #     latest_new_data=latest_new_data,
+            #     true_data_pointpairs=true_data_pointpairs,
+            #     correspondences=cleaned_corresp,
+            #     true_data_normals=true_data_normals,
+            # )
 
             self.t_prepare_system += time.perf_counter() - start_t_prepare_system
             self.count_prepare_system += 1
@@ -2406,123 +2407,4 @@ class IterativeClosestPoint():
             n_iterations=self.stop_condition.iteration,
             n_correspondences=n_corresp_best_iter
         ), extended=True)
-
-        
-    def test_prepare_system_numba_against_numpy(self) -> None:
-        """
-        Compare the Numba system preparation against the existing vectorized
-        NumPy implementation using deterministic test data.
-
-        Raises
-        ------
-        RuntimeError
-            If the Hessian, gradient, or squared error differ beyond the selected
-            numerical tolerances.
-        """
-
-        transformation = np.array(
-            [[0.05], [-0.02], [0.1]],
-            dtype=np.float64,
-        )
-
-        latest_new_data = np.ascontiguousarray(
-            [
-                [0.1, 0.2],
-                [1.0, 0.3],
-                [2.1, -0.2],
-                [3.0, 0.4],
-                [4.2, -0.1],
-            ],
-            dtype=np.float64,
-        )
-
-        true_data_pointpairs = np.ascontiguousarray(
-            [
-                [0.0, 0.0],
-                [1.0, 0.0],
-                [2.0, 0.0],
-                [3.0, 0.0],
-                [4.0, 0.0],
-            ],
-            dtype=np.float64,
-        )
-
-        true_data_normals = np.ascontiguousarray(
-            [
-                [0.0, 1.0],
-                [0.0, 1.0],
-                [0.0, 1.0],
-                [0.0, 1.0],
-                [0.0, 1.0],
-            ],
-            dtype=np.float64,
-        )
-
-        correspondences = np.ascontiguousarray(
-            [
-                [0, 0],
-                [1, 1],
-                [2, 2],
-                [3, 3],
-                [4, 4],
-            ],
-            dtype=np.int64,
-        )
-
-        H_numpy, g_numpy, error_numpy = (
-            self.prepare_system_point_to_plane_vec(
-                transformation_parameter=transformation,
-                latest_new_data=latest_new_data,
-                true_data_pointpairs=true_data_pointpairs,
-                correspondences=correspondences,
-                true_data_normals=true_data_normals,
-            )
-        )
-
-        H_numba, g_numba, error_numba = (
-            prepare_system_point_to_plane_numba(
-                transformation_parameter=transformation,
-                latest_new_data=latest_new_data,
-                true_data_pointpairs=true_data_pointpairs,
-                correspondences=correspondences,
-                true_data_normals=true_data_normals,
-            )
-        )
-
-        if not np.allclose(
-            H_numba,
-            H_numpy,
-            rtol=1e-10,
-            atol=1e-12,
-        ):
-            max_difference = np.max(np.abs(H_numba - H_numpy))
-
-            raise RuntimeError(
-                "Numba and NumPy Hessians differ. "
-                f"Maximum absolute difference: {max_difference}"
-            )
-
-        if not np.allclose(
-            g_numba,
-            g_numpy,
-            rtol=1e-10,
-            atol=1e-12,
-        ):
-            max_difference = np.max(np.abs(g_numba - g_numpy))
-
-            raise RuntimeError(
-                "Numba and NumPy gradients differ. "
-                f"Maximum absolute difference: {max_difference}"
-            )
-
-        if not np.isclose(
-            error_numba,
-            error_numpy,
-            rtol=1e-10,
-            atol=1e-12,
-        ):
-            raise RuntimeError(
-                "Numba and NumPy squared errors differ. "
-                f"Numba: {error_numba}, NumPy: {error_numpy}"
-            )
         

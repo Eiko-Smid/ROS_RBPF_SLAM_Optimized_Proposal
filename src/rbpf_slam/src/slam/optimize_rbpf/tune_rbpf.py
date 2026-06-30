@@ -2111,7 +2111,7 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [5],                         # number of particles in the RBPF
+        "n_particles": [1],                         # number of particles in the RBPF
         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
         # Measurement model params

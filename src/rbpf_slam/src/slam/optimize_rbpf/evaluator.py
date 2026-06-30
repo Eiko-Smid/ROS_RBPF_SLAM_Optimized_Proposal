@@ -43,6 +43,14 @@ class StepResult:
     particle_weight_max: Optional[float] = None
     particle_weight_mean: Optional[float] = None
     step_duration: Optional[float] = None
+
+    # Proposal time durations
+    t_sample_poses: Optional[float] = None
+    t_pred_poses: Optional[float] = None
+    t_motion_model: Optional[float] = None
+    t_meas_model: Optional[float] = None
+    t_compute_prop_params: Optional[float] = None
+    t_sample_from_prop: Optional[float] = None
     
     # Scan matcher time durations
     time_duration_scan_matching: Optional[float] = None
@@ -475,6 +483,14 @@ class RBPFEvaluator:
         n_raw_map_points = None
         n_used_map_points = None
         map_point_keep_ratio = None
+
+        # Proposal time durations
+        t_sample_poses = None
+        t_pred_poses = None
+        t_motion_model = None
+        t_meas_model = None
+        t_compute_prop_params = None
+        t_sample_from_prop = None
         
         # Scan mather time durations
         time_duration_scan_matching = None
@@ -557,6 +573,7 @@ class RBPFEvaluator:
             xj_weights = proposal_metrics.get("xj_weights")
             motion_probs = proposal_metrics.get("motion_probs")
             meas_probs = proposal_metrics.get("meas_probs")
+            prop_timings = proposal_metrics.get("prop_timings")
 
             # Extract scan matcher info
             scan_matcher_info = proposal_metrics.get("scan_matcher_info")
@@ -627,6 +644,28 @@ class RBPFEvaluator:
                     time_duration_correct_pose = float(t_correct_pose_val)
                 if t_update_pose_val is not None and np.isfinite(t_update_pose_val):
                     time_duration_update_pose = float(t_update_pose_val)
+
+            # Extract and filter proposal timings
+            if isinstance(prop_timings, dict):
+                t_sample_poses_val = prop_timings.get("t_sample_poses")
+                t_pred_poses_val = prop_timings.get("t_pred_poses")
+                t_motion_model_val = prop_timings.get("t_motion_model")
+                t_meas_model_val = prop_timings.get("t_meas_model")
+                t_compute_prop_params_val = prop_timings.get("t_compute_prop_params")
+                t_sample_from_prop_val = prop_timings.get("t_sample_from_prop")
+
+                if t_sample_poses_val is not None and np.isfinite(t_sample_poses_val):
+                    t_sample_poses = float(t_sample_poses_val)
+                if t_pred_poses_val is not None and np.isfinite(t_pred_poses_val):
+                    t_pred_poses = float(t_pred_poses_val)
+                if t_motion_model_val is not None and np.isfinite(t_motion_model_val):
+                    t_motion_model = float(t_motion_model_val)
+                if t_meas_model_val is not None and np.isfinite(t_meas_model_val):
+                    t_meas_model = float(t_meas_model_val)
+                if t_compute_prop_params_val is not None and np.isfinite(t_compute_prop_params_val):
+                    t_compute_prop_params = float(t_compute_prop_params_val)
+                if t_sample_from_prop_val is not None and np.isfinite(t_sample_from_prop_val):
+                    t_sample_from_prop = float(t_sample_from_prop_val)
 
             # Compute mu, sm error metrics
             if mu is not None and scan_match_pose is not None:
@@ -977,6 +1016,14 @@ class RBPFEvaluator:
             particle_weight_mean=float(particle_weight_mean) if particle_weight_mean is not None else None,
             step_duration=float(step_duration) if step_duration is not None else None,
 
+            # Proposal time durations
+            t_sample_poses=t_sample_poses,
+            t_pred_poses=t_pred_poses,
+            t_motion_model=t_motion_model,
+            t_meas_model=t_meas_model,
+            t_compute_prop_params=t_compute_prop_params,
+            t_sample_from_prop=t_sample_from_prop,
+
             # Scan matcher time durations
             time_duration_scan_matching=time_duration_scan_matching,
             time_duration_prediction=time_duration_prediction,
@@ -1127,6 +1174,26 @@ class RBPFEvaluator:
         particle_weight_max_values = self._finite_values([s.particle_weight_max for s in step_results if s.particle_weight_max is not None])
         particle_weight_mean_values = self._finite_values([s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None])
         step_durations = self._finite_values([s.step_duration for s in step_results if s.step_duration is not None])
+
+        # Filter and store proposal time durations
+        t_sample_poses_values = self._finite_values(
+            [s.t_sample_poses for s in step_results if s.t_sample_poses is not None]
+        )
+        t_pred_poses_values = self._finite_values(
+            [s.t_pred_poses for s in step_results if s.t_pred_poses is not None]
+        )
+        t_motion_model_values = self._finite_values(
+            [s.t_motion_model for s in step_results if s.t_motion_model is not None]
+        )
+        t_meas_model_values = self._finite_values(
+            [s.t_meas_model for s in step_results if s.t_meas_model is not None]
+        )
+        t_compute_prop_params_values = self._finite_values(
+            [s.t_compute_prop_params for s in step_results if s.t_compute_prop_params is not None]
+        )
+        t_sample_from_prop_values = self._finite_values(
+            [s.t_sample_from_prop for s in step_results if s.t_sample_from_prop is not None]
+        )
         
         # Filter and store time durations scan matching
         time_duration_scan_matching_values = self._finite_values(
@@ -1375,7 +1442,7 @@ class RBPFEvaluator:
             "mean_particle_weight_min": float(np.mean(particle_weight_min_values)) if particle_weight_min_values else 0.0,
             "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
             "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
-
+            
             # Mean time durations scan matching
             "mean_step_duration": float(np.mean(step_durations)) if step_durations else float("nan"),
             "mean_time_duration_scan_matching": float(np.mean(time_duration_scan_matching_values)) if time_duration_scan_matching_values else float("nan"),
@@ -1404,7 +1471,15 @@ class RBPFEvaluator:
             "mean_min_xj_is_best_xj": float(np.mean(min_xj_is_best_xj_values)) if min_xj_is_best_xj_values else float("nan"),
             "min_xj_better_sm_pose_rate": float(np.mean(min_xj_better_sm_pose_values)) if min_xj_better_sm_pose_values else float("nan"),
             "best_xj_better_sm_pose_rate": float(np.mean(best_xj_better_sm_pose_values)) if best_xj_better_sm_pose_values else float("nan"),
-            
+
+            # Mean time durations proposal
+            "mean_t_sample_poses": float(np.mean(t_sample_poses_values)) if t_sample_poses_values else float("nan"),
+            "mean_t_pred_poses": float(np.mean(t_pred_poses_values)) if t_pred_poses_values else float("nan"),
+            "mean_t_motion_model": float(np.mean(t_motion_model_values)) if t_motion_model_values else float("nan"),
+            "mean_t_meas_model": float(np.mean(t_meas_model_values)) if t_meas_model_values else float("nan"),
+            "mean_t_compute_prop_params": float(np.mean(t_compute_prop_params_values)) if t_compute_prop_params_values else float("nan"),
+            "mean_t_sample_from_prop": float(np.mean(t_sample_from_prop_values)) if t_sample_from_prop_values else float("nan"),
+
             # Trans and rot errors of xjs
             "mean_min_trans_err_xjs": float(np.mean(min_trans_err_xjs_values)) if min_trans_err_xjs_values else float("nan"),
             "rmse_min_trans_err_xjs": float(np.sqrt(np.mean(np.square(min_trans_err_xjs_values)))) if min_trans_err_xjs_values else float("nan"),

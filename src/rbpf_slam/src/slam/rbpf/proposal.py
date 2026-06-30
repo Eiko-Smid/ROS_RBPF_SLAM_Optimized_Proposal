@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import time
 
 import numpy as np
@@ -21,38 +21,44 @@ class ProposalEstimator:
     IDX_THETA=2
 
     def __init__(self):
-        # Init timing stats
-        self._timing_stats = {
-            "sample_poses_sum_s": 0.0,
-            "sample_poses_count": 0,
-
-            "predict_pose_sum_s": 0.0,
-            "predict_pose_count": 0,
-
-            "measurement_model_sum_s": 0.0,
-            "measurement_model_count": 0,
-
-            "motion_model_sum_s": 0.0,
-            "motion_model_count": 0,
-
-            "compute_params_sum_s": 0.0,
-            "compute_params_count": 0,
-        }
+        self.t_sample_poses = 0.0
+        self.t_pred_poses = 0.0
+        self.t_motion_model = 0.0
+        self.t_meas_model = 0.0
+        self.t_compute_prop_params = 0.0
+        self.t_sample_from_prop = 0.0
 
 
-    def _record_timing(self, time_name: str, count_name: str, start_time: float) -> None:
+    @staticmethod
+    def _compute_mean_time(time: float, count: Optional[int] = None):
         '''
-        Helper method to record timing statistics for given name and duration in seconds.Currently disabled, does nothing!
+        Compute the mean time given the total time and count.
         '''
-        # duration_s = time.perf_counter() - start_time
+        if time is None or time <= 0.0 or count is None or count <= 0:
+            return None
+        return time / count
 
-        # # Check if name is inside dict
-        # if (time_name in self._timing_stats.keys()) and (count_name in self._timing_stats.keys()):
-        #     self._timing_stats[time_name] += duration_s        
-        #     self._timing_stats[count_name] += 1
-        # else:
-        #     raise ValueError(f"Timing stats keys {time_name} or {count_name} not found in timing stats dictionary.")
-        pass    
+
+    @staticmethod
+    def _filter_time(time: float):
+        '''
+        Filter out invalid or negative timing values. 
+        '''
+        if time is None or time <= 0.0:
+            return None
+        return time
+
+
+    def evaluate_timings(self):
+        '''
+        Evaluate and filter the timing metrics for proposal estimation. 
+        '''
+        self.t_sample_poses = self._filter_time(self.t_sample_poses)
+        self.t_pred_poses = self._filter_time(self.t_pred_poses)
+        self.t_motion_model = self._filter_time(self.t_motion_model)
+        self.t_meas_model = self._filter_time(self.t_meas_model)
+        self.t_compute_prop_params = self._filter_time(self.t_compute_prop_params)
+        self.t_sample_from_prop = self._filter_time(self.t_sample_from_prop)
         
 
     def sample_poses(self, pose: Pose2D, sigma_xy: float, sigma_theta: float, n_samples: int) -> np.ndarray:
@@ -575,7 +581,6 @@ class ProposalEstimator:
         self.meas_model_counters["unexpected_known_free_count"] += result.get("unexpected_known_free_count", 0)
         
 
-
     def compute_proposal_params_range_finder_model(
         self,
         scan_match_pose: Pose2D,
@@ -616,7 +621,7 @@ class ProposalEstimator:
             n_samples_dir=n_samples,
         )
         # Compute sample poses time
-        t_sample_poses = time.perf_counter() - t_sample_poses_start
+        self.t_sample_poses = time.perf_counter() - t_sample_poses_start
 
         # Predict particle pose based on odometry and old particle pose 
         t_pred_pose_start = time.perf_counter()
@@ -627,7 +632,7 @@ class ProposalEstimator:
             dr=dr,
         )
         # Compute pose prediction time
-        t_pred_pose = time.perf_counter() - t_pred_pose_start
+        self.t_pred_poses = time.perf_counter() - t_pred_pose_start
 
         # Check if measurements contain nan values
         # if np.isnan(measurements).any():
@@ -652,6 +657,9 @@ class ProposalEstimator:
         # Convert log-likelihoods to probabilities in save manner
         max_log_likelihood = np.max(log_likelihoods)
 
+        # Compute measurement model time
+        self.t_meas_model = time.perf_counter() - t_meas_model_start
+
         # Ensure valid log-likelihoods and compute measurement probabilities
         if not np.isfinite(max_log_likelihood):
             mu = np.asarray(scan_match_pose, dtype=float)
@@ -664,9 +672,7 @@ class ProposalEstimator:
             return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
         else:
             meas_probs = np.exp(log_likelihoods - max_log_likelihood)
-        
-        # Compute measurement model computation time
-        t_meas_model = time.perf_counter() - t_meas_model_start
+                
 
         # Compute motion probs
         t_motion_model_start = time.perf_counter()
@@ -674,7 +680,7 @@ class ProposalEstimator:
             x_new=samples,
             x_prev=pred_pose,
         )
-        t_motion_model = time.perf_counter() - t_motion_model_start
+        self.t_motion_model = time.perf_counter() - t_motion_model_start
 
         # Compute proposal params
         t_compute_proposal_start = time.perf_counter()
@@ -712,7 +718,7 @@ class ProposalEstimator:
         # Ensure covariance matrix is positive definite by adding small values to diagonal
         cov += 1e-6 * np.eye(3)
 
-        t_compute_proposal = time.perf_counter() - t_compute_proposal_start
+        self.t_compute_prop_params = time.perf_counter() - t_compute_proposal_start
 
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
 
@@ -729,6 +735,14 @@ class ProposalEstimator:
         sigma_theta: float=1.0,
         n_samples: int=3,
     ):
+        # Rest proposal timings
+        self.t_sample_poses = 0.0
+        self.t_pred_poses = 0.0
+        self.t_motion_model = 0.0
+        self.t_meas_model = 0.0
+        self.t_compute_prop_params = 0.0
+        self.t_sample_from_prop = 0.0
+
         # Compute proposal parameter with ray tracing 
         mu, cov, norm, xjs, xj_weights, meas_probs, motion_probs, pred_pose, log_eta = self.compute_proposal_params_range_finder_model(
             scan_match_pose=scan_match_pose,
@@ -742,6 +756,23 @@ class ProposalEstimator:
             n_samples=n_samples,
         )
 
+        # Estimate new particle pose
+        # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
+        t_sample_from_proposal_start = time.perf_counter()
+        new_p_pose = mu
+
+        # new_p_pose = self.sample_from_proposal(mu, cov)
+        self.t_sample_from_prop = time.perf_counter() - t_sample_from_proposal_start
+
+        prop_timings = {
+            "t_sample_poses": self.t_sample_poses,
+            "t_pred_poses": self.t_pred_poses,
+            "t_motion_model": self.t_motion_model,
+            "t_meas_model": self.t_meas_model,
+            "t_compute_prop_params": self.t_compute_prop_params,
+            "t_sample_from_prop": self.t_sample_from_prop,
+        }
+
         info = {
             "prop_mu": mu,
             "prop_cov_matrix": cov,
@@ -752,12 +783,7 @@ class ProposalEstimator:
             "motion_probs": motion_probs,
             "meas_probs": meas_probs,
             "measurement_model_counters": self.meas_model_counters,
+            "prop_timings": prop_timings,
         }
-
-        # Estimate new particle pose
-        # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
-        new_p_pose = mu
-
-        # new_p_pose = self.sample_from_proposal(mu, cov)
 
         return new_p_pose, log_eta, info
