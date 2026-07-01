@@ -2,6 +2,7 @@
 <launch>
 
   <!-- Define arguments -->
+  <arg name="world_name" default=""/>
   <arg name="world" 		default="empty"/> 
   <arg name="paused" 		default="false"/>
   <arg name="use_sim_time" 	default="true"/>
@@ -32,19 +33,8 @@
   </include> -->
 
   <!-- Load turtlebot world environment -->
-  <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" 		value="$(find rvc_simulation_environment)/worlds/turtle_map.world"/>
-    <arg name="paused" 			value="$(arg paused)"/>
-    <arg name="use_sim_time"   	value="$(arg use_sim_time)"/>
-    <arg name="gui" 			value="$(arg gui)"/>
-    <arg name="headless" 		value="$(arg headless)"/>
-    <arg name="debug" 			value="$(arg debug)"/>
-  </include>
-
-
-  <!-- Load aws realistic indoor apartment -->
   <!-- <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" 		 value="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house.world"/>
+    <arg name="world_name" 		value="$(find rvc_simulation_environment)/worlds/turtle_map.world"/>
     <arg name="paused" 			value="$(arg paused)"/>
     <arg name="use_sim_time"   	value="$(arg use_sim_time)"/>
     <arg name="gui" 			value="$(arg gui)"/>
@@ -53,12 +43,34 @@
   </include> -->
 
 
+  <!-- Load aws realistic indoor apartment -->
+  <!-- <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" 		 value="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house_light.world"/>
+    <arg name="paused" 			value="$(arg paused)"/>
+    <arg name="use_sim_time"   	value="$(arg use_sim_time)"/>
+    <arg name="gui" 			value="$(arg gui)"/>
+    <arg name="headless" 		value="$(arg headless)"/>
+    <arg name="debug" 			value="$(arg debug)"/>
+  </include>  -->
+
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" 		 value="$(arg world_name)"/>
+    <arg name="paused" 			value="$(arg paused)"/>
+    <arg name="use_sim_time"   	value="$(arg use_sim_time)"/>
+    <arg name="gui" 			value="$(arg gui)"/>
+    <arg name="headless" 		value="$(arg headless)"/>
+    <arg name="debug" 			value="$(arg debug)"/>
+  </include>
+
+
   <!-- This command builds the urdf files from the xacro files by calling the launch file -->
   <param name="robot_vacuum_cleaner_description" command="$(find xacro)/xacro --inorder '$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/robot_vacuum_cleaner.xacro'
       laser_range_resolution:=$(arg laser_range_resolution)
       laser_noise_type:=$(arg laser_noise_type)
       laser_noise_mean:=$(arg laser_noise_mean)
       laser_noise_stddv:=$(arg laser_noise_stddv)" />
+
 
   <!-- Spawn the robot after we built the urdf files -->
   <node name="robot_vacuum_cleaner_spawn" pkg="gazebo_ros" type="spawn_model" output="screen"

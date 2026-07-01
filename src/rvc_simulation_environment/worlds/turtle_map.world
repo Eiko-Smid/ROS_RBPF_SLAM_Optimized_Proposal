@@ -5,9 +5,9 @@
 
 		<!-- Define physics properties -->
 		<physics type="ode">
-		<real_time_update_rate>100</real_time_update_rate>   <!-- ↓ from ~1000 -->
-		<max_step_size>0.01</max_step_size>                  <!-- bigger step = less CPU -->
-		<real_time_factor>1</real_time_factor>
+			<real_time_update_rate>100</real_time_update_rate>   <!-- ↓ from ~1000 -->
+			<max_step_size>0.01</max_step_size>                  <!-- bigger step = less CPU -->
+			<real_time_factor>1</real_time_factor>
 		</physics>
 
 		<!-- Define scene properties -->

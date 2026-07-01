@@ -52,8 +52,7 @@ except ModuleNotFoundError:
 
 
 TAG = (
-    "Synchronized playback recording with Gazebo P3D ground truth. "
-    "Wheel encoder controls are computed from consecutive synchronized poses."
+    "Different path through small house map for evaluation."
 )
 
 MAP_NAME = "AWS_Robot_Maker_Small_House"
@@ -326,9 +325,9 @@ class ROSPlaybackNode:
         if time_diff > (self.ros_params.des_time_window - self.ros_params.d_time_window):
             # Compute time difference between scan and ground truth odom
             dt_scan_ground_truth = abs(laser_scan_cp.header.stamp.to_sec() - ground_truth_odom_cp.header.stamp.to_sec())
-            rospy.loginfo(                
-                f"time_diff_scan_ground_truth={dt_scan_ground_truth * 1000.0:.2f} ms"
-            )
+            # rospy.loginfo(                
+            #     f"time_diff_scan_ground_truth={dt_scan_ground_truth * 1000.0:.2f} ms"
+            # )
 
             # Check if synchronization error is within threshold, otherwise skip 
             if dt_scan_ground_truth > self.ros_params.max_sync_error_s:
@@ -340,6 +339,7 @@ class ROSPlaybackNode:
 
             # Extract ground truth pose 
             pose = self.transform_pose_to_planar_pose(pose=ground_truth_odom_cp.pose.pose)
+            # rospy.loginfo(f"True pose: x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}")
             
             # Simulate wheel encoder data 
             dl, dr = self.wheelencoder_simulation(

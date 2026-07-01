@@ -621,13 +621,28 @@ Synchronized playback data
 
 
 
-    32.5 Phase 4: Final focused tuning of measurement model extra params and beam thresholds
 
-        Goal:
-            - 
+33. performance optimization
 
-        Results:
+    - We tried to implement parallelization but it was actually slower due to serialization of big objects like the particle
+    - Each article owns a scan matcher instance wwhich own the ogm and icp -> huge amount of data
+    - Instead we optimized the measruement model and implemented some time measurements to actually verify it. 
 
+    Changes:
+        -   Replaced sklearn NN tree with scipy cKDTree (faster) 
+        -   Created batch variant of measurement model
+                -   Avoided copiing of the map/ etc n_xjs times.
+
+                
+    33.1 cdKtree but nomeasruement batch
+
+
+    33.2 Measurement model batch
+
+
+34. Validating the best RBPF candidates against new, unseen data
+
+    34.1     
 
 
 '''
@@ -639,17 +654,17 @@ Synchronized playback data
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
-NUMBER_OF_WORKERS = 1
+NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
@@ -657,9 +672,9 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-# SEED_LIST = [22, 23, 56]
+SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
-SEED_LIST = [22]
+# SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -692,7 +707,7 @@ SUMMARY_COLS_TO_EXCLUDE = [
     "meas_model_fallback_unexpected_known_free_count",
 ]
 
-# PLAYBACK_SUFFIX = "1779375646"        # Cafe map
+
 
 @dataclass
 class PlaybackDataset:
@@ -714,25 +729,25 @@ class PlaybackDataset:
 #     ),    
 # ]
 
-# PLAYBACK_DATA_LIST = [
-#     # Turtle bot map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1781885725",
-#     ), 
-#     # AWS indoor map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1781885274",
-#     ),    
-# ]
-
 PLAYBACK_DATA_LIST = [
+    # Turtle bot map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885725",
+    ), 
+    # AWS indoor map
     PlaybackDataset(
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
         playback_suffix="1781885274",
-    )
+    ),    
 ]
+
+# PLAYBACK_DATA_LIST = [
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1782917349",
+#     )
+# ]
 
 
 def _to_jsonable(value):
@@ -2111,7 +2126,7 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [30],                         # number of particles in the RBPF
+        "n_particles": [1],                         # number of particles in the RBPF
         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
         # Measurement model params
@@ -2150,7 +2165,7 @@ def _grid_axes() -> dict:
         
         # Motion model params
         "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
-        "sigma_theta": [0.08],                      # motion model uncertainty in theta direction [rad]
+        "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
         
@@ -2160,8 +2175,8 @@ def _grid_axes() -> dict:
         # so these three values are sampled together (no Cartesian product among them).
         "proposal_param_sets": [
             {
-                "proposal_sigma_xy": 0.02,      # Proposal window size in x/y direction [m]
-                "proposal_sigma_theta": 0.01,   # proposal window size in theta direction [rad]
+                "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
+                "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
             }
         ],
