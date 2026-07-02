@@ -236,6 +236,10 @@ class ScanMatcher():
             new_data_pointpairs=scan_points,
             true_data_pointpairs=map_points,
         )
+        # result = self.icp.find_transformation_test(
+        #     new_data_pointpairs=scan_points,
+        #     true_data_pointpairs=map_points,
+        # )
 
         if not result.use_transformation:
             return None 

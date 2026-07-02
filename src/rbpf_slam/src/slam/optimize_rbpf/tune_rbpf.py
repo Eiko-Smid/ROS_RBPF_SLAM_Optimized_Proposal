@@ -622,29 +622,115 @@ Synchronized playback data
 
 
 
-33. performance optimization
+33. Performance optimization
 
     - We tried to implement parallelization but it was actually slower due to serialization of big objects like the particle
     - Each article owns a scan matcher instance wwhich own the ogm and icp -> huge amount of data
     - Instead we optimized the measruement model and implemented some time measurements to actually verify it. 
 
-    Changes:
-        -   Replaced sklearn NN tree with scipy cKDTree (faster) 
-        -   Created batch variant of measurement model
-                -   Avoided copiing of the map/ etc n_xjs times.
+    Unfortunately the multiprocessing implementation of the RBPF (run particle update in paralllel) didn't 
+        made things faster due to deserialization
+    -   Also Numba threadng didnt worked well because the functions were also too short (1-2 ms)
+        Numba threading does work in general and can result into huge speedup, but only for bigger tasks.  
 
-                
-    33.1 cdKtree but nomeasruement batch
+    -   Measrues that resulted into speed up:
+            1) batch xj measruement computation
+                Didnt affect metrics
+            2) Scipy cKDtree isntead of sklearn NN tree
+                Affected metrics
 
+    - Measures that stabelized RBPF results
+        We increased the max trans and rot jumps in ICP 
+            -   On the new map the old model performed really bad
+                mean_trans_error    
+                    0.137958
+                    0.181836
+                    0.261013
 
-    33.2 Measurement model batch
+                mean_rot_error_deg
+                    1.437116
+                    2.755953
+                    2.162284
 
+            - The ICP failed a lot of the times because the computed tranformations were bigger than the threshold values
+                # max_translation_jump=0.5,
+                # max_rotation_jump=np.deg2rad(45.0),
 
-34. Validating the best RBPF candidates against new, unseen data
+            - Therefore we replaced the max trans errors wiht wider ones!
+    
+    
+    33.1 Old maps with three seeds and good param set
 
-    34.1     
+        -   Here we ran a stable param set on both maps and stable seeds
+        -   ckdtree used
+        -   Also we replaced the old max transf thresholds with newer, wider ones
+            - max_translation_jump 0.5 -> 0.7
+            - max_rot_jump 45° -> 60°
 
+        Results:
 
+            -   Results of AWS are a bit worse. 
+            -   But therfore the reaults of the turtle bot map is better 
+            -   Also the results are less seed independend
+
+    
+    33.2 old transformation thresholds on bookstore map
+
+        - In order to see the impact of the new thresholds, we first run with old transformation thresholds
+
+        Results:
+            mean_trans_error    
+                0.137958
+                0.181836
+                0.261013
+            
+            worst_translation_error
+                0.889951
+                0.952975
+                2.202677
+
+            mean_rot_error_deg
+                1.437116
+                2.755953
+                2.162284
+            
+            worst_rot_error_deg
+                14.728069
+                27.242341
+                30.790487
+    
+    
+    33.3 new transformation thresholds on bookstore map
+
+        - Way better results!
+
+        mean_trans_error
+            0.030835
+            0.035676
+            0.055280
+
+        worst_translation_error
+            0.194507
+            0.190814
+            0.319710
+        
+        mean_rot_error_deg
+            0.566760
+            0.505020
+            0.900341
+        
+        worst_rot_error_deg
+            10.829881
+            8.668666
+            18.042712
+
+    
+    3.4 Same trans thres but lower rot htres
+
+        Result:
+            -   rotation doesnt affect the result at all  
+        
+            
 '''
 
 
@@ -654,10 +740,10 @@ Synchronized playback data
 # PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_2_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_33_5_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_33_5_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_33_5_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_33_5_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -740,8 +826,14 @@ PLAYBACK_DATA_LIST = [
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
         playback_suffix="1781885274",
     ),    
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1782917349",
+    )
+
 ]
 
+# Bookstore map
 # PLAYBACK_DATA_LIST = [
 #     PlaybackDataset(
 #         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
@@ -2187,6 +2279,10 @@ def _grid_axes() -> dict:
         # ScanMatcherParams (map extraction)
         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
         "min_free_ratio": [0.4],
+
+        # ICP jump thresholds
+        "max_translation_jump": [0.7],
+        "max_rotation_jump_deg": [45.0],
     }
 
 
@@ -2296,6 +2392,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
     proposal_beta = axes.get("proposal_beta", [1.0])
     surface_radius_m = axes.get("surface_radius_m", [0.1])
     min_free_ratio = axes.get("min_free_ratio", [0.25])
+    max_translation_jump = axes.get("max_translation_jump", [0.7])
+    max_rotation_jump_deg = axes.get("max_rotation_jump_deg", [45.0])
 
     # Compute wheel separation
     wheel_separation = _compute_wheel_separation()
@@ -2323,6 +2421,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             beta,
             surface_r,
             min_free,
+            max_trans_jump,
+            max_rot_jump_deg,
         ) in itertools.product(
             sigma_measurement,
             every_nth_beam_filter,
@@ -2345,6 +2445,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             proposal_beta,
             surface_radius_m,
             min_free_ratio,
+            max_translation_jump,
+            max_rotation_jump_deg,
         ):
             sigma_xy, sigma_theta, samples_dir = proposal_triplet
 
@@ -2405,8 +2507,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     min_corresp=25,
                     min_hessian_rank=3,
                     max_hessian_condition=1e8,
-                    max_translation_jump=0.5,
-                    max_rotation_jump=np.deg2rad(45.0),
+                    max_translation_jump=max_trans_jump,
+                    max_rotation_jump=np.deg2rad(max_rot_jump_deg),
                     max_acceptable_mean_error=0.15,
                 ),
                 robot_params=RobotParams(
