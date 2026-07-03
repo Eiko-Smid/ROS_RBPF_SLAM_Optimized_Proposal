@@ -52,10 +52,10 @@ except ModuleNotFoundError:
 
 
 TAG = (
-    "Different path through small house map for evaluation."
+    "AWS small house map on different path with synced playback."
 )
 
-MAP_NAME = "AWS_Robot_Maker_Small_House"
+MAP_NAME = "AWS_Robot_Maker_Small_House_alt_path"
 NODE_NAME = "playback_node"
 PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 

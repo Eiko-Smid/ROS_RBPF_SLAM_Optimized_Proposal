@@ -784,7 +784,8 @@ class ProposalEstimator:
         # Estimate new particle pose
         # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
         t_sample_from_proposal_start = time.perf_counter()
-        new_p_pose = mu
+        # new_p_pose = mu
+        new_p_pose = self.sample_from_proposal(mu, cov)
 
         # new_p_pose = self.sample_from_proposal(mu, cov)
         self.t_sample_from_prop = time.perf_counter() - t_sample_from_proposal_start
