@@ -6,7 +6,10 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from .playback_defs import PlaybackData, ExperimentParams
-from .evaluator import RunResult, RBPFEvaluator
+# from .evaluator import RunResult, RBPFEvaluator
+from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
+from .evaluator_mult_part import RunResult
+
 from ..rbpf.rbpf import RBPFFactory
 from ..rbpf.motion_model import MotionModel
 from ..rbpf.scan_match_factory import ScanMatchFactory
@@ -30,7 +33,6 @@ class RawOdometryPropagator:
             odom_poses.append((float(pose[0]), float(pose[1]), float(pose[2])))
 
         return odom_poses
-
 
 
 class PlaybackRunner:
@@ -192,51 +194,85 @@ class PlaybackRunner:
             step_duration = time.time() - step_start_time
             
             # Extract evaluation info from the RBPF instance
-            info = rbpf.get_step_info()
-            step_idx_logged = info.get("step")
-            true_pose_logged = info.get("true_pose")
-            est_pose = info.get("weighted_mean_pose")
-            best_particle_pose = info.get("best_particle_pose")
-            neff = info.get("neff")
-            scan_match_failed = info.get("scan_match_failed_any")
-            scan_match_fallback_failed = info.get("scan_match_fallback_failed_any")
-            particle_weight_min = info.get("particle_weight_min")
-            particle_weight_max = info.get("particle_weight_max")
-            particle_weight_mean = info.get("particle_weight_mean")
-            proposal_metrics = info.get("proposal_metrics")
-            measurement_model_counters_fallback = info.get("measurement_model_counters_fallback")
+            # info = rbpf.get_step_info()
+            # step_idx_logged = info.get("step")
+            # true_pose_logged = info.get("true_pose")
+            # est_pose = info.get("weighted_mean_pose")
+            # best_particle_pose = info.get("best_particle_pose")
+            # neff = info.get("neff")
+            # scan_match_failed = info.get("scan_match_failed_any")
+            # scan_match_fallback_failed = info.get("scan_match_fallback_failed_any")
+            # particle_weight_min = info.get("particle_weight_min")
+            # particle_weight_max = info.get("particle_weight_max")
+            # particle_weight_mean = info.get("particle_weight_mean")
+            # proposal_metrics = info.get("proposal_metrics")
+            # measurement_model_counters_fallback = info.get("measurement_model_counters_fallback")
 
-            # Evaluate the current step and store results
+            # # Evaluate the current step and store results
+            # step_result = self.evaluator.evaluate_step(
+            #     step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
+            #     t=step.t,
+            #     true_pose=true_pose_logged if true_pose_logged is not None else step.true_pose,
+            #     raw_odom_pose=(
+            #         self._raw_odom_poses_cache[step_idx]
+            #         if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
+            #         else None
+            #     ),
+            #     est_pose=est_pose,
+            #     best_particle_pose=best_particle_pose,
+            #     scan_match_failed=scan_match_failed,
+            #     scan_match_fallback_failed=scan_match_fallback_failed,
+            #     neff=neff,
+            #     particle_weight_min=particle_weight_min,
+            #     particle_weight_max=particle_weight_max,
+            #     particle_weight_mean=particle_weight_mean,
+            #     step_duration=step_duration,
+            #     proposal_metrics=proposal_metrics,
+            #     measurement_model_counters_fallback=measurement_model_counters_fallback,
+            # )
+
+            # Extract evaluation info from rbpf 
+            info = rbpf.get_step_info()
+            step_idx_logged = info.get("step", None)
+            true_pose_logged = info.get("true_pose", None)
+            neff = info.get("neff", None)
+
+            scan_match_failed = info.get("scan_match_failed_any", None)
+            scan_match_fallback_failed = info.get("scan_match_fallback_failed_any", None)
+
+            particle_poses_before_resampling = info.get("particle_poses_before_resampling", None)
+            particle_weights_before_resampling = info.get("particle_weights_before_resampling", None)
+
+            particle_poses = info.get("particle_poses", None)
+            particle_weights = info.get("particle_weights", None)
+
+            particle_inherit_indices = info.get("resampled_indices", None)
+
             step_result = self.evaluator.evaluate_step(
-                step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
+                step_idx=step_idx_logged if step_idx_logged is not None else step_idx,                
                 t=step.t,
-                true_pose=true_pose_logged if true_pose_logged is not None else step.true_pose,
+                true_pose=true_pose_logged,
                 raw_odom_pose=(
                     self._raw_odom_poses_cache[step_idx]
                     if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
                     else None
                 ),
-                est_pose=est_pose,
-                best_particle_pose=best_particle_pose,
-                scan_match_failed=scan_match_failed,
-                scan_match_fallback_failed=scan_match_fallback_failed,
-                neff=neff,
-                particle_weight_min=particle_weight_min,
-                particle_weight_max=particle_weight_max,
-                particle_weight_mean=particle_weight_mean,
-                step_duration=step_duration,
-                proposal_metrics=proposal_metrics,
-                measurement_model_counters_fallback=measurement_model_counters_fallback,
+                particle_poses=particle_poses,
+                particle_weights=particle_weights,
 
+                particle_poses_before_resampling= particle_poses_before_resampling,
+                particle_weights_before_resampling= particle_weights_before_resampling,
+
+                particle_inherit_indices= particle_inherit_indices
             )
 
             run_result.step_results.append(step_result)
 
         # Summarize the run results and store in the run result object
-        run_result.summary = self.evaluator.summarize_run(
-            step_results=run_result.step_results,
-            params=params,
-        )
+        # run_result.summary = self.evaluator.summarize_run(
+        #     step_results=run_result.step_results,
+        #     params=params,
+        # )
         run_result.summary.update(self._aggregate_icp_counters(rbpf))
         timing_summary = rbpf.timing_summary()
         run_result.summary.update(timing_summary)

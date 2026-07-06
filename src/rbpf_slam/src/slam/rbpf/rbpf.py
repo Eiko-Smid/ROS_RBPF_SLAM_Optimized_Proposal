@@ -1677,21 +1677,25 @@ class RBPF:
 
 
     @staticmethod
-    def normalize_weights(old_weights, log_weight_increments):
+    def normalize_weights(
+        old_weights: List[float], 
+        log_weight_increments: List[float],
+    ) -> np.ndarray:
         '''
-        Converts teh log weight increments into probs and normalizes them. For safety the old weights are normalized first. 
+        Converts the log weight increments into probs and normalizes them. For safety the old weights are normalized first. 
         All results run through validation checks to avoid returning unexpected or wrong results.
 
         Parameters
         ----------
         old_weights : List[float]
-            The old weights of the particles before the update step.
+            The old weights of the particles before the update step. Normalization takes place inside. 
         log_weight_increments : List[float]
-            The log weight increments computed in the update step for each particle.
+            The log weight increments computed in the update step for each particle. The method assumes that they are 
+            already finite (not Nan, nor inf). No check made inside here! Ensure valid values before!
 
         Returns
         -------
-        List[float]
+        np.ndarray
             The new normalized weights of the particles after applying the log weight increments.
         '''
         # Convert weights to numpy arrays for easier processing
@@ -1705,7 +1709,7 @@ class RBPF:
 
         # Validate old weights
         if old_sum <= 0.0 or not np.isfinite(old_sum):
-            # Set all weights euqal if nromalizer of old weights is zero
+            # Set all weights equal if normalizer of old weights is zero
             old_weights_normed = np.ones(n, dtype=np.float64) / n
         else:
             old_weights_normed = old_weights / old_sum
@@ -1719,11 +1723,11 @@ class RBPF:
 
         max_log_w = np.max(log_weights)
 
-        # If all current updates failed or something exploded then keep old nromalized weights
+        # If all current updates failed or something exploded then keep old normalized weights
         if not np.isfinite(max_log_w):
             return old_weights_normed
 
-        # Compute weights from new log weights
+        # Transform log weights to normal weights
         weights = np.exp(log_weights - max_log_w)
         weight_sum = np.sum(weights)
 
@@ -1756,15 +1760,19 @@ class RBPF:
             n_particles = len(self.particles)
             
             # Deep copy and update weight
+            weight = 1.0 / n_particles
             for idx in indices:
                 p = self.particles[idx].copy()
 
-                p.weight = 1.0 / n_particles
+                p.weight = weight
 
                 new_partilces.append(p)
         
             # Replace old particle set by new set
-            self.particles = new_partilces        
+            self.particles = new_partilces       
+
+            return indices
+        return None 
 
 
     def step_range_finder_model(
@@ -1891,18 +1899,45 @@ class RBPF:
                 neff = float(self.resampler.compute_neff(norm_weights))
 
                 # Store step info
+                # self._last_step_info = {
+                #     "step": step_idx,
+                #     "mode": "initialization",
+                #     "init_status": self.init_status.value,
+                #     "init_counter": self.init_counter,
+                #     "init_count_threshold": self.init_count_threshold,
+                #     "odom_threshold": self.odom_threshold,
+                #     "init_failure_reason": self.init_failure_reason,
+                #     "neff": neff,
+                #     "true_pose": None,
+                #     "scan_match_failed_any": None,
+                #     "scan_match_fallback_failed_any": None,
+                #     "best_particle_idx": None,
+                #     "best_particle_pose": None,
+                #     "best_particle_map": None,
+                #     "weighted_mean_pose": None,
+                #     "particle_weight_min": None,
+                #     "particle_weight_max": None,
+                #     "particle_weight_mean": None,
+                #     "timing_update_particles_s": None,
+                #     "timing_normalize_neff_s": None,
+                #     "timing_metrics_s": None,
+                #     "timing_resampling_s": None,
+                #     "proposal_metrics": None,
+                #     "measurement_model_counters_fallback": None
+                # }
+
+                # Update rbpf info
+                particle_poses = [p.pose for p in self.particles]
+                particle_weights = [p.weight for p in self.particles]
                 self._last_step_info = {
-                    "step": step_idx,
                     "mode": "initialization",
-                    "init_status": self.init_status.value,
-                    "init_counter": self.init_counter,
-                    "init_count_threshold": self.init_count_threshold,
-                    "odom_threshold": self.odom_threshold,
-                    "init_failure_reason": self.init_failure_reason,
+                    "step": step_idx,
                     "neff": neff,
-                    "true_pose": None,
+                    "true_pose": true_pose,
                     "scan_match_failed_any": None,
                     "scan_match_fallback_failed_any": None,
+                    "particle_poses_before_resampling": particle_poses,
+                    "particle_weights_before_resampling": particle_weights,
                     "best_particle_idx": None,
                     "best_particle_pose": None,
                     "best_particle_map": None,
@@ -1910,15 +1945,22 @@ class RBPF:
                     "particle_weight_min": None,
                     "particle_weight_max": None,
                     "particle_weight_mean": None,
-                    "timing_update_particles_s": None,
-                    "timing_normalize_neff_s": None,
-                    "timing_metrics_s": None,
-                    "timing_resampling_s": None,
-                    "proposal_metrics": None,
-                    "measurement_model_counters_fallback": None
+                    "timing_update_particles_s": t_update_particles_s,
+                    "timing_normalize_neff_s": t_norm_neff_s,
+                    "timing_metrics_s": t_metrics_s,
+                    "timing_resampling_s": t_resampling_s,
+                    "proposal_metrics": best_p_prop_metrics,
+                    "measurement_model_counters_fallback": None,
+                    "particle_poses": particle_poses,
+                    "particle_weights": particle_weights,
+                    "init_status": self.init_status.value,
+                    "init_counter": self.init_counter,
+                    "init_count_threshold": self.init_count_threshold,
+                    "init_failure_reason": self.init_failure_reason,
+                    "odom_threshold": self.odom_threshold,
                 }
 
-                return neff, self.particles[0].pose
+                return None
         
         # Normal RBPF update
         # Process each particle
@@ -1980,18 +2022,21 @@ class RBPF:
         # Weight statistics before optional resampling.
         particle_weight_min = float(np.min(norm_weights))
         particle_weight_max = float(np.max(norm_weights))
-        particle_weight_mean = float(np.mean(norm_weights))   
+        particle_weight_mean = float(np.mean(norm_weights))
 
         # Extract proposal metrics from best particle
         best_p_prop_metrics = prop_metrics_list[best_idx]    
         
         # Attention! particles might already be resampled so don't access self.particals for computing metrics!
         self._last_step_info = {
+            "mode": "RBPF",
             "step": step_idx,
             "neff": neff,
             "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
+            "particle_poses_before_resampling": [p.pose for p in self.particles],
+            "particle_weights_before_resampling": norm_weights,
             "best_particle_idx": best_idx,
             "best_particle_pose": best_particle_pose,
             "best_particle_map": self.particles[best_idx].scan_matcher.ogm.return_log_odds_map(),
@@ -2008,9 +2053,14 @@ class RBPF:
         }
 
         # Resampling step
-        self.resampling(norm_weights)
+        indices = self.resampling(norm_weights)
 
-        return neff, weighted_mean_pose
+        # Add step info after resampling
+        self._last_step_info["particle_poses"] = [p.pose for p in self.particles]
+        self._last_step_info["particle_weights"] = [p.weight for p in self.particles]
+        self._last_step_info["resampled_indices"] = indices 
+
+        return None
 
 
 

@@ -35,7 +35,8 @@ from ..rbpf.scan_match_factory import (
 
 from ..scan_matcher.icp_scan_matching import warmup_numba_functions
 
-from .evaluator import RBPFEvaluator
+# from .evaluator import RBPFEvaluator
+from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
 from .playback_runner import PlaybackRunner, RawOdometryPropagator
 from .scorer import RunScorer
 from .optimizer import RBPFOptimizer
@@ -830,11 +831,11 @@ KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = 40             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 23, 56]
 # SEED_LIST = [22, 56]
-# SEED_LIST = [22]
+SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -2626,18 +2627,18 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
 
 def build_optimizer():
     # Init Playback runner
-    scan_match_fac = RBPFFactory()
-    scan_match_eval = RBPFEvaluator()
-    scan_match_playback_run = PlaybackRunner(
-        factory=scan_match_fac,
-        evaluator=scan_match_eval,
+    factory = RBPFFactory()
+    evaluator = RBPFEvaluator()
+    playback_runner = PlaybackRunner(
+        factory=factory,
+        evaluator=evaluator,
         raw_odom_propagator=RawOdometryPropagator(),
     )
 
     # Init optimizer
     run_scorer = RunScorer()
     rbpf_optimizer = RBPFOptimizer(
-        runner=scan_match_playback_run,
+        runner=playback_runner,
         scorer=run_scorer,
     )
     
@@ -3006,56 +3007,56 @@ def rbpf_tuning_pipeline_multiprocessing():
 
     # Aggregate results
     # Convert ranked runs to pandas DataFrame for easier analysis 
-    ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
+    # ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
 
-    # Rank results by score
-    rank_scored_df = result_aggregator.rank_by_score(
-        ranked_run_df=ranked_run_df,
-        score_col="score",   
-        ascending=True,
-    )
+    # # Rank results by score
+    # rank_scored_df = result_aggregator.rank_by_score(
+    #     ranked_run_df=ranked_run_df,
+    #     score_col="score",   
+    #     ascending=True,
+    # )
 
-    # Groupe and rank by playback data and seed
-    agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
+    # # Groupe and rank by playback data and seed
+    # agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
 
-    # Froupe and rank by paramters 
-    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
+    # # Froupe and rank by paramters 
+    # agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
 
-    # Build ranked parameter overview with one row per parameter_hash.
-    ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
-        agg_param_df=agg_param_df,
-        ranked_runs=ranked_run_list,
-    )
+    # # Build ranked parameter overview with one row per parameter_hash.
+    # ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
+    #     agg_param_df=agg_param_df,
+    #     ranked_runs=ranked_run_list,
+    # )
 
-    # Save results
-    result_writer.write_dataframe_csv(
-        path=ranked_scored_path,
-        df=rank_scored_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-        cols_to_exclude=SUMMARY_COLS_TO_EXCLUDE,
-    )
+    # # Save results
+    # result_writer.write_dataframe_csv(
+    #     path=ranked_scored_path,
+    #     df=rank_scored_df,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    #     cols_to_exclude=SUMMARY_COLS_TO_EXCLUDE,
+    # )
 
-    result_writer.write_dataframe_csv(
-        path=agg_dataset_param_path,
-        df=agg_dataset_param_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
+    # result_writer.write_dataframe_csv(
+    #     path=agg_dataset_param_path,
+    #     df=agg_dataset_param_df,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    # )
 
-    result_writer.write_dataframe_csv(
-        path=agg_param_path,
-        df=agg_param_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
+    # result_writer.write_dataframe_csv(
+    #     path=agg_param_path,
+    #     df=agg_param_df,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    # )
 
-    result_writer.write_dataframe_csv(
-        path=ranked_param_overview_path,
-        df=ranked_param_overview_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
+    # result_writer.write_dataframe_csv(
+    #     path=ranked_param_overview_path,
+    #     df=ranked_param_overview_df,
+    #     override=OVERRIDE_EXISTING_RESULTS,
+    #     float_decimals=CSV_FLOAT_DECIMALS,
+    # )
 
 
     # Save independent per-step diagnostic traces for each ranked run.

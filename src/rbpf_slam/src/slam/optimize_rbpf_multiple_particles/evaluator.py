@@ -390,12 +390,14 @@ class RBPFEvaluator:
         """
         Evaluates one RBPF step and returns per-step errors.
         """
+        # Convert poses to pose tuples
         true_pose_t = self._to_pose_tuple(true_pose)
         raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
         scan_match_pose_t = None
         est_pose_t = self._to_pose_tuple(est_pose)
         best_particle_pose_t = self._to_pose_tuple(best_particle_pose)
 
+        # Initialize all metrics with None -> Ensures there are none even if no computation took place!
         trans_err = None
         rot_err = None
         trans_err_raw_odom = None

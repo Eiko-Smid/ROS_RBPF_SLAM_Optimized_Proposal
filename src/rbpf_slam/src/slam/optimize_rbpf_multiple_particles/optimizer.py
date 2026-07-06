@@ -16,7 +16,8 @@ from tqdm import tqdm
 from .playback_runner import PlaybackRunner, RawOdometryPropagator
 from .scorer import RunScorer
 from .playback_defs import ExperimentParams, PlaybackData, StepData
-from .evaluator import RBPFEvaluator
+# from .evaluator import RBPFEvaluator
+from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
 from ..infrastructure.playback_converter import PlaybackConverter
 
 
