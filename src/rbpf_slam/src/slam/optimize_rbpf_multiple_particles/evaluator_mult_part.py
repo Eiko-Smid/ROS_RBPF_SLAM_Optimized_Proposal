@@ -228,7 +228,7 @@ class RBPFEValMultParticles:
         particle_weights_before_resampling: List[float],
 
         particle_inherit_indices: Optional[List[int]] = None
-    ):
+    ) -> StepResult:
         '''
         Evaluates the performance of the RBPF at a given step.
 
@@ -248,7 +248,19 @@ class RBPFEValMultParticles:
             The list of poses for each particle at the current step before resampling.
         particle_weights : List[float]
             The list of weights for each particle at the current step before resampling.
+
+        Returns
+        -------
+        StepResult
+            A dataclass containing the evaluation results for the current step.
         '''
+        '''
+        TODO:
+        1) Add step duration
+        2) Add scan match failure info
+        3) Optional: Add measurement model metrics
+        '''
+
         # Convert poses to np arrays
         true_pose_arr = self._pose_to_np_array(true_pose)
         raw_odom_pose_arr = self._pose_to_np_array(raw_odom_pose)
@@ -386,35 +398,6 @@ class RBPFEValMultParticles:
             # Optional particle inherit indices (if resampling took place) -> Recover trajectory of best particle at the end
             particle_inherit_indices=particle_inherit_indices_arr,            
         )
-      
-    
-    # def _restore_map_trajectory_errors(
-    #     self,
-    #     best_particle_idx: int,
-    #     particle_inherit_indices: List[np.ndarray],
-    #     trans_errs_before_resampling_list: List[np.ndarray],
-    #     rot_errs_before_resampling_list: List[np.ndarray],
-    # ):
-    #     # Extract trans and rot err of best particle at the end of rbpf run
-    #     trans_errs_map_traj = [trans_errs_before_resampling_list[-1][best_particle_idx]]
-    #     rot_errs_map_traj = [rot_errs_before_resampling_list[-1][best_particle_idx]]
-
-    #     idx_before = best_particle_idx
-
-    #     for i in reversed(range(len(particle_inherit_indices) - 1)):
-    #         if particle_inherit_indices[i] is not None:
-    #             idx_before = particle_inherit_indices[i][idx_before]
-
-    #             trans_err = trans_errs_before_resampling_list[i][idx_before]
-    #             rot_err = rot_errs_before_resampling_list[i][idx_before]
-
-    #             trans_errs_map_traj.append(trans_err)
-    #             rot_errs_map_traj.append(rot_err)
-
-    #     trans_errs_map_traj = np.asarray(trans_errs_map_traj, dtype=float)
-    #     rot_errs_map_traj = np.asarray(rot_errs_map_traj, dtype=float)
-        
-    #     return trans_errs_map_traj, rot_errs_map_traj
 
 
     def _restore_map_trajectory_errors(
@@ -423,15 +406,34 @@ class RBPFEValMultParticles:
         particle_inherit_indices: List[Optional[np.ndarray]],
         trans_errs_before_resampling_list: List[np.ndarray],
         rot_errs_before_resampling_list: List[np.ndarray],
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Restore the pre-resampling error trajectory of the final MAP particle.
+        Restore the pre-resampling error trajectory of the final MAP particle. The given particle_inherit_indices list 
+        contains the indices of the parent particles and None if no resampling took place. With this list the trajectory
+        of the best particle at the end of the run will be restored. 
 
-        particle_inherit_indices[t][child_idx] = parent_idx
+        Returns the translational and rotational errors of the MAP trajectory in chronological order. Also cleans the 
+        output by estimating the valid values, that the trans and rot error arrays have in common.
 
-        Final MAP particle is selected before final resampling, so the final step's resampling indices are intentionally ignored.
+        Parameters
+        ----------
+        best_particle_idx : int
+            The index of the best particle at the last step of the run.
+        particle_inherit_indices : List[Optional[np.ndarray]]
+            A list of arrays containing the indices of the parent particles for each step. If no resampling took place at 
+            a step, the corresponding entry is None.  
+        trans_errs_before_resampling_list : List[np.ndarray]
+            A list of arrays containing the translational errors before resampling for each step.
+        rot_errs_before_resampling_list : List[np.ndarray]
+            A list of arrays containing the rotational errors before resampling for each step.
+        
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray]
+            Two numpy arrays containing the cleaned translational and rotational errors of the MAP trajectory in chronological
+            order.
         """
-
+        # Initialize index with best particle index in last iteration of the filter
         idx = int(best_particle_idx)
 
         trans_errs = []
@@ -440,20 +442,18 @@ class RBPFEValMultParticles:
         # Walk backward through the run.
         for step_idx in reversed(range(len(trans_errs_before_resampling_list))):
 
-            # Store error of current ancestor at this step.
+            # Store errors of current particle 
             trans_errs.append(trans_errs_before_resampling_list[step_idx][idx])
             rot_errs.append(rot_errs_before_resampling_list[step_idx][idx])
 
-            # Move from step_idx to step_idx - 1.
-            # Therefore use resampling info from the previous step.
+            # Skip this in first iteration
             if step_idx > 0:
+                # Get the index of the parent particle if available
                 indices = particle_inherit_indices[step_idx - 1]
 
+                # If resampling took place, update the index to the parent particle's index
                 if indices is not None:
                     idx = int(indices[idx])
-
-                # If indices is None, no resampling happened.
-                # Then the particle index stays the same.
 
         # We collected errors backward, so reverse to chronological order.
         trans_errs = np.asarray(trans_errs[::-1], dtype=float)
@@ -465,7 +465,6 @@ class RBPFEValMultParticles:
         rot_errs = rot_errs[valid_mask]
 
         return trans_errs, rot_errs
-
 
 
 
@@ -501,8 +500,175 @@ class RBPFEValMultParticles:
             trans_errs_before_resampling_list=trans_errs_before_resampling_list,
             rot_errs_before_resampling_list=rot_errs_before_resampling_list
         )
-        
-      
+        # if step_results:
+        #     best_p_idx = step_results[-1].max_weight_idx
+        #     particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
+
+        #     trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
+        #         best_particle_idx=best_p_idx,
+        #         particle_inherit_indices=particle_inherit_indices,
+        #         trans_errs_before_resampling_list=trans_errs_before_resampling_list,
+        #         rot_errs_before_resampling_list=rot_errs_before_resampling_list
+        #     )
+        # else:
+        #     trans_errs_map_traj = np.array([], dtype=float)
+        #     rot_errs_map_traj = np.array([], dtype=float)
+
+        has_weighted_mean_errors = (
+            len(trans_errs_weighted_mean) > 0 and len(rot_errs_weighted_mean) > 0
+        )
+        has_best_particle_errors = (
+            len(trans_errs_best_particle) > 0 and len(rot_errs_best_particle) > 0
+        )
+        has_closest_particle_before_resampling_errors = (
+            len(trans_errs_closest_p_before_resampling) > 0
+            and len(rot_errs_closest_p_before_resampling) > 0
+        )
+        has_map_trajectory_errors = (
+            len(trans_errs_map_traj) > 0 and len(rot_errs_map_traj) > 0
+        )
+
+        summary = {
+            "n_steps": len(step_results),
+
+            # Weighted mean pose trajectory
+            "mean_trans_err_weighted_mean": (
+                float(np.mean(trans_errs_weighted_mean))
+                if has_weighted_mean_errors else None
+            ),
+            "rmse_trans_err_weighted_mean": (
+                float(np.sqrt(np.mean(np.square(trans_errs_weighted_mean))))
+                if has_weighted_mean_errors else None
+            ),
+            "worst_trans_err_weighted_mean": (
+                float(np.max(trans_errs_weighted_mean))
+                if has_weighted_mean_errors else None
+            ),
+            "mean_rot_err_weighted_mean": (
+                float(np.mean(rot_errs_weighted_mean))
+                if has_weighted_mean_errors else None
+            ),
+            "rmse_rot_err_weighted_mean": (
+                float(np.sqrt(np.mean(np.square(rot_errs_weighted_mean))))
+                if has_weighted_mean_errors else None
+            ),
+            "worst_rot_err_weighted_mean": (
+                float(np.max(rot_errs_weighted_mean))
+                if has_weighted_mean_errors else None
+            ),
+            "final_trans_drift_trans_err_weighted_mean": (
+                float(trans_errs_weighted_mean[-1])
+                if has_weighted_mean_errors else None
+            ),
+            "final_rot_drift_rot_err_weighted_mean": (
+                float(rot_errs_weighted_mean[-1])
+                if has_weighted_mean_errors else None
+            ),
+
+            # Online MAP / highest-weight particle trajectory
+            "mean_trans_err_best_particle": (
+                float(np.mean(trans_errs_best_particle))
+                if has_best_particle_errors else None
+            ),
+            "rmse_trans_err_best_particle": (
+                float(np.sqrt(np.mean(np.square(trans_errs_best_particle))))
+                if has_best_particle_errors else None
+            ),
+            "worst_trans_err_best_particle": (
+                float(np.max(trans_errs_best_particle))
+                if has_best_particle_errors else None
+            ),
+            "mean_rot_err_best_particle": (
+                float(np.mean(rot_errs_best_particle))
+                if has_best_particle_errors else None
+            ),
+            "rmse_rot_err_best_particle": (
+                float(np.sqrt(np.mean(np.square(rot_errs_best_particle))))
+                if has_best_particle_errors else None
+            ),
+            "worst_rot_err_best_particle": (
+                float(np.max(rot_errs_best_particle))
+                if has_best_particle_errors else None
+            ),
+            "final_trans_drift_trans_err_best_particle": (
+                float(trans_errs_best_particle[-1])
+                if has_best_particle_errors else None
+            ),
+            "final_rot_drift_rot_err_best_particle": (
+                float(rot_errs_best_particle[-1])
+                if has_best_particle_errors else None
+            ),
+
+            # Oracle closest-particle trajectory before resampling
+            "mean_trans_err_closest_p_before_resampling": (
+                float(np.mean(trans_errs_closest_p_before_resampling))
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "rmse_trans_err_closest_p_before_resampling": (
+                float(np.sqrt(np.mean(np.square(trans_errs_closest_p_before_resampling))))
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "worst_trans_err_closest_p_before_resampling": (
+                float(np.max(trans_errs_closest_p_before_resampling))
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "mean_rot_err_closest_p_before_resampling": (
+                float(np.mean(rot_errs_closest_p_before_resampling))
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "rmse_rot_err_closest_p_before_resampling": (
+                float(np.sqrt(np.mean(np.square(rot_errs_closest_p_before_resampling))))
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "worst_rot_err_closest_p_before_resampling": (
+                float(np.max(rot_errs_closest_p_before_resampling))
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "final_trans_drift_trans_err_closest_p_before_resampling": (
+                float(trans_errs_closest_p_before_resampling[-1])
+                if has_closest_particle_before_resampling_errors else None
+            ),
+            "final_rot_drift_rot_err_closest_p_before_resampling": (
+                float(rot_errs_closest_p_before_resampling[-1])
+                if has_closest_particle_before_resampling_errors else None
+            ),
+
+            # Final MAP particle ancestral trajectory
+            "mean_trans_err_map_traj": (
+                float(np.mean(trans_errs_map_traj))
+                if has_map_trajectory_errors else None
+            ),
+            "rmse_trans_err_map_traj": (
+                float(np.sqrt(np.mean(np.square(trans_errs_map_traj))))
+                if has_map_trajectory_errors else None
+            ),
+            "worst_trans_err_map_traj": (
+                float(np.max(trans_errs_map_traj))
+                if has_map_trajectory_errors else None
+            ),
+            "mean_rot_err_map_traj": (
+                float(np.mean(rot_errs_map_traj))
+                if has_map_trajectory_errors else None
+            ),
+            "rmse_rot_err_map_traj": (
+                float(np.sqrt(np.mean(np.square(rot_errs_map_traj))))
+                if has_map_trajectory_errors else None
+            ),
+            "worst_rot_err_map_traj": (
+                float(np.max(rot_errs_map_traj))
+                if has_map_trajectory_errors else None
+            ),
+            "final_trans_drift_trans_err_map_traj": (
+                float(trans_errs_map_traj[-1])
+                if has_map_trajectory_errors else None
+            ),
+            "final_rot_drift_rot_err_map_traj": (
+                float(rot_errs_map_traj[-1])
+                if has_map_trajectory_errors else None
+            ),
+        }
+
+        return summary
 
 
 def test():

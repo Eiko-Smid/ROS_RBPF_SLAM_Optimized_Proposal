@@ -158,28 +158,6 @@ class PlaybackRunner:
             if np.isnan(measurements_proposal).any():
                 print("\nPlayback runner: measurement model contains nan value after subsampling scans")
 
-            # Use inf vals for map update, too -> clear free space faster
-            # measurements_map = [
-            #     (r, b) for r, b in measurements_map if np.isfinite(r) and not np.isnan(r)
-            # ]
-
-            # if step_idx == 517:
-            #     print("Debug here")
-
-            # Run rbpf filter step
-            # rbpf.step(
-            #     odom=(step.dl, step.dr),
-            #     measurements_proposal=measurements_proposal,
-            #     measurements_map_update=measurements_map,
-            #     true_pose=step.true_pose,
-            #     proposal_sigma_xy=params.proposal_sigma_xy,
-            #     proposal_sigma_theta=params.proposal_sigma_theta,
-            #     proposal_n_samples=params.proposal_n_samples,
-            #     meas_kernel_size=params.meas_kernel_size,
-            #     gaussian_sigma=params.gaussian_sigma,
-            #     proposal_alpha=params.proposal_alpha,
-            #     proposal_beta=params.proposal_beta,
-            # )
             rbpf.step_range_finder_model(
                 odom=(step.dl, step.dr),
                 measurements_proposal=measurements_proposal,
@@ -269,6 +247,10 @@ class PlaybackRunner:
             run_result.step_results.append(step_result)
 
         # Summarize the run results and store in the run result object
+        run_result.summary = self.evaluator.summarize_run(
+            step_results=run_result.step_results,
+            params=params,
+        )
         # run_result.summary = self.evaluator.summarize_run(
         #     step_results=run_result.step_results,
         #     params=params,
@@ -277,10 +259,14 @@ class PlaybackRunner:
         timing_summary = rbpf.timing_summary()
         run_result.summary.update(timing_summary)
 
+
         def _to_ms(value):
             return value * 1000.0 if value is not None else None
 
+        
         print("RBPF timing summary (mean per run):")
+        # TODO: Add mean step duration
+        print(f"  mean_step_duration")
         print(f"  update_particles: {_to_ms(timing_summary.get('mean_timing_update_particles_s'))} ms")
         print(f"  normalize+neff: {_to_ms(timing_summary.get('mean_timing_normalize_neff_s'))} ms")
         print(f"  metrics: {_to_ms(timing_summary.get('mean_timing_metrics_s'))} ms")
@@ -400,7 +386,6 @@ class PlaybackRunner:
             f"{_to_ms(run_result.summary.get('mean_t_sample_from_prop'))} ms"
         )
         
-
         return run_result
     
 
