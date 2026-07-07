@@ -16,45 +16,73 @@ Pose2D = Tuple[float, float, float]
 @dataclass
 class StepResult:
     # General metrics
-    step_idx: int
-    t: float
+    step_idx: Optional[int] = None
+    t: Optional[float] = None
+    t_step_duration: Optional[float] = None
 
     # Ground truth and odom
-    true_pose: Pose2D
-    raw_odom_pose: Pose2D
+    true_pose: Optional[np.ndarray] = None
+    raw_odom_pose: Optional[np.ndarray] = None
 
     # Particle poses before and after resampling
-    particle_poses: np.ndarray
-    particle_weights: np.ndarray
-    particle_poses_before_resampling: np.ndarray
-    particle_weights_before_resampling: np.ndarray
+    particle_poses: Optional[np.ndarray] = None
+    particle_weights: Optional[np.ndarray] = None
+    particle_poses_before_resampling: Optional[np.ndarray] = None
+    particle_weights_before_resampling: Optional[np.ndarray] = None
 
     # Weighted mean pose
-    weighted_mean_pose: np.ndarray
-    trans_err_weighted_mean: float
-    rot_err_weighted_mean: float
+    weighted_mean_pose: Optional[np.ndarray] = None
+    trans_err_weighted_mean: Optional[float] = None
+    rot_err_weighted_mean: Optional[float] = None
 
     # Best particle pose and weight
-    max_weight_idx: int
-    best_particle_pose: np.ndarray
-    best_particle_weight: float
-    trans_err_best_particle: float
-    rot_err_best_particle: float
+    max_weight_idx: Optional[int] = None
+    best_particle_pose: Optional[np.ndarray] = None
+    best_particle_weight: Optional[float] = None
+    trans_err_best_particle: Optional[float] = None
+    rot_err_best_particle: Optional[float] = None
     
     # Closest particle trajectory evaluation
-    trans_errs_before_resampling: np.ndarray
-    rot_errs_before_resampling: np.ndarray
-    trans_err_closest_p_before_resampling: float
-    rot_err_closest_p_before_resampling: float
-    idx_closest_p_before_resampling: int
+    trans_errs_before_resampling: Optional[np.ndarray] = None
+    rot_errs_before_resampling: Optional[np.ndarray] = None
+    trans_err_closest_p_before_resampling: Optional[float] = None
+    rot_err_closest_p_before_resampling: Optional[float] = None
+    idx_closest_p_before_resampling: Optional[int] = None
 
-    trans_errs_after_resampling: np.ndarray
-    rot_errs_after_resampling: np.ndarray
-    trans_err_closest_p_after_resampling: float
-    rot_err_closest_p_after_resampling: float
-    idx_closest_p_after_resampling: int
+    trans_errs_after_resampling: Optional[np.ndarray] = None
+    rot_errs_after_resampling: Optional[np.ndarray] = None
+    trans_err_closest_p_after_resampling: Optional[float] = None
+    rot_err_closest_p_after_resampling: Optional[float] = None
+    idx_closest_p_after_resampling: Optional[int] = None
     
     particle_inherit_indices: Optional[np.ndarray] = None
+
+    # Proposal time durations
+    t_sample_poses: Optional[float] = None
+    t_pred_poses: Optional[float] = None
+    t_motion_model: Optional[float] = None
+    t_meas_model: Optional[float] = None
+    t_compute_prop_params: Optional[float] = None
+    t_sample_from_prop: Optional[float] = None
+    
+    # Scan matcher time durations
+    time_duration_scan_matching: Optional[float] = None
+    time_duration_prediction: Optional[float] = None
+    time_duration_map_extraction: Optional[float] = None
+    time_duration_correct_pose: Optional[float] = None
+    time_duration_update_pose: Optional[float] = None
+
+    # ICP time durations
+    t_init_icp_trans: Optional[float] = None
+    t_init_and_train_nn_tree_normals: Optional[float] = None
+    t_downsampling_pointcloud: Optional[float] = None
+    t_compute_normal: Optional[float] = None
+    t_outlier_rejection: Optional[float] = None
+    t_find_nn_outlier_rejec: Optional[float] = None
+    t_prepare_system: Optional[float] = None
+    t_solve_least_squares: Optional[float] = None
+    t_transf_update_and_results: Optional[float] = None
+    t_find_trans: Optional[float] = None
     
 
 @dataclass
@@ -78,6 +106,28 @@ class RBPFEValMultParticles:
         '''
         arr = np.asarray(values, dtype=float)        
         return arr[np.isfinite(arr)]
+
+
+    @staticmethod
+    def _has_valid_metric_array(values: Optional[np.ndarray], min_size: int = 1) -> bool:
+        """
+        Returns True only if values is a numpy array with at least min_size finite entries.
+        """
+        if values is None or not isinstance(values, np.ndarray):
+            return False
+        if values.size < min_size:
+            return False
+        return bool(np.all(np.isfinite(values)))
+
+
+    @staticmethod
+    def _safe_mean(values: Optional[np.ndarray], min_size: int = 1, default: float = float("nan")) -> float:
+        """
+        Computes the mean only when a valid timing array is available; otherwise returns default.
+        """
+        if not RBPFEValMultParticles._has_valid_metric_array(values, min_size=min_size):
+            return default
+        return float(np.mean(values))
 
 
     @staticmethod
@@ -219,6 +269,7 @@ class RBPFEValMultParticles:
         self,
         step_idx: int,
         t: float,
+
         true_pose: Pose2D,
         raw_odom_pose: Pose2D,
         particle_poses: List[Pose2D],
@@ -227,7 +278,10 @@ class RBPFEValMultParticles:
         particle_poses_before_resampling: List[Pose2D],
         particle_weights_before_resampling: List[float],
 
-        particle_inherit_indices: Optional[List[int]] = None
+        particle_inherit_indices: Optional[List[int]] = None,
+
+        step_duration: Optional[float] = None,
+        proposal_metrics: Optional[dict] = None,
     ) -> StepResult:
         '''
         Evaluates the performance of the RBPF at a given step.
@@ -254,77 +308,120 @@ class RBPFEValMultParticles:
         StepResult
             A dataclass containing the evaluation results for the current step.
         '''
+
         '''
         TODO:
         1) Add step duration
         2) Add scan match failure info
         3) Optional: Add measurement model metrics
         '''
+        # Init step results with None values
+        step_result = StepResult()
+        step_result.step_idx = step_idx
+        step_result.t = t
+        step_result.t_step_duration = float(step_duration) if step_duration is not None else None
 
-        # Convert poses to np arrays
-        true_pose_arr = self._pose_to_np_array(true_pose)
-        raw_odom_pose_arr = self._pose_to_np_array(raw_odom_pose)
-        particle_poses_arr = self._poses_to_np_array(particle_poses)
+        # Convert poses to np arrays and store directly in result
+        step_result.true_pose = self._pose_to_np_array(true_pose)
+        step_result.raw_odom_pose = self._pose_to_np_array(raw_odom_pose)
+        step_result.particle_poses = self._poses_to_np_array(particle_poses)
 
-        particle_poses_before_resampling_arr = self._poses_to_np_array(particle_poses_before_resampling)
-        particle_weights_before_resampling_arr = np.array(particle_weights_before_resampling, dtype=np.float64)
+        step_result.particle_poses_before_resampling = self._poses_to_np_array(particle_poses_before_resampling)
+        step_result.particle_weights_before_resampling = np.array(particle_weights_before_resampling, dtype=np.float64)
 
-        # Store indices of particles if resampling too place, otherwise None
-        particle_inherit_indices_arr = np.array(particle_inherit_indices, dtype=np.int32) if particle_inherit_indices is not None else None
+        # Store indices of particles if resampling took place, otherwise None
+        step_result.particle_inherit_indices = (
+            np.array(particle_inherit_indices, dtype=np.int32) if particle_inherit_indices is not None else None
+        )
 
         # Check for none finite
-        if not np.all(np.isfinite(true_pose_arr)):
-            raise ValueError(f"[Evaluator mp] True pose contains non-finite values at step {step_idx}: {true_pose_arr}")
-        if not np.all(np.isfinite(raw_odom_pose_arr)):
-            raise ValueError(f"[Evaluator mp] Raw odometry pose contains non-finite values at step {step_idx}: {raw_odom_pose_arr}")
-        if not np.all(np.isfinite(particle_poses_arr)):
-            raise ValueError(f"[Evaluator mp] Particle poses contain non-finite values at step {step_idx}: {particle_poses_arr}")
-        if not np.all(np.isfinite(particle_weights_before_resampling_arr)):
-            raise ValueError(f"[Evaluator mp] Particle weights before resampling contain non-finite values at step {step_idx}: {particle_weights_before_resampling_arr}")
-        if not np.all(np.isfinite(particle_poses_before_resampling_arr)):
-            raise ValueError(f"[Evaluator mp] Particle poses before resampling contain non-finite values at step {step_idx}: {particle_poses_before_resampling_arr}")
+        if not np.all(np.isfinite(step_result.true_pose)):
+            raise ValueError(f"[Evaluator mp] True pose contains non-finite values at step {step_idx}: {step_result.true_pose}")
+        if not np.all(np.isfinite(step_result.raw_odom_pose)):
+            raise ValueError(f"[Evaluator mp] Raw odometry pose contains non-finite values at step {step_idx}: {step_result.raw_odom_pose}")
+        if not np.all(np.isfinite(step_result.particle_poses)):
+            raise ValueError(f"[Evaluator mp] Particle poses contain non-finite values at step {step_idx}: {step_result.particle_poses}")
+        if not np.all(np.isfinite(step_result.particle_weights_before_resampling)):
+            raise ValueError(f"[Evaluator mp] Particle weights before resampling contain non-finite values at step {step_idx}: {step_result.particle_weights_before_resampling}")
+        if not np.all(np.isfinite(step_result.particle_poses_before_resampling)):
+            raise ValueError(f"[Evaluator mp] Particle poses before resampling contain non-finite values at step {step_idx}: {step_result.particle_poses_before_resampling}")
+        
+        # Extract proposal metrics and underlying scan matcher and icp metrics
+        if proposal_metrics is not None:
+            prop_timings = proposal_metrics.get("prop_timings")
+            # Extract and filter proposal timings
+            if isinstance(prop_timings, dict):
+                step_result.t_sample_poses = prop_timings.get("t_sample_poses")
+                step_result.t_pred_poses = prop_timings.get("t_pred_poses")
+                step_result.t_motion_model = prop_timings.get("t_motion_model")
+                step_result.t_meas_model = prop_timings.get("t_meas_model")
+                step_result.t_compute_prop_params = prop_timings.get("t_compute_prop_params")
+                step_result.t_sample_from_prop = prop_timings.get("t_sample_from_prop")
+
+            # Extract scan matcher timings
+            scan_matcher_info = proposal_metrics.get("scan_matcher_info")
+            if isinstance(scan_matcher_info, dict):
+                # Extract scan matcher timings
+                step_result.time_duration_scan_matching = scan_matcher_info.get("time_duration_scan_matching")
+                step_result.time_duration_prediction = scan_matcher_info.get("time_duration_prediction")    
+                step_result.time_duration_map_extraction = scan_matcher_info.get("time_duration_map_extraction")
+                step_result.time_duration_correct_pose = scan_matcher_info.get("time_duration_correct_pose")
+                step_result.time_duration_update_pose = scan_matcher_info.get("time_duration_update_pose")
+
+                # Extract icp timings
+                step_result.t_init_icp_trans = scan_matcher_info.get("t_init_icp_trans")
+                step_result.t_init_and_train_nn_tree_normals = scan_matcher_info.get("t_init_and_train_nn_tree_normals")
+                step_result.t_downsampling_pointcloud = scan_matcher_info.get("t_downsampling_pointcloud")
+                step_result.t_compute_normal = scan_matcher_info.get("t_compute_normal")
+                step_result.t_outlier_rejection = scan_matcher_info.get("t_outlier_rejection")
+                step_result.t_find_nn_outlier_rejec = scan_matcher_info.get("t_find_nn_outlier_rejec")
+                step_result.t_prepare_system = scan_matcher_info.get("t_prepare_system")
+                step_result.t_solve_least_squares = scan_matcher_info.get("t_solve_least_squares")
+                step_result.t_transf_update_and_results = scan_matcher_info.get("t_transf_update_and_results")
+                step_result.t_find_trans = scan_matcher_info.get("t_find_trans")
+
         
         # Convert weights to np array
         if particle_weights is None or len(particle_weights) == 0:
             raise ValueError(f"[Evaluator mp] Particle weights are None or empty at step {step_idx}.")
         
-        particle_weights_arr = np.array(particle_weights, dtype=np.float64)
+        step_result.particle_weights = np.array(particle_weights, dtype=np.float64)
 
         # Convert inherit indices to np array if provided
         # if particle_inherit_indices is not None:
         #     raise ValueError(f"[Evaluator mp] Particle inherit indices should be None at step {step_idx}, but got: {particle_inherit_indices}")
 
         # Check for NaN values in particle weights
-        if np.isnan(particle_weights_arr).any():
-            raise ValueError(f"[Evaluator mp] Particle weights contain NaN values at step {step_idx}: {particle_weights_arr}")
+        if np.isnan(step_result.particle_weights).any():
+            raise ValueError(f"[Evaluator mp] Particle weights contain NaN values at step {step_idx}: {step_result.particle_weights}")
 
         # Normalize weights
-        weight_sum = np.sum(particle_weights_arr)
+        weight_sum = np.sum(step_result.particle_weights)
         
         if weight_sum <= 0:
             raise ValueError(f"[Evaluator mp] Sum of particle weights is zero or negative at step {step_idx}, cannot compute weighted mean.")
         
-        particle_weights_arr = self.norm_weights(particle_weights_arr)
+        step_result.particle_weights = self.norm_weights(step_result.particle_weights)
 
         # Compute weighted mean poses
-        weighted_mean_pose = self.weighted_mean_position(particle_poses_arr, particle_weights_arr)
+        step_result.weighted_mean_pose = self.weighted_mean_position(step_result.particle_poses, step_result.particle_weights)
         # Compute trans and rot error of weighted mean pose
-        trans_err_weighted_mean = self.translation_error(weighted_mean_pose, true_pose_arr)
-        rot_err_weighted_mean = np.abs(self.angle_diff(weighted_mean_pose[2], true_pose_arr[2]))
+        step_result.trans_err_weighted_mean = self.translation_error(step_result.weighted_mean_pose, step_result.true_pose)
+        step_result.rot_err_weighted_mean = np.abs(self.angle_diff(step_result.weighted_mean_pose[2], step_result.true_pose[2]))
 
         # Estimate particle with highest weight -> Will give us online trajectory in summary
-        max_weight_idx = np.argmax(particle_weights_before_resampling_arr)
-        best_particle_pose = particle_poses_before_resampling_arr[max_weight_idx]
-        best_particle_weight = particle_weights_before_resampling_arr[max_weight_idx]
+        step_result.max_weight_idx = np.argmax(step_result.particle_weights_before_resampling)
+        step_result.best_particle_pose = step_result.particle_poses_before_resampling[step_result.max_weight_idx]
+        step_result.best_particle_weight = step_result.particle_weights_before_resampling[step_result.max_weight_idx]
         # Compute trans and rot error of particle with highest weight
-        trans_err_best_particle = self.translation_error(best_particle_pose, true_pose_arr)
-        rot_err_best_particle = np.abs(self.angle_diff(best_particle_pose[2], true_pose_arr[2]))
+        step_result.trans_err_best_particle = self.translation_error(step_result.best_particle_pose, step_result.true_pose)
+        step_result.rot_err_best_particle = np.abs(self.angle_diff(step_result.best_particle_pose[2], step_result.true_pose[2]))
 
         # Estimate closest particle before resampling -> Will give us offline trajectory in summary
-        xy_diffs_before_resampling = particle_poses_before_resampling_arr[:, :2] - true_pose_arr[:2]
+        xy_diffs_before_resampling = step_result.particle_poses_before_resampling[:, :2] - step_result.true_pose[:2]
         trans_errors_before_resampling = np.linalg.norm(xy_diffs_before_resampling, axis=1)
 
-        rot_diffs_before_resampling = particle_poses_before_resampling_arr[:, 2] - true_pose_arr[2]
+        rot_diffs_before_resampling = step_result.particle_poses_before_resampling[:, 2] - step_result.true_pose[2]
         rot_errs_before_resampling = np.abs(
             np.arctan2(
                 np.sin(rot_diffs_before_resampling),
@@ -333,15 +430,15 @@ class RBPFEValMultParticles:
         )
 
         # Find closest particle
-        idx_closest_p_before_resampling = np.argmin(trans_errors_before_resampling)
-        trans_err_closest_p_before_resampling = trans_errors_before_resampling[idx_closest_p_before_resampling]
-        rot_err_closest_p_before_resampling = rot_errs_before_resampling[idx_closest_p_before_resampling]
+        step_result.idx_closest_p_before_resampling = np.argmin(trans_errors_before_resampling)
+        step_result.trans_err_closest_p_before_resampling = trans_errors_before_resampling[step_result.idx_closest_p_before_resampling]
+        step_result.rot_err_closest_p_before_resampling = rot_errs_before_resampling[step_result.idx_closest_p_before_resampling]
 
         # Estimate closest particle after resampling
-        xy_diffs_after_resampling = particle_poses_arr[:, :2] - true_pose_arr[:2]
+        xy_diffs_after_resampling = step_result.particle_poses[:, :2] - step_result.true_pose[:2]
         trans_errors_after_resampling = np.linalg.norm(xy_diffs_after_resampling, axis=1)
 
-        rot_diffs_after_resampling = particle_poses_arr[:, 2] - true_pose_arr[2]
+        rot_diffs_after_resampling = step_result.particle_poses[:, 2] - step_result.true_pose[2]
         rot_errs_after_resampling = np.abs(
             np.arctan2(
                 np.sin(rot_diffs_after_resampling),
@@ -350,54 +447,17 @@ class RBPFEValMultParticles:
         )
 
         # Find closest particle after resampling
-        idx_closest_p_after_resampling = np.argmin(trans_errors_after_resampling)
-        trans_err_closest_p_after_resampling = trans_errors_after_resampling[idx_closest_p_after_resampling]
-        rot_err_closest_p_after_resampling = rot_errs_after_resampling[idx_closest_p_after_resampling]
+        step_result.idx_closest_p_after_resampling = np.argmin(trans_errors_after_resampling)
+        step_result.trans_err_closest_p_after_resampling = trans_errors_after_resampling[step_result.idx_closest_p_after_resampling]
+        step_result.rot_err_closest_p_after_resampling = rot_errs_after_resampling[step_result.idx_closest_p_after_resampling]
 
-        # Store results
-        return StepResult(
-            # General metrics
-            step_idx=step_idx,
-            t=t,
+        # Closest particle trajectory evaluation arrays
+        step_result.trans_errs_before_resampling = trans_errors_before_resampling
+        step_result.rot_errs_before_resampling = rot_errs_before_resampling
+        step_result.trans_errs_after_resampling = trans_errors_after_resampling
+        step_result.rot_errs_after_resampling = rot_errs_after_resampling
 
-            # Ground truth and odom
-            true_pose=true_pose_arr,
-            raw_odom_pose=raw_odom_pose_arr,
-
-            # Particle poses before and after resampling
-            particle_poses=particle_poses_arr,
-            particle_weights=particle_weights_arr,
-            particle_poses_before_resampling=particle_poses_before_resampling_arr,
-            particle_weights_before_resampling=particle_weights_before_resampling_arr,
-            
-            # Weighted mean pose
-            weighted_mean_pose=weighted_mean_pose,
-            trans_err_weighted_mean=trans_err_weighted_mean,
-            rot_err_weighted_mean=rot_err_weighted_mean,
-            
-            # Best particle pose and weight
-            max_weight_idx=max_weight_idx,
-            best_particle_pose=best_particle_pose,
-            best_particle_weight=best_particle_weight,
-            trans_err_best_particle=trans_err_best_particle,
-            rot_err_best_particle=rot_err_best_particle,                            
-
-            # Closest particle trajectory evaluation
-            trans_errs_before_resampling=trans_errors_before_resampling,
-            rot_errs_before_resampling=rot_errs_before_resampling,
-            trans_err_closest_p_before_resampling=trans_err_closest_p_before_resampling,
-            rot_err_closest_p_before_resampling=rot_err_closest_p_before_resampling,
-            idx_closest_p_before_resampling=idx_closest_p_before_resampling,
-
-            trans_errs_after_resampling=trans_errors_after_resampling,
-            rot_errs_after_resampling=rot_errs_after_resampling,            
-            trans_err_closest_p_after_resampling=trans_err_closest_p_after_resampling,
-            rot_err_closest_p_after_resampling=rot_err_closest_p_after_resampling,            
-            idx_closest_p_after_resampling=idx_closest_p_after_resampling,
-
-            # Optional particle inherit indices (if resampling took place) -> Recover trajectory of best particle at the end
-            particle_inherit_indices=particle_inherit_indices_arr,            
-        )
+        return step_result
 
 
     def _restore_map_trajectory_errors(
@@ -486,33 +546,104 @@ class RBPFEValMultParticles:
             [step.rot_err_closest_p_before_resampling for step in step_results]
         )
 
+        # Filter time durations
+        step_durations = self._finite_values([s.t_step_duration for s in step_results if s.t_step_duration is not None])
+        # Filter and store proposal time durations
+        t_sample_poses_values = self._finite_values(
+            [s.t_sample_poses for s in step_results if s.t_sample_poses is not None]
+        )
+        t_pred_poses_values = self._finite_values(
+            [s.t_pred_poses for s in step_results if s.t_pred_poses is not None]
+        )
+        t_motion_model_values = self._finite_values(
+            [s.t_motion_model for s in step_results if s.t_motion_model is not None]
+        )
+        t_meas_model_values = self._finite_values(
+            [s.t_meas_model for s in step_results if s.t_meas_model is not None]
+        )
+        t_compute_prop_params_values = self._finite_values(
+            [s.t_compute_prop_params for s in step_results if s.t_compute_prop_params is not None]
+        )
+        t_sample_from_prop_values = self._finite_values(
+            [s.t_sample_from_prop for s in step_results if s.t_sample_from_prop is not None]
+        )
+        
+        # Filter and store time durations scan matching
+        time_duration_scan_matching_values = self._finite_values(
+            [s.time_duration_scan_matching for s in step_results if s.time_duration_scan_matching is not None]
+        )
+        time_duration_prediction_values = self._finite_values(
+            [s.time_duration_prediction for s in step_results if s.time_duration_prediction is not None]
+        )
+        time_duration_map_extraction_values = self._finite_values(
+            [s.time_duration_map_extraction for s in step_results if s.time_duration_map_extraction is not None]
+        )
+        time_duration_correct_pose_values = self._finite_values(
+            [s.time_duration_correct_pose for s in step_results if s.time_duration_correct_pose is not None]
+        )
+        time_duration_update_pose_values = self._finite_values(
+            [s.time_duration_update_pose for s in step_results if s.time_duration_update_pose is not None]
+        )
+
+        # Filter and store time durations ICP
+        t_init_icp_trans_values = self._finite_values(
+            [s.t_init_icp_trans for s in step_results if s.t_init_icp_trans is not None]
+        )
+        t_init_and_train_nn_tree_normals_values = self._finite_values(
+            [s.t_init_and_train_nn_tree_normals for s in step_results if s.t_init_and_train_nn_tree_normals is not None]
+        )
+        t_downsampling_pointcloud_values = self._finite_values(
+            [s.t_downsampling_pointcloud for s in step_results if s.t_downsampling_pointcloud is not None]
+        )
+        t_compute_normal_values = self._finite_values(
+            [s.t_compute_normal for s in step_results if s.t_compute_normal is not None]
+        )
+        t_outlier_rejection_values = self._finite_values(
+            [s.t_outlier_rejection for s in step_results if s.t_outlier_rejection is not None]
+        )
+        t_find_nn_outlier_rejec_values = self._finite_values(
+            [s.t_find_nn_outlier_rejec for s in step_results if s.t_find_nn_outlier_rejec is not None]
+        )
+        t_prepare_system_values = self._finite_values(
+            [s.t_prepare_system for s in step_results if s.t_prepare_system is not None]
+        )
+        t_solve_least_squares_values = self._finite_values(
+            [s.t_solve_least_squares for s in step_results if s.t_solve_least_squares is not None]
+        )
+        t_transf_update_and_results_values = self._finite_values(
+            [s.t_transf_update_and_results for s in step_results if s.t_transf_update_and_results is not None]
+        )
+        t_find_trans_values = self._finite_values(
+            [s.t_find_trans for s in step_results if s.t_find_trans is not None]
+        )
+
         # Get trans errors before resampling
         trans_errs_before_resampling_list = [step.trans_errs_before_resampling for step in step_results]
         rot_errs_before_resampling_list = [step.rot_errs_before_resampling for step in step_results]
 
         # Restore MAP trajectory errors
-        best_p_idx = step_results[-1].max_weight_idx
-        particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
+        # best_p_idx = step_results[-1].max_weight_idx
+        # particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
 
-        trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
-            best_particle_idx=best_p_idx,
-            particle_inherit_indices=particle_inherit_indices,
-            trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-            rot_errs_before_resampling_list=rot_errs_before_resampling_list
-        )
-        # if step_results:
-        #     best_p_idx = step_results[-1].max_weight_idx
-        #     particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
+        # trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
+        #     best_particle_idx=best_p_idx,
+        #     particle_inherit_indices=particle_inherit_indices,
+        #     trans_errs_before_resampling_list=trans_errs_before_resampling_list,
+        #     rot_errs_before_resampling_list=rot_errs_before_resampling_list
+        # )
+        if step_results:
+            best_p_idx = step_results[-1].max_weight_idx
+            particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
 
-        #     trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
-        #         best_particle_idx=best_p_idx,
-        #         particle_inherit_indices=particle_inherit_indices,
-        #         trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-        #         rot_errs_before_resampling_list=rot_errs_before_resampling_list
-        #     )
-        # else:
-        #     trans_errs_map_traj = np.array([], dtype=float)
-        #     rot_errs_map_traj = np.array([], dtype=float)
+            trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
+                best_particle_idx=best_p_idx,
+                particle_inherit_indices=particle_inherit_indices,
+                trans_errs_before_resampling_list=trans_errs_before_resampling_list,
+                rot_errs_before_resampling_list=rot_errs_before_resampling_list
+            )
+        else:
+            trans_errs_map_traj = np.array([], dtype=float)
+            rot_errs_map_traj = np.array([], dtype=float)
 
         has_weighted_mean_errors = (
             len(trans_errs_weighted_mean) > 0 and len(rot_errs_weighted_mean) > 0
@@ -530,6 +661,33 @@ class RBPFEValMultParticles:
 
         summary = {
             "n_steps": len(step_results),
+
+            # Compute mean timings
+            "mean_step_duration": self._safe_mean(step_durations),
+            # Mean time durations proposal
+            "mean_t_sample_poses": self._safe_mean(t_sample_poses_values),
+            "mean_t_pred_poses": self._safe_mean(t_pred_poses_values),
+            "mean_t_motion_model": self._safe_mean(t_motion_model_values),
+            "mean_t_meas_model": self._safe_mean(t_meas_model_values),
+            "mean_t_compute_prop_params": self._safe_mean(t_compute_prop_params_values),
+            "mean_t_sample_from_prop": self._safe_mean(t_sample_from_prop_values),
+            # Mean time durations scan matching
+            "mean_time_duration_scan_matching": self._safe_mean(time_duration_scan_matching_values),
+            "mean_time_duration_prediction": self._safe_mean(time_duration_prediction_values),
+            "mean_time_duration_map_extraction": self._safe_mean(time_duration_map_extraction_values),
+            "mean_time_duration_correct_pose": self._safe_mean(time_duration_correct_pose_values),
+            "mean_time_duration_update_pose": self._safe_mean(time_duration_update_pose_values),
+            # Mean time durations ICP
+            "mean_t_init_icp_trans": self._safe_mean(t_init_icp_trans_values),
+            "mean_t_init_and_train_nn_tree_normals": self._safe_mean(t_init_and_train_nn_tree_normals_values),
+            "mean_t_downsampling_pointcloud": self._safe_mean(t_downsampling_pointcloud_values),
+            "mean_t_compute_normal": self._safe_mean(t_compute_normal_values),
+            "mean_t_outlier_rejection": self._safe_mean(t_outlier_rejection_values),
+            "mean_t_find_nn_outlier_rejec": self._safe_mean(t_find_nn_outlier_rejec_values),
+            "mean_t_prepare_system": self._safe_mean(t_prepare_system_values),
+            "mean_t_solve_least_squares": self._safe_mean(t_solve_least_squares_values),
+            "mean_t_transf_update_and_results": self._safe_mean(t_transf_update_and_results_values),
+            "mean_t_find_trans": self._safe_mean(t_find_trans_values),
 
             # Weighted mean pose trajectory
             "mean_trans_err_weighted_mean": (

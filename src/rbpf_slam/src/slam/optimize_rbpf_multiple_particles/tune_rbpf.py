@@ -825,7 +825,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
-NUMBER_OF_WORKERS = 1
+NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
@@ -3006,10 +3006,11 @@ def rbpf_tuning_pipeline_multiprocessing():
         print(f"\n\nFinished overall scan matching optimization in {overall_optm_duration_s} s")
 
     # Aggregate results
+    # TODO: Adapt aggregate results to new tuning pipeline fo rbpf with multiple particles
     # Convert ranked runs to pandas DataFrame for easier analysis 
-    ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
+    # ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
 
-    # # Rank results by score
+    # Rank results by score
     # rank_scored_df = result_aggregator.rank_by_score(
     #     ranked_run_df=ranked_run_df,
     #     score_col="score",   
@@ -3059,14 +3060,14 @@ def rbpf_tuning_pipeline_multiprocessing():
     # )
 
 
-    # Save independent per-step diagnostic traces for each ranked run.
-    if KEEP_STEP_RESULTS:
-        result_writer.write_run_steps_csv(
-            output_path=STEP_TRACE_PATH,
-            ranked_runs=ranked_run_list,
-            override=OVERRIDE_EXISTING_RESULTS,
-            float_decimals=CSV_FLOAT_DECIMALS,
-        )
+    # # Save independent per-step diagnostic traces for each ranked run.
+    # if KEEP_STEP_RESULTS:
+    #     result_writer.write_run_steps_csv(
+    #         output_path=STEP_TRACE_PATH,
+    #         ranked_runs=ranked_run_list,
+    #         override=OVERRIDE_EXISTING_RESULTS,
+    #         float_decimals=CSV_FLOAT_DECIMALS,
+    #     )
 
     # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
     # TODO: Add proposal weights again

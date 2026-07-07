@@ -35,6 +35,7 @@ class ResultWriter:
 	def _format_csv_value(value, float_decimals: int):
 		"""
 		Format float-like values with fixed decimal places while leaving other values unchanged.
+		This method can be adapted. One can even define fpr which dtypes the decimals should be applied to, etc.
 		"""
 		if value is None:
 			return np.nan
@@ -81,7 +82,7 @@ class ResultWriter:
 		if cols_to_exclude:
 			formatted_df = formatted_df.drop(columns=cols_to_exclude, errors="ignore")
 		
-		# Format columns
+		# Format columns of df. _format_csv_value can be adapted such that the columns adapt to it, too.
 		for col in formatted_df.columns:
 			formatted_df[col] = formatted_df[col].map(
 				lambda value: ResultWriter._format_csv_value(value, float_decimals=float_decimals)

@@ -212,6 +212,8 @@ class PlaybackRunner:
             # Extract evaluation info from rbpf 
             info = rbpf.get_step_info()
             step_idx_logged = info.get("step", None)
+            proposal_metrics = info.get("proposal_metrics", None)
+
             true_pose_logged = info.get("true_pose", None)
             neff = info.get("neff", None)
 
@@ -229,6 +231,7 @@ class PlaybackRunner:
             step_result = self.evaluator.evaluate_step(
                 step_idx=step_idx_logged if step_idx_logged is not None else step_idx,                
                 t=step.t,
+                
                 true_pose=true_pose_logged,
                 raw_odom_pose=(
                     self._raw_odom_poses_cache[step_idx]
@@ -241,7 +244,10 @@ class PlaybackRunner:
                 particle_poses_before_resampling= particle_poses_before_resampling,
                 particle_weights_before_resampling= particle_weights_before_resampling,
 
-                particle_inherit_indices= particle_inherit_indices
+                particle_inherit_indices= particle_inherit_indices,
+
+                step_duration=step_duration,
+                proposal_metrics=proposal_metrics,
             )
 
             run_result.step_results.append(step_result)
@@ -251,10 +257,7 @@ class PlaybackRunner:
             step_results=run_result.step_results,
             params=params,
         )
-        # run_result.summary = self.evaluator.summarize_run(
-        #     step_results=run_result.step_results,
-        #     params=params,
-        # )
+        
         run_result.summary.update(self._aggregate_icp_counters(rbpf))
         timing_summary = rbpf.timing_summary()
         run_result.summary.update(timing_summary)
@@ -263,7 +266,7 @@ class PlaybackRunner:
         def _to_ms(value):
             return value * 1000.0 if value is not None else None
 
-        
+
         print("RBPF timing summary (mean per run):")
         # TODO: Add mean step duration
         print(f"  mean_step_duration")
