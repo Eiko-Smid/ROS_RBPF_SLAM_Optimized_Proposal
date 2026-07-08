@@ -52,15 +52,22 @@ class StepResult:
     trans_err_closest_p_before_resampling: Optional[float] = None
     rot_err_closest_p_before_resampling: Optional[float] = None
     idx_closest_p_before_resampling: Optional[int] = None
+    gap_trans_best_p_to_closest_before_resamp: Optional[float] = None
+    gap_rot_best_p_to_closest_before_resamp: Optional[float] = None
 
     trans_errs_after_resampling: Optional[np.ndarray] = None
     rot_errs_after_resampling: Optional[np.ndarray] = None
     trans_err_closest_p_after_resampling: Optional[float] = None
     rot_err_closest_p_after_resampling: Optional[float] = None
     idx_closest_p_after_resampling: Optional[int] = None
+    trans_closest_p_after_before_resamp: Optional[float] = None
+    rot_closest_p_after_before_resamp: Optional[float] = None
     
     neff: Optional[float] = None
+    neff_ratio: Optional[float] = None
     particle_inherit_indices: Optional[np.ndarray] = None
+    resampling: Optional[bool] = None
+    unique_parents: Optional[int] = None
 
     # Time metrics
     # Proposal time durations
@@ -346,10 +353,20 @@ class RBPFEValMultParticles:
         
         # Store neff
         step_result.neff = float(neff)
+        n_particles = len(particle_poses)
+        step_result.neff_ratio = float(neff) / n_particles if n_particles > 0 else None
         
         # Store indices of particles if resampling took place, otherwise None
         step_result.particle_inherit_indices = (
             np.array(particle_inherit_indices, dtype=np.int32) if particle_inherit_indices is not None else None
+        )
+
+        # Estimate if resampling took place
+        step_result.resampling = particle_inherit_indices is not None
+        step_result.unique_parents = (
+            int(len(np.unique(step_result.particle_inherit_indices)))
+            if step_result.particle_inherit_indices is not None
+            else None
         )
 
         # Check for none finite
@@ -451,6 +468,12 @@ class RBPFEValMultParticles:
         step_result.idx_closest_p_before_resampling = np.argmin(trans_errors_before_resampling)
         step_result.trans_err_closest_p_before_resampling = trans_errors_before_resampling[step_result.idx_closest_p_before_resampling]
         step_result.rot_err_closest_p_before_resampling = rot_errs_before_resampling[step_result.idx_closest_p_before_resampling]
+        step_result.gap_trans_best_p_to_closest_before_resamp = (
+            step_result.trans_err_best_particle - step_result.trans_err_closest_p_before_resampling
+        )
+        step_result.gap_rot_best_p_to_closest_before_resamp = (
+            step_result.rot_err_best_particle - step_result.rot_err_closest_p_before_resampling
+        )
 
         # Estimate closest particle after resampling
         xy_diffs_after_resampling = step_result.particle_poses[:, :2] - step_result.true_pose[:2]
@@ -468,8 +491,14 @@ class RBPFEValMultParticles:
         step_result.idx_closest_p_after_resampling = np.argmin(trans_errors_after_resampling)
         step_result.trans_err_closest_p_after_resampling = trans_errors_after_resampling[step_result.idx_closest_p_after_resampling]
         step_result.rot_err_closest_p_after_resampling = rot_errs_after_resampling[step_result.idx_closest_p_after_resampling]
+        step_result.trans_closest_p_after_before_resamp = (
+            step_result.trans_err_closest_p_after_resampling - step_result.trans_err_closest_p_before_resampling
+        )
+        step_result.rot_closest_p_after_before_resamp = (
+            step_result.rot_err_closest_p_after_resampling - step_result.rot_err_closest_p_before_resampling
+        )
 
-        # Closest particle trajectory evaluation arrays
+        # Closest particle trajectory evaluation arrays 
         step_result.trans_errs_before_resampling = trans_errors_before_resampling
         step_result.rot_errs_before_resampling = rot_errs_before_resampling
         step_result.trans_errs_after_resampling = trans_errors_after_resampling
@@ -545,7 +574,17 @@ class RBPFEValMultParticles:
         return trans_errs, rot_errs
 
 
-    def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> Dict:
+    def summarize_run(
+            self,
+            step_results: List[StepResult],
+            init_counter: int,
+            particle_update_counter: int,
+            params: Optional[ExperimentParams] = None
+    ) -> Dict:
+        # Filter scan matcher information
+        scan_match_failed_count = sum(1 for s in step_results if s.scan_match_failed)
+        scan_match_fallback_failed_count = sum(1 for s in step_results if s.scan_match_failed_fallback)
+
         # Filter pose errors
         # Weighted mean pose errors
         trans_errs_weighted_mean = self._finite_values([step.trans_err_weighted_mean for step in step_results])
@@ -554,6 +593,9 @@ class RBPFEValMultParticles:
         # Best particle pose errors
         trans_errs_best_particle = self._finite_values([step.trans_err_best_particle for step in step_results])
         rot_errs_best_particle = self._finite_values([step.rot_err_best_particle for step in step_results])
+        best_particle_weight_values = self._finite_values(
+            [step.best_particle_weight for step in step_results if step.best_particle_weight is not None]
+        )
 
         # Closest particle pose errors before resampling
         trans_errs_closest_p_before_resampling = self._finite_values(
@@ -561,6 +603,38 @@ class RBPFEValMultParticles:
         )
         rot_errs_closest_p_before_resampling = self._finite_values(
             [step.rot_err_closest_p_before_resampling for step in step_results]
+        )
+        gap_trans_best_p_to_closest_before_resamp_values = self._finite_values(
+            [step.gap_trans_best_p_to_closest_before_resamp for step in step_results]
+        )
+        gap_rot_best_p_to_closest_before_resamp_values = self._finite_values(
+            [step.gap_rot_best_p_to_closest_before_resamp for step in step_results]
+        )
+        trans_errs_closest_p_after_resampling = self._finite_values(
+            [step.trans_err_closest_p_after_resampling for step in step_results]
+        )
+        rot_errs_closest_p_after_resampling = self._finite_values(
+            [step.rot_err_closest_p_after_resampling for step in step_results]
+        )
+        trans_closest_p_after_before_resamp_values = self._finite_values(
+            [step.trans_closest_p_after_before_resamp for step in step_results]
+        )
+        rot_closest_p_after_before_resamp_values = self._finite_values(
+            [step.rot_closest_p_after_before_resamp for step in step_results]
+        )
+        trans_closest_p_after_before_resamp_vals = self._finite_values(
+            [
+                step.trans_closest_p_after_before_resamp
+                for step in step_results
+                if step.resampling and step.trans_closest_p_after_before_resamp is not None
+            ]
+        )
+        rot_closest_p_after_before_resamp_vals = self._finite_values(
+            [
+                step.rot_closest_p_after_before_resamp
+                for step in step_results
+                if step.resampling and step.rot_closest_p_after_before_resamp is not None
+            ]
         )
 
         # Filter time durations
@@ -639,36 +713,80 @@ class RBPFEValMultParticles:
         rot_errs_before_resampling_list = [step.rot_errs_before_resampling for step in step_results]
 
         # Restore MAP trajectory errors
-        if step_results:
-            best_p_idx = step_results[-1].max_weight_idx
-            particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
+        best_p_idx = step_results[-1].max_weight_idx
+        particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
 
-            trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
-                best_particle_idx=best_p_idx,
-                particle_inherit_indices=particle_inherit_indices,
-                trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-                rot_errs_before_resampling_list=rot_errs_before_resampling_list
-            )
-        else:
-            trans_errs_map_traj = np.array([], dtype=float)
-            rot_errs_map_traj = np.array([], dtype=float)
+        trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
+            best_particle_idx=best_p_idx,
+            particle_inherit_indices=particle_inherit_indices,
+            trans_errs_before_resampling_list=trans_errs_before_resampling_list,
+            rot_errs_before_resampling_list=rot_errs_before_resampling_list
+        )
+        
+        # Filter resampling data
+        # Compute resampling count
+        resampling_count = sum(1 for step in step_results if step.particle_inherit_indices is not None)
+        best_p_is_closest_before_resamp_count = sum(
+            1
+            for step in step_results
+            if step.max_weight_idx is not None
+            and step.idx_closest_p_before_resampling is not None
+            and step.max_weight_idx == step.idx_closest_p_before_resampling
+        )
 
+        # Filter neff 
+        neff_values = self._finite_values([step.neff for step in step_results if step.neff is not None])
+        neff_ratio_values = self._finite_values([step.neff_ratio for step in step_results if step.neff_ratio is not None])
+        unique_resampled_parents_values = self._finite_values(
+            [step.unique_parents for step in step_results if step.unique_parents is not None]
+        )
+                
+        # Compute summary flags for available metrics
         has_weighted_mean_errors = (
             len(trans_errs_weighted_mean) > 0 and len(rot_errs_weighted_mean) > 0
         )
         has_best_particle_errors = (
             len(trans_errs_best_particle) > 0 and len(rot_errs_best_particle) > 0
         )
+        has_best_particle_weight_values = len(best_particle_weight_values) > 0
         has_closest_particle_before_resampling_errors = (
             len(trans_errs_closest_p_before_resampling) > 0
             and len(rot_errs_closest_p_before_resampling) > 0
         )
+        has_gap_trans_best_p_to_closest_before_resamp_values = (
+            len(gap_trans_best_p_to_closest_before_resamp_values) > 0
+        )
+        has_gap_rot_best_p_to_closest_before_resamp_values = (
+            len(gap_rot_best_p_to_closest_before_resamp_values) > 0
+        )
+        has_closest_particle_after_resampling_errors = (
+            len(trans_errs_closest_p_after_resampling) > 0
+            and len(rot_errs_closest_p_after_resampling) > 0
+        )
+        has_trans_closest_p_after_before_resamp_values = (
+            len(trans_closest_p_after_before_resamp_values) > 0
+        )
+        has_rot_closest_p_after_before_resamp_values = (
+            len(rot_closest_p_after_before_resamp_values) > 0
+        )
+        has_trans_closest_p_after_before_resamp_vals = (
+            len(trans_closest_p_after_before_resamp_vals) > 0
+        )
+        has_rot_closest_p_after_before_resamp_vals = (
+            len(rot_closest_p_after_before_resamp_vals) > 0
+        )
         has_map_trajectory_errors = (
             len(trans_errs_map_traj) > 0 and len(rot_errs_map_traj) > 0
         )
+        has_neff_values = len(neff_values) > 0
+        has_neff_ratio_values = len(neff_ratio_values) > 0
+        has_unique_resampled_parents_values = len(unique_resampled_parents_values) > 0
 
+        # Compute summary if step results are available
         summary = {
             "n_steps": len(step_results),
+            "init_counter": init_counter,
+            "particle_update_counter": particle_update_counter,
 
             # Compute mean timings
             "mean_step_duration": self._safe_mean(step_durations),
@@ -696,6 +814,12 @@ class RBPFEValMultParticles:
             "mean_t_solve_least_squares": self._safe_mean(t_solve_least_squares_values),
             "mean_t_transf_update_and_results": self._safe_mean(t_transf_update_and_results_values),
             "mean_t_find_trans": self._safe_mean(t_find_trans_values),
+
+            # Compute scan matcher statistics
+            "scan_match_failed_count": int(scan_match_failed_count),
+            "scan_match_failed_rate": float(scan_match_failed_count) / len(step_results) if step_results else None,
+            "scan_match_fallback_failed_count": int(scan_match_fallback_failed_count),
+            "scan_match_fallback_failed_rate": float(scan_match_fallback_failed_count) / len(step_results) if step_results else None,
 
             # Weighted mean pose trajectory
             "mean_trans_err_weighted_mean": (
@@ -764,6 +888,22 @@ class RBPFEValMultParticles:
                 float(rot_errs_best_particle[-1])
                 if has_best_particle_errors else None
             ),
+            "mean_best_particle_weight": (
+                float(np.mean(best_particle_weight_values))
+                if has_best_particle_weight_values else None
+            ),
+            "max_best_particle_weight": (
+                float(np.max(best_particle_weight_values))
+                if has_best_particle_weight_values else None
+            ),
+            "min_best_particle_weight": (
+                float(np.min(best_particle_weight_values))
+                if has_best_particle_weight_values else None
+            ),
+            "final_best_particle_weight": (
+                float(best_particle_weight_values[-1])
+                if has_best_particle_weight_values else None
+            ),
 
             # Oracle closest-particle trajectory before resampling
             "mean_trans_err_closest_p_before_resampling": (
@@ -797,6 +937,96 @@ class RBPFEValMultParticles:
             "final_rot_drift_rot_err_closest_p_before_resampling": (
                 float(rot_errs_closest_p_before_resampling[-1])
                 if has_closest_particle_before_resampling_errors else None
+            ),
+            "mean_gap_trans_best_p_to_closest_before_resamp": (
+                float(np.mean(gap_trans_best_p_to_closest_before_resamp_values))
+                if has_gap_trans_best_p_to_closest_before_resamp_values else None
+            ),
+            "rmse_gap_trans_best_p_to_closest_before_resamp": (
+                float(np.sqrt(np.mean(np.square(gap_trans_best_p_to_closest_before_resamp_values))))
+                if has_gap_trans_best_p_to_closest_before_resamp_values else None
+            ),
+            "worst_gap_trans_best_p_to_closest_before_resamp": (
+                float(np.max(gap_trans_best_p_to_closest_before_resamp_values))
+                if has_gap_trans_best_p_to_closest_before_resamp_values else None
+            ),
+            "mean_gap_rot_best_p_to_closest_before_resamp": (
+                float(np.mean(gap_rot_best_p_to_closest_before_resamp_values))
+                if has_gap_rot_best_p_to_closest_before_resamp_values else None
+            ),
+            "rmse_gap_rot_best_p_to_closest_before_resamp": (
+                float(np.sqrt(np.mean(np.square(gap_rot_best_p_to_closest_before_resamp_values))))
+                if has_gap_rot_best_p_to_closest_before_resamp_values else None
+            ),
+            "worst_gap_rot_best_p_to_closest_before_resamp": (
+                float(np.max(gap_rot_best_p_to_closest_before_resamp_values))
+                if has_gap_rot_best_p_to_closest_before_resamp_values else None
+            ),
+
+            # Oracle closest-particle trajectory after resampling
+            "mean_trans_err_closest_p_after_resampling": (
+                float(np.mean(trans_errs_closest_p_after_resampling))
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "rmse_trans_err_closest_p_after_resampling": (
+                float(np.sqrt(np.mean(np.square(trans_errs_closest_p_after_resampling))))
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "worst_trans_err_closest_p_after_resampling": (
+                float(np.max(trans_errs_closest_p_after_resampling))
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "mean_rot_err_closest_p_after_resampling": (
+                float(np.mean(rot_errs_closest_p_after_resampling))
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "rmse_rot_err_closest_p_after_resampling": (
+                float(np.sqrt(np.mean(np.square(rot_errs_closest_p_after_resampling))))
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "worst_rot_err_closest_p_after_resampling": (
+                float(np.max(rot_errs_closest_p_after_resampling))
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "final_trans_drift_trans_err_closest_p_after_resampling": (
+                float(trans_errs_closest_p_after_resampling[-1])
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "final_rot_drift_rot_err_closest_p_after_resampling": (
+                float(rot_errs_closest_p_after_resampling[-1])
+                if has_closest_particle_after_resampling_errors else None
+            ),
+            "mean_trans_closest_p_after_before_resamp": (
+                float(np.mean(trans_closest_p_after_before_resamp_values))
+                if has_trans_closest_p_after_before_resamp_values else None
+            ),
+            "worst_trans_closest_p_after_before_resamp": (
+                float(np.max(trans_closest_p_after_before_resamp_values))
+                if has_trans_closest_p_after_before_resamp_values else None
+            ),
+            "mean_rot_closest_p_after_before_resamp": (
+                float(np.mean(rot_closest_p_after_before_resamp_values))
+                if has_rot_closest_p_after_before_resamp_values else None
+            ),
+            "worst_rot_closest_p_after_before_resamp": (
+                float(np.max(rot_closest_p_after_before_resamp_values))
+                if has_rot_closest_p_after_before_resamp_values else None
+            ),
+            "mean_trans_closest_p_after_before_resamp_vals": (
+                float(np.mean(trans_closest_p_after_before_resamp_vals))
+                if has_trans_closest_p_after_before_resamp_vals else None
+            ),
+            "worst_trans_closest_p_after_before_resamp_vals": (
+                float(np.max(trans_closest_p_after_before_resamp_vals))
+                if has_trans_closest_p_after_before_resamp_vals else None
+            ),
+            "mean_rot_closest_p_after_before_resamp_vals": (
+                float(np.mean(rot_closest_p_after_before_resamp_vals))
+                if has_rot_closest_p_after_before_resamp_vals else None
+            ),
+            "worst_rot_closest_p_after_before_resamp_vals": (
+                float(np.max(rot_closest_p_after_before_resamp_vals))
+                if has_rot_closest_p_after_before_resamp_vals else None
             ),
 
             # Final MAP particle ancestral trajectory
@@ -832,6 +1062,51 @@ class RBPFEValMultParticles:
                 float(rot_errs_map_traj[-1])
                 if has_map_trajectory_errors else None
             ),
+
+            # Compute resampling infos
+            "resampling_count": int(resampling_count),
+            "resampling_rate": (
+                float(resampling_count) / int(particle_update_counter) if particle_update_counter else None
+            ),
+            "best_p_is_closest_before_resamp_rate": (
+                float(best_p_is_closest_before_resamp_count) / len(step_results) if step_results else None
+            ),
+            "mean_unique_resampled_parents": (
+                float(np.mean(unique_resampled_parents_values))
+                if has_unique_resampled_parents_values else None
+            ),
+            "min_unique_resampled_parents": (
+                float(np.min(unique_resampled_parents_values))
+                if has_unique_resampled_parents_values else None
+            ),
+            "mean_neff": (
+                float(np.mean(neff_values))
+                if has_neff_values else None
+            ),
+            "min_neff": (
+                float(np.min(neff_values))
+                if has_neff_values else None
+            ),
+            "max_neff": (
+                float(np.max(neff_values))
+                if has_neff_values else None
+            ),
+            "final_neff": (
+                float(neff_values[-1])
+                if has_neff_values else None
+            ),
+            "mean_neff_ratio": (
+                float(np.mean(neff_ratio_values))
+                if has_neff_ratio_values else None
+            ),
+            "min_neff_ratio": (
+                float(np.min(neff_ratio_values))
+                if has_neff_ratio_values else None
+            ),
+            "final_neff_ratio": (
+                float(neff_ratio_values[-1])
+                if has_neff_ratio_values else None
+            )
         }
 
         return summary

@@ -72,7 +72,7 @@ class PlaybackRunner:
     def _aggregate_icp_counters(rbpf) -> dict:
         '''
         Aggregates ICP-related counters from all particles in the RBPF instance and returns a dictionary with 
-        accumalated count values for each counter.
+        accumulated count values for each counter.
         '''
         counter_keys = [
             "count_too_few_points",
@@ -260,6 +260,8 @@ class PlaybackRunner:
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
             step_results=run_result.step_results,
+            init_counter=rbpf.init_counter,
+            particle_update_counter=rbpf.particle_update_counter,
             params=params,
         )
         
@@ -526,6 +528,8 @@ class PlaybackRunner:
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
             step_results=run_result.step_results,
+            init_counter=rbpf.init_counter,
+            particle_update_counter=rbpf.particle_update_counter,
             params=params,
         )
         run_result.summary.update(self._aggregate_icp_counters(rbpf))
@@ -732,6 +736,8 @@ class PlaybackRunner:
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
             step_results=run_result.step_results,
+            init_counter=rbpf.init_counter,
+            particle_update_counter=rbpf.particle_update_counter,
             params=params,
         )
         run_result.summary.update(self._aggregate_icp_counters(rbpf))
@@ -932,6 +938,8 @@ class PlaybackRunner:
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
             step_results=run_result.step_results,
+            init_counter=rbpf.init_counter,
+            particle_update_counter=rbpf.particle_update_counter,
             params=params,
         )
         run_result.summary.update(self._aggregate_icp_counters(rbpf))

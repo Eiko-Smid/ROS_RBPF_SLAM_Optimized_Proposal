@@ -396,6 +396,11 @@ class RBPF:
 
         # Per-step metrics from the latest step call.
         self._step_counter = -1
+
+        # Increments whenever the filter updates the particles. Since the particles are not updated in the 
+        # initialization process, this counter + self.init_counter = total filter steps.
+        self.particle_update_counter = 0
+
         self._timing_stats = {
             "update_particles_sum_s": 0.0,
             "update_particles_count": 0,
@@ -1969,6 +1974,7 @@ class RBPF:
         log_particle_weights = []
 
         # Update particles
+        self.particle_update_counter += 1
         for i, p in enumerate(self.particles):
             # Update particle
             (
