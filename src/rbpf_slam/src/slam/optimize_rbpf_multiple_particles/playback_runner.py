@@ -238,11 +238,16 @@ class PlaybackRunner:
                     if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
                     else None
                 ),
+
+                scan_match_failed=scan_match_failed,
+                scan_match_fallback_failed=scan_match_fallback_failed,
+
                 particle_poses=particle_poses,
                 particle_weights=particle_weights,
 
                 particle_poses_before_resampling= particle_poses_before_resampling,
                 particle_weights_before_resampling= particle_weights_before_resampling,
+                neff=neff,
 
                 particle_inherit_indices= particle_inherit_indices,
 
@@ -269,7 +274,7 @@ class PlaybackRunner:
 
         print("RBPF timing summary (mean per run):")
         # TODO: Add mean step duration
-        print(f"  mean_step_duration")
+        print(f"  mean_step_duration: {_to_ms(run_result.summary.get('mean_step_duration'))} ms")
         print(f"  update_particles: {_to_ms(timing_summary.get('mean_timing_update_particles_s'))} ms")
         print(f"  normalize+neff: {_to_ms(timing_summary.get('mean_timing_normalize_neff_s'))} ms")
         print(f"  metrics: {_to_ms(timing_summary.get('mean_timing_metrics_s'))} ms")

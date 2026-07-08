@@ -24,6 +24,10 @@ class StepResult:
     true_pose: Optional[np.ndarray] = None
     raw_odom_pose: Optional[np.ndarray] = None
 
+    # Scan matcher info
+    scan_match_failed: Optional[bool] = None
+    scan_match_failed_fallback: Optional[bool] = None
+
     # Particle poses before and after resampling
     particle_poses: Optional[np.ndarray] = None
     particle_weights: Optional[np.ndarray] = None
@@ -55,8 +59,10 @@ class StepResult:
     rot_err_closest_p_after_resampling: Optional[float] = None
     idx_closest_p_after_resampling: Optional[int] = None
     
+    neff: Optional[float] = None
     particle_inherit_indices: Optional[np.ndarray] = None
 
+    # Time metrics
     # Proposal time durations
     t_sample_poses: Optional[float] = None
     t_pred_poses: Optional[float] = None
@@ -272,11 +278,16 @@ class RBPFEValMultParticles:
 
         true_pose: Pose2D,
         raw_odom_pose: Pose2D,
+
+        scan_match_failed: Optional[bool],
+        scan_match_fallback_failed: Optional[bool],
+
         particle_poses: List[Pose2D],
         particle_weights: List[float],
 
         particle_poses_before_resampling: List[Pose2D],
         particle_weights_before_resampling: List[float],
+        neff: Optional[float],
 
         particle_inherit_indices: Optional[List[int]] = None,
 
@@ -326,9 +337,16 @@ class RBPFEValMultParticles:
         step_result.raw_odom_pose = self._pose_to_np_array(raw_odom_pose)
         step_result.particle_poses = self._poses_to_np_array(particle_poses)
 
+        # Add scan match information
+        step_result.scan_match_failed = scan_match_failed
+        step_result.scan_match_failed_fallback = scan_match_fallback_failed
+
         step_result.particle_poses_before_resampling = self._poses_to_np_array(particle_poses_before_resampling)
         step_result.particle_weights_before_resampling = np.array(particle_weights_before_resampling, dtype=np.float64)
-
+        
+        # Store neff
+        step_result.neff = float(neff)
+        
         # Store indices of particles if resampling took place, otherwise None
         step_result.particle_inherit_indices = (
             np.array(particle_inherit_indices, dtype=np.int32) if particle_inherit_indices is not None else None
@@ -460,8 +478,8 @@ class RBPFEValMultParticles:
         return step_result
 
 
+    @staticmethod
     def _restore_map_trajectory_errors(
-        self,
         best_particle_idx: int,
         particle_inherit_indices: List[Optional[np.ndarray]],
         trans_errs_before_resampling_list: List[np.ndarray],
@@ -483,9 +501,9 @@ class RBPFEValMultParticles:
             A list of arrays containing the indices of the parent particles for each step. If no resampling took place at 
             a step, the corresponding entry is None.  
         trans_errs_before_resampling_list : List[np.ndarray]
-            A list of arrays containing the translational errors before resampling for each step.
+            A list of arrays containing the translational errors before resampling for each particle, in each step.
         rot_errs_before_resampling_list : List[np.ndarray]
-            A list of arrays containing the rotational errors before resampling for each step.
+            A list of arrays containing the rotational errors before resampling for each particle, in each step.
         
         Returns
         -------
@@ -493,39 +511,38 @@ class RBPFEValMultParticles:
             Two numpy arrays containing the cleaned translational and rotational errors of the MAP trajectory in chronological
             order.
         """
-        # Initialize index with best particle index in last iteration of the filter
-        idx = int(best_particle_idx)
+        # Init particle index with best particle index from last iteration
+        p_idx = int(best_particle_idx)
 
         trans_errs = []
         rot_errs = []
 
-        # Walk backward through the run.
+        # Estimate the last index
+        last_idx = len(trans_errs_before_resampling_list) - 1
+        
         for step_idx in reversed(range(len(trans_errs_before_resampling_list))):
+            # Update inherint and particle idx
+            if step_idx < last_idx:
+                # Update inhering indices
+                inherint_indices = particle_inherit_indices[step_idx]
+            
+                if inherint_indices is not None:
+                    p_idx = inherint_indices[p_idx]
+            
+            # Update the translational and rotational errors of the MAP trajectory
+            trans_errs.append(trans_errs_before_resampling_list[step_idx][p_idx])
+            rot_errs.append(rot_errs_before_resampling_list[step_idx][p_idx])
 
-            # Store errors of current particle 
-            trans_errs.append(trans_errs_before_resampling_list[step_idx][idx])
-            rot_errs.append(rot_errs_before_resampling_list[step_idx][idx])
-
-            # Skip this in first iteration
-            if step_idx > 0:
-                # Get the index of the parent particle if available
-                indices = particle_inherit_indices[step_idx - 1]
-
-                # If resampling took place, update the index to the parent particle's index
-                if indices is not None:
-                    idx = int(indices[idx])
-
-        # We collected errors backward, so reverse to chronological order.
+        # Establish time chronological order of errors
         trans_errs = np.asarray(trans_errs[::-1], dtype=float)
         rot_errs = np.asarray(rot_errs[::-1], dtype=float)
 
-        # Exclude non values
+        # Exclude NaN values
         valid_mask = np.isfinite(trans_errs) & np.isfinite(rot_errs)
         trans_errs = trans_errs[valid_mask]
         rot_errs = rot_errs[valid_mask]
 
         return trans_errs, rot_errs
-
 
 
     def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> Dict:
@@ -622,15 +639,6 @@ class RBPFEValMultParticles:
         rot_errs_before_resampling_list = [step.rot_errs_before_resampling for step in step_results]
 
         # Restore MAP trajectory errors
-        # best_p_idx = step_results[-1].max_weight_idx
-        # particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
-
-        # trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
-        #     best_particle_idx=best_p_idx,
-        #     particle_inherit_indices=particle_inherit_indices,
-        #     trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-        #     rot_errs_before_resampling_list=rot_errs_before_resampling_list
-        # )
         if step_results:
             best_p_idx = step_results[-1].max_weight_idx
             particle_inherit_indices = [step.particle_inherit_indices for step in step_results]
@@ -829,6 +837,7 @@ class RBPFEValMultParticles:
         return summary
 
 
+
 def test():
     my_list = [np.array([1, 1]), np.array([2, 2]), np.array([3, 3]), np.array([4, 4])]
 
@@ -838,8 +847,73 @@ def test():
         print(f"Index i: {i}, Array: {arr}")
 
 
+def test_restore_trajectory():
+    # Define test data
+    # Particle weights 
+    p_weights = np.array([
+        [3.0, 1.0, 2.0],
+        [3.0, 1.0, 2.0],
+        [3.0, 1.0, 2.0],
+        [2.0, 3.0, 1.0],
+        [2.0, 3.0, 1.0],
+        [2.0, 3.0, 1.0],
+    ])
+
+    particle_inherit_indices = [
+        None, 
+        None, 
+        np.array([0, 0, 2]),
+        None, 
+        None,
+        np.array([0, 1, 1]),
+    ]
+
+    trans_errs_before_resampling_list = [
+        np.array([0.1, 0.3, 0.2]),
+        np.array([0.1, 0.3, 0.2]),
+        np.array([0.1, 0.3, 0.2]),
+        np.array([0.2, 0.1, 0.3]),
+        np.array([0.2, 0.1, 0.3]),
+        np.array([0.2, 0.1, 0.3]),
+    ]
+
+    rot_errs_before_resampling_list = [
+        np.array([0.1, 0.3, 0.2]),
+        np.array([0.1, 0.3, 0.2]),
+        np.array([0.1, 0.3, 0.2]),
+        np.array([0.2, 0.1, 0.3]),
+        np.array([0.2, 0.1, 0.3]),
+        np.array([0.2, 0.1, 0.3]),
+    ]
+
+    # Estimate p with highest weight at the end
+    best_p_idx = np.argmax(p_weights[-1])
+    print(f"Best particle idx in last iteration is: {best_p_idx}")
+
+    # Restore map trajectory errors
+    trans_errs_traj, rot_errs_traj = RBPFEValMultParticles._restore_map_trajectory_errors(
+        best_particle_idx=best_p_idx,
+        particle_inherit_indices=particle_inherit_indices,
+        trans_errs_before_resampling_list=trans_errs_before_resampling_list,
+        rot_errs_before_resampling_list=rot_errs_before_resampling_list,
+    )
+
+
+    print(f"Translational errors of best particle trajectory:\n{trans_errs_traj}")
+    print(f"Rotational errors of best particle trajectory:\n{rot_errs_traj}")
+    
+
+def test_summarize_run():
+    step_results = None
+    evaluator = RBPFEValMultParticles()
+    summary = evaluator.summarize_run(step_results)
+    print("Summary of the run:")
+
+
 def main():
-    test()
+    # test()
+    # test_restore_trajectory()
+    test_summarize_run()
 
 
 if __name__ == "__main__":
