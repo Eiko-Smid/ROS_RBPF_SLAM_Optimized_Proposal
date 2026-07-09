@@ -259,7 +259,7 @@ class PlaybackRunner:
 
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
-            step_results=run_result.step_results,
+            step_res=run_result.step_results,
             init_counter=rbpf.init_counter,
             particle_update_counter=rbpf.particle_update_counter,
             params=params,
@@ -527,7 +527,7 @@ class PlaybackRunner:
 
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
-            step_results=run_result.step_results,
+            step_res=run_result.step_results,
             init_counter=rbpf.init_counter,
             particle_update_counter=rbpf.particle_update_counter,
             params=params,
@@ -735,7 +735,7 @@ class PlaybackRunner:
 
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
-            step_results=run_result.step_results,
+            step_res=run_result.step_results,
             init_counter=rbpf.init_counter,
             particle_update_counter=rbpf.particle_update_counter,
             params=params,
@@ -937,7 +937,7 @@ class PlaybackRunner:
 
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
-            step_results=run_result.step_results,
+            step_res=run_result.step_results,
             init_counter=rbpf.init_counter,
             particle_update_counter=rbpf.particle_update_counter,
             params=params,
