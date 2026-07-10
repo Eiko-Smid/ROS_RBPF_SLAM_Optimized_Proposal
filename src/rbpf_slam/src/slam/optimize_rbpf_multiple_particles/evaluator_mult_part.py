@@ -885,6 +885,8 @@ class RBPFEValMultParticles:
         # Summarize and filter
         # ________________________________________________________________________________________
 
+        init_counter = int(init_counter)
+        particle_update_counter = int(particle_update_counter)
 
         # Filter scan matcher information
         scan_match_failed_count = sum(1 for s in step_res if s.scan_match_failed)
@@ -1251,9 +1253,9 @@ class RBPFEValMultParticles:
             # Compute scan matcher statistics
             # ________________________________________________________________________________________
             "scan_match_failed_count": int(scan_match_failed_count),
-            "scan_match_failed_rate": float(scan_match_failed_count) / len(step_res) if step_res else None,
+            "scan_match_failed_rate": float(scan_match_failed_count) / particle_update_counter if particle_update_counter else None,
             "scan_match_fallback_failed_count": int(scan_match_fallback_failed_count),
-            "scan_match_fallback_failed_rate": float(scan_match_fallback_failed_count) / len(step_res) if step_res else None,
+            "scan_match_fallback_failed_rate": float(scan_match_fallback_failed_count) / particle_update_counter if particle_update_counter else None,
 
             # Raw odom trajectory
             # ________________________________________________________________________________________
@@ -1689,10 +1691,10 @@ class RBPFEValMultParticles:
             # ________________________________________________________________________________________
             "resampling_count": int(resampling_count),
             "resampling_rate": (
-                float(resampling_count) / int(particle_update_counter) if particle_update_counter else None
+                float(resampling_count) / particle_update_counter if particle_update_counter else None
             ),
             "best_p_is_closest_before_resamp_rate": (
-                float(best_p_is_closest_before_resamp_count) / len(step_res) if step_res else None
+                float(best_p_is_closest_before_resamp_count) / particle_update_counter if particle_update_counter else None
             ),
             "mean_unique_resampled_parents": (
                 float(np.mean(unique_resampled_parents_values))
