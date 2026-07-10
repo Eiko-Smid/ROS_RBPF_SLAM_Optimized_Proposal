@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, Dict, List, Sequence, Union
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -267,6 +267,117 @@ class RBPFEValMultParticles:
         Euclidean translation error in the x-y plane.
         """
         return float(np.hypot(p1[0] - p2[0], p1[1] - p2[1]))
+
+
+    @staticmethod
+    def trans_err_trajectory(traj_1: Sequence[Union[Pose2D, np.ndarray]], traj_2: Sequence[Union[Pose2D, np.ndarray]]) -> List[float]:
+        """
+        Computes the translational errors between two trajectories in a safe manner. The given trajectorys
+        needs to be of same length, otherwise they will raise an error.
+
+        Parameters
+        ----------
+        traj_1 : List[Pose2D]
+            The first trajectory as a list of poses.
+        traj_2 : List[Pose2D]
+            The second trajectory as a list of poses.
+        
+        Returns
+        -------
+        np.ndarray
+            The translational errors between the two trajectories.
+        """
+        # Convert trajectorys into numpy arrays
+        traj_1 = np.asarray(traj_1, dtype=float)  
+        traj_2 = np.asarray(traj_2, dtype=float)
+
+        # Do comparability checks
+        if traj_1.ndim != 2 or traj_2.ndim != 2:
+            raise ValueError(
+                f"Number of dimension of given traj differ!"
+                f"ndim traj 1: {traj_1.ndim},\nndim traj 2: {traj_2.ndim}"
+            )
+
+        if traj_1.shape[1] < 2 or traj_2.shape[1] < 2:
+            raise ValueError(
+                f"Both trajectorys must have at least 2 columns (x, y)!"
+                f"N columns traj_1: {traj_1.shape[1]}, \nN columns traj_2: {traj_2.shape[1]}"
+            )
+        
+        if traj_1.shape[0] != traj_2.shape[0]:
+            raise ValueError(
+                f"Both trajectorys must have same number of rows!"
+                f"N rows traj_1: {traj_1.shape[0]}, \nN rows traj_2: {traj_2.shape[0]}"
+            )
+        
+        # Find union valid mask
+        valid_mask = np.all(np.isfinite(traj_1) & np.isfinite(traj_2), axis=1)
+
+        traj_1 = traj_1[valid_mask]
+        traj_2 = traj_2[valid_mask]
+
+        # Compute trans err
+        trans_errs = np.linalg.norm(traj_1[:, :2] - traj_2[:, :2], axis=1)
+
+        return trans_errs
+        
+
+    @staticmethod
+    def rot_err_trajectory(traj_1: Sequence[Union[Pose2D, np.ndarray]], traj_2: Sequence[Union[Pose2D, np.ndarray]]) -> List[float]:
+        """
+        Computes the rotational errors between two trajectories in a safe manner. The given trajectorys
+        needs to be of same length, otherwise they will raise an error.
+
+        Parameters
+        ----------
+        traj_1 : Sequence[Union[Pose2D, np.ndarray]]
+            The first trajectory as a sequence of poses.
+        traj_2 : Sequence[Union[Pose2D, np.ndarray]]
+            The second trajectory as a sequence of poses.
+        
+        Returns
+        -------
+        List[float]
+            The absolute rotational errors between the two trajectories.
+        """
+        # Convert trajectorys into numpy arrays
+        traj_1 = np.asarray(traj_1, dtype=float)  
+        traj_2 = np.asarray(traj_2, dtype=float)
+
+        # Do comparability checks
+        if traj_1.ndim != 2 or traj_2.ndim != 2:
+            raise ValueError(
+                f"Number of dimension of given traj differ!"
+                f"ndim traj 1: {traj_1.ndim},\nndim traj 2: {traj_2.ndim}"
+            )
+
+        if traj_1.shape[1] < 3 or traj_2.shape[1] < 3:
+            raise ValueError(
+                f"Both trajectorys must have at least 3 columns (x, y, theta)!"
+                f"N columns traj_1: {traj_1.shape[1]}, \nN columns traj_2: {traj_2.shape[1]}"
+            )
+        
+        if traj_1.shape[0] != traj_2.shape[0]:
+            raise ValueError(
+                f"Both trajectorys must have same number of rows!"
+                f"N rows traj_1: {traj_1.shape[0]}, \nN rows traj_2: {traj_2.shape[0]}"
+            )
+        
+        # Find union valid mask
+        valid_mask = np.all(np.isfinite(traj_1) & np.isfinite(traj_2), axis=1)
+
+        traj_1 = traj_1[valid_mask]
+        traj_2 = traj_2[valid_mask]
+
+        # Compute rot err
+        rot_diffs = np.arctan2(
+            np.sin(traj_1[:, 2] - traj_2[:, 2]),
+            np.cos(traj_1[:, 2] - traj_2[:, 2])
+        )
+
+        rot_errs = np.abs(rot_diffs)
+
+        return rot_errs
 
 
     @staticmethod
@@ -735,6 +846,59 @@ class RBPFEValMultParticles:
 
 
     @staticmethod
+    def _restore_particle_trajectory(
+        particle_idx: int,
+        particle_inherit_indices: List[Optional[np.ndarray]],
+        particle_poses: List[np.ndarray],
+    ) -> Tuple[np.ndarray]:
+        """
+        Restores the trajectory of the given particle starting at the end of the given poses list and propagating back to the 
+        first poses.
+
+        Parameters
+        ----------
+        particle_idx : int
+            The index of the particle at the last step of the run, which trajectory should be reconstructed.
+        particle_inherit_indices : List[Optional[np.ndarray]]
+            A list of arrays containing the indices of the parent particles for each step. If no resampling took place at 
+            a step, the corresponding entry is None.  
+        particle_poses : List[np.ndarray]
+            A list of arrays containing the poses of all particles in each iteration.
+        
+        Returns
+        -------
+        tuple[np.ndarray]
+            The reconstructed trajectory of the given particle index.
+        """
+        # Init particle index with best particle index from last iteration
+        p_idx = int(particle_idx)
+
+        trajectory = []
+
+        # Estimate the last index
+        n_poses = len(particle_poses)
+        last_idx = n_poses - 1
+
+        for step_idx in reversed(range(n_poses)):
+            if step_idx < last_idx:
+                inherint_indices = particle_inherit_indices[step_idx]
+
+                if inherint_indices is not None:
+                    p_idx = inherint_indices[p_idx]
+            
+            trajectory.append(particle_poses[step_idx][p_idx])
+
+        
+        # Establish time chronological order of poses
+        trajectory = np.asarray(trajectory[::-1], dtype=float)
+
+        # Exclude NaN values
+        trajectory = np.isfinite(trajectory)
+
+        return trajectory
+
+
+    @staticmethod
     def _restore_map_trajectory_errors(
         best_particle_idx: int,
         particle_inherit_indices: List[Optional[np.ndarray]],
@@ -800,7 +964,7 @@ class RBPFEValMultParticles:
 
         return trans_errs, rot_errs
 
-    
+
     @staticmethod
     def compute_windowed_slopes(
         data: np.ndarray,
@@ -875,6 +1039,95 @@ class RBPFEValMultParticles:
         return np.asarray(slopes, dtype=float)
 
 
+    @staticmethod
+    def compute_trajectory_motion_errors(
+        est_poses: np.ndarray,
+        true_poses: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Computes step-to-step motion errors between an estimated trajectory and
+        the true trajectory.
+
+        For each consecutive pair of poses:
+
+            trans_motion_err = abs(est_delta_trans - true_delta_trans)
+            rot_motion_err   = abs(est_delta_rot - true_delta_rot)
+
+        Translation unit: m / step
+        Rotation unit: rad / step
+
+        These metrics measure trajectory smoothness / jumpiness relative to
+        the true robot motion. Large values mean the estimated trajectory made
+        a motion jump that does not match the real motion.
+        """
+        est_poses = np.asarray(est_poses, dtype=float)
+        true_poses = np.asarray(true_poses, dtype=float)
+
+        if est_poses.ndim != 2 or est_poses.shape[1] != 3:
+            return np.array([], dtype=float), np.array([], dtype=float)
+
+        if true_poses.ndim != 2 or true_poses.shape[1] != 3:
+            return np.array([], dtype=float), np.array([], dtype=float)
+
+        if est_poses.shape[0] != true_poses.shape[0]:
+            return np.array([], dtype=float), np.array([], dtype=float)
+
+        if est_poses.shape[0] < 2:
+            return np.array([], dtype=float), np.array([], dtype=float)
+
+        valid_pose_mask = (
+            np.all(np.isfinite(est_poses), axis=1)
+            & np.all(np.isfinite(true_poses), axis=1)
+        )
+
+        est_poses = est_poses[valid_pose_mask]
+        true_poses = true_poses[valid_pose_mask]
+
+        if est_poses.shape[0] < 2:
+            return np.array([], dtype=float), np.array([], dtype=float)
+
+        trans_motion_errors = []
+        rot_motion_errors = []
+
+        for i in range(1, est_poses.shape[0]):
+            est_prev = est_poses[i - 1]
+            est_curr = est_poses[i]
+
+            true_prev = true_poses[i - 1]
+            true_curr = true_poses[i]
+
+            est_delta_trans = np.hypot(
+                est_curr[X] - est_prev[X],
+                est_curr[Y] - est_prev[Y],
+            )
+            true_delta_trans = np.hypot(
+                true_curr[X] - true_prev[X],
+                true_curr[Y] - true_prev[Y],
+            )
+
+            trans_motion_err = abs(est_delta_trans - true_delta_trans)
+
+            est_delta_rot = RBPFEValMultParticles.angle_diff(
+                est_curr[THETA],
+                est_prev[THETA],
+            )
+            true_delta_rot = RBPFEValMultParticles.angle_diff(
+                true_curr[THETA],
+                true_prev[THETA],
+            )
+
+            rot_motion_err = abs(
+                RBPFEValMultParticles.angle_diff(est_delta_rot, true_delta_rot)
+            )
+
+            trans_motion_errors.append(float(trans_motion_err))
+            rot_motion_errors.append(float(rot_motion_err))
+
+        return (
+            np.asarray(trans_motion_errors, dtype=float),
+            np.asarray(rot_motion_errors, dtype=float),
+        )
+
     def summarize_run(
             self,
             step_res: List[StepResult],
@@ -891,6 +1144,33 @@ class RBPFEValMultParticles:
         # Filter scan matcher information
         scan_match_failed_count = sum(1 for s in step_res if s.scan_match_failed)
         scan_match_fallback_failed_count = sum(1 for s in step_res if s.scan_match_failed_fallback)
+
+        # Summarize particles
+        particle_poses_before_resampling_list = [s.particle_poses_before_resampling for s in step_res]
+
+        # Summarize particle poses and weights -> trajectory and weight lists
+        # Trajectory before resampling Before resampling
+        traj_p_before_resamp = self._poses_to_np_array(
+            [s.particle_poses_before_resampling for s in step_res]
+        )
+        traj_w_before_resamp = self._poses_to_np_array(
+            [s.particle_weights_before_resampling for s in step_res]
+        )
+        
+        # Trajectory true poses
+        traj_true_poses = self._poses_to_np_array(
+            [s.true_pose for s in step_res]
+        )
+        
+        # Trajectory weighted mean poses
+        traj_weighted_mean_poses = self._poses_to_np_array(
+            [s.weighted_mean_pose for s in step_res]
+        )   
+
+        # Trajectory best particle poses
+        traj_best_particle_poses = self._poses_to_np_array(
+            [s.best_particle_pose for s in step_res]
+        )
 
         # Summarize/Filter pose errors
         # Raw odom
@@ -1060,23 +1340,43 @@ class RBPFEValMultParticles:
         best_p_idx = step_res[-1].max_weight_idx
         particle_inherit_indices = [step.particle_inherit_indices for step in step_res]
 
-        trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
-            best_particle_idx=best_p_idx,
+        traj_particle_map = self._restore_particle_trajectory(
+            particle_idx=best_p_idx,
             particle_inherit_indices=particle_inherit_indices,
-            trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-            rot_errs_before_resampling_list=rot_errs_before_resampling_list
+            particle_poses=particle_poses_before_resampling_list,
         )
+
+        trans_errs_map_traj = self.trans_err_trajectory(traj_particle_map, traj_true_poses)
+        rot_errs_map_traj = self.rot_err_trajectory(traj_particle_map, traj_true_poses)
+        
+        
+        # trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
+        #     best_particle_idx=best_p_idx,
+        #     particle_inherit_indices=particle_inherit_indices,
+        #     trans_errs_before_resampling_list=trans_errs_before_resampling_list,
+        #     rot_errs_before_resampling_list=rot_errs_before_resampling_list
+        # )
 
         # Clean tran/rot errors before resampling
         trans_errs_before_resampling_list = self._finite_values(trans_errs_before_resampling_list)
         rot_errs_before_resampling_list = self._finite_values(rot_errs_before_resampling_list)
 
-        # Ensure finite values in map traj
-        trans_errs_map_traj = self._finite_values(trans_errs_map_traj)
-        rot_errs_map_traj = self._finite_values(rot_errs_map_traj)
-
+        
         # Compute final map improvement
         # ________________________________________________________________________________________
+        
+        # Validate that the compared error metrics have same len
+        if len(trans_errs_map_traj) != len(trans_errs_raw_odom_unclean):
+            raise ValueError(
+                f"[Evaluator mp] Mismatch in number of steps between map trajectory errors and raw odometry errors. "
+                f"Map trajectory errors: {len(trans_errs_map_traj)}, Raw odometry errors: {len(trans_errs_raw_odom_unclean)}"
+            )
+
+        if len(rot_errs_map_traj) != len(rot_errs_raw_odom_unclean):
+            raise ValueError(
+                f"[Evaluator mp] Mismatch in number of steps between map trajectory errors and raw odometry errors. "
+                f"Map trajectory errors: {len(rot_errs_map_traj)}, Raw odometry errors: {len(rot_errs_raw_odom_unclean)}"
+            )
 
         trans_errs_map_traj_impr_over_raw_odom = [
             self.compute_improvement(map_err, raw_odom_err)
@@ -1087,6 +1387,11 @@ class RBPFEValMultParticles:
             self.compute_improvement(map_err, raw_odom_err)
             for map_err, raw_odom_err in zip(rot_errs_map_traj, rot_errs_raw_odom_unclean)
         ]
+
+        # Ensure finite values in map traj
+        trans_errs_map_traj = self._finite_values(trans_errs_map_traj)
+        rot_errs_map_traj = self._finite_values(rot_errs_map_traj)
+
         # Clean improvement metrics
         trans_errs_map_traj_impr_over_raw_odom = self._finite_values(
             trans_errs_map_traj_impr_over_raw_odom
@@ -1131,6 +1436,36 @@ class RBPFEValMultParticles:
         rot_errs_slopes_weighted_mean = np.maximum(rot_errs_slopes_weighted_mean, 0.0)
         trans_err_slopes_map_traj = np.maximum(trans_err_slopes_map_traj, 0.0)
         rot_err_slopes_map_traj = np.maximum(rot_err_slopes_map_traj, 0.0)
+
+
+        # Trajectory smoothness
+        # ________________________________________________________________________________________
+
+        # Compute trajectory motion errors
+        trans_motion_errs_weighted_mean, rot_motion_errs_weighted_mean = self.compute_trajectory_motion_errors(
+            est_poses=traj_weighted_mean_poses,
+            true_poses=traj_true_poses,
+        )
+
+        trans_motion_errs_map_traj, rot_motion_errs_map_traj = self.compute_trajectory_motion_errors(
+            est_poses=traj_particle_map,
+            true_poses=traj_true_poses,
+        )
+
+        trans_motion_errs_best_particle, rot_motion_errs_best_particle = self.compute_trajectory_motion_errors(
+            est_poses=traj_best_particle_poses,
+            true_poses=traj_true_poses,
+        )
+
+        # Clean motion errors
+        trans_motion_errs_weighted_mean = self._finite_values(trans_motion_errs_weighted_mean)
+        rot_motion_errs_weighted_mean = self._finite_values(rot_motion_errs_weighted_mean)  
+
+        trans_motion_errs_map_traj = self._finite_values(trans_motion_errs_map_traj)
+        rot_motion_errs_map_traj = self._finite_values(rot_motion_errs_map_traj)
+
+        trans_motion_errs_best_particle = self._finite_values(trans_motion_errs_best_particle)
+        rot_motion_errs_best_particle = self._finite_values(rot_motion_errs_best_particle)
 
         
         # Compute resampling count
@@ -1203,12 +1538,28 @@ class RBPFEValMultParticles:
         has_map_trajectory_errors = (
             len(trans_errs_map_traj) > 0 and len(rot_errs_map_traj) > 0
         )
-        has_map_trajectory_impr_over_raw_odom = (
+        # has_map_trajectory_impr_over_raw_odom = (
+        #     len(trans_errs_map_traj_impr_over_raw_odom) > 0
+        #     and len(rot_errs_map_traj_impr_over_raw_odom) > 0
+        # )
+
+        has_trans_map_traj_impr_over_raw_odom = (
             len(trans_errs_map_traj_impr_over_raw_odom) > 0
-            and len(rot_errs_map_traj_impr_over_raw_odom) > 0
         )
+
+        has_rot_map_traj_impr_over_raw_odom = (
+            len(rot_errs_map_traj_impr_over_raw_odom) > 0
+        )
+
+
         has_pos_slope_trans_map_traj = len(trans_err_slopes_map_traj) > 0
         has_pos_slope_rot_map_traj = len(rot_err_slopes_map_traj) > 0
+        has_trans_motion_errors_weighted_mean = len(trans_motion_errs_weighted_mean) > 0
+        has_rot_motion_errors_weighted_mean = len(rot_motion_errs_weighted_mean) > 0
+        has_trans_motion_errors_map_traj = len(trans_motion_errs_map_traj) > 0
+        has_rot_motion_errors_map_traj = len(rot_motion_errs_map_traj) > 0
+        has_trans_motion_errors_best_particle = len(trans_motion_errs_best_particle) > 0
+        has_rot_motion_errors_best_particle = len(rot_motion_errs_best_particle) > 0
         
         has_neff_values = len(neff_values) > 0
         has_neff_ratio_values = len(neff_ratio_values) > 0
@@ -1346,6 +1697,30 @@ class RBPFEValMultParticles:
                 float(rot_errs_weighted_mean[-1])
                 if has_rot_weighted_mean_errors else None
             ),
+            "mean_trans_motion_err_weighted_mean": (
+                float(np.mean(trans_motion_errs_weighted_mean))
+                if has_trans_motion_errors_weighted_mean else None
+            ),
+            "rmse_trans_motion_err_weighted_mean": (
+                float(np.sqrt(np.mean(np.square(trans_motion_errs_weighted_mean))))
+                if has_trans_motion_errors_weighted_mean else None
+            ),
+            "worst_trans_motion_err_weighted_mean": (
+                float(np.max(trans_motion_errs_weighted_mean))
+                if has_trans_motion_errors_weighted_mean else None
+            ),
+            "mean_rot_motion_err_weighted_mean": (
+                float(np.mean(rot_motion_errs_weighted_mean))
+                if has_rot_motion_errors_weighted_mean else None
+            ),
+            "rmse_rot_motion_err_weighted_mean": (
+                float(np.sqrt(np.mean(np.square(rot_motion_errs_weighted_mean))))
+                if has_rot_motion_errors_weighted_mean else None
+            ),
+            "worst_rot_motion_err_weighted_mean": (
+                float(np.max(rot_motion_errs_weighted_mean))
+                if has_rot_motion_errors_weighted_mean else None
+            ),
             # improvement of weighted mean over raw odom
             "mean_trans_err_weighted_mean_impr_over_raw_odom": (
                 float(np.mean(trans_errs_weighted_mean_impr_over_raw_odom))
@@ -1447,6 +1822,30 @@ class RBPFEValMultParticles:
             "final_rot_drift_rot_err_best_particle": (
                 float(rot_errs_best_particle[-1])
                 if has_rot_best_particle_errors else None
+            ),
+            "mean_trans_motion_err_best_particle": (
+                float(np.mean(trans_motion_errs_best_particle))
+                if has_trans_motion_errors_best_particle else None
+            ),
+            "rmse_trans_motion_err_best_particle": (
+                float(np.sqrt(np.mean(np.square(trans_motion_errs_best_particle))))
+                if has_trans_motion_errors_best_particle else None
+            ),
+            "worst_trans_motion_err_best_particle": (
+                float(np.max(trans_motion_errs_best_particle))
+                if has_trans_motion_errors_best_particle else None
+            ),
+            "mean_rot_motion_err_best_particle": (
+                float(np.mean(rot_motion_errs_best_particle))
+                if has_rot_motion_errors_best_particle else None
+            ),
+            "rmse_rot_motion_err_best_particle": (
+                float(np.sqrt(np.mean(np.square(rot_motion_errs_best_particle))))
+                if has_rot_motion_errors_best_particle else None
+            ),
+            "worst_rot_motion_err_best_particle": (
+                float(np.max(rot_motion_errs_best_particle))
+                if has_rot_motion_errors_best_particle else None
             ),
             "rate_above_thres_trans_err_best_particle": (
                 float(np.mean(trans_errs_best_particle > TRANS_ERRS_BEST_PARTICLE_THRES))
@@ -1610,6 +2009,30 @@ class RBPFEValMultParticles:
                 float(rot_errs_map_traj[-1])
                 if has_map_trajectory_errors else None
             ),
+            "mean_trans_motion_err_map_traj": (
+                float(np.mean(trans_motion_errs_map_traj))
+                if has_trans_motion_errors_map_traj else None
+            ),
+            "rmse_trans_motion_err_map_traj": (
+                float(np.sqrt(np.mean(np.square(trans_motion_errs_map_traj))))
+                if has_trans_motion_errors_map_traj else None
+            ),
+            "worst_trans_motion_err_map_traj": (
+                float(np.max(trans_motion_errs_map_traj))
+                if has_trans_motion_errors_map_traj else None
+            ),
+            "mean_rot_motion_err_map_traj": (
+                float(np.mean(rot_motion_errs_map_traj))
+                if has_rot_motion_errors_map_traj else None
+            ),
+            "rmse_rot_motion_err_map_traj": (
+                float(np.sqrt(np.mean(np.square(rot_motion_errs_map_traj))))
+                if has_rot_motion_errors_map_traj else None
+            ),
+            "worst_rot_motion_err_map_traj": (
+                float(np.max(rot_motion_errs_map_traj))
+                if has_rot_motion_errors_map_traj else None
+            ),
             "rate_above_thres_trans_err_map_traj": (
                 float(np.mean(trans_errs_map_traj > TRANS_ERRS_MAP_TRAJ_THRES))
                 if has_map_trajectory_errors else None
@@ -1620,27 +2043,27 @@ class RBPFEValMultParticles:
             ),
             "mean_trans_err_map_traj_impr_over_raw_odom": (
                 float(np.mean(trans_errs_map_traj_impr_over_raw_odom))
-                if has_map_trajectory_impr_over_raw_odom else None
+                if has_trans_map_traj_impr_over_raw_odom  else None
             ),
             "median_trans_err_map_traj_impr_over_raw_odom": (
                 float(np.median(trans_errs_map_traj_impr_over_raw_odom))
-                if has_map_trajectory_impr_over_raw_odom else None
+                if has_trans_map_traj_impr_over_raw_odom  else None
             ),
             "perc_10_trans_err_map_traj_impr_over_raw_odom": (
                 float(np.percentile(trans_errs_map_traj_impr_over_raw_odom, 10))
-                if has_map_trajectory_impr_over_raw_odom else None
+                if has_trans_map_traj_impr_over_raw_odom  else None
             ),
             "mean_rot_err_map_traj_impr_over_raw_odom": (
                 float(np.mean(rot_errs_map_traj_impr_over_raw_odom))
-                if has_map_trajectory_impr_over_raw_odom else None
+                if has_rot_map_traj_impr_over_raw_odom  else None
             ),
             "median_rot_err_map_traj_impr_over_raw_odom": (
                 float(np.median(rot_errs_map_traj_impr_over_raw_odom))
-                if has_map_trajectory_impr_over_raw_odom else None
+                if has_rot_map_traj_impr_over_raw_odom  else None
             ),
             "perc_10_rot_err_map_traj_impr_over_raw_odom": (
                 float(np.percentile(rot_errs_map_traj_impr_over_raw_odom, 10))
-                if has_map_trajectory_impr_over_raw_odom else None
+                if has_rot_map_traj_impr_over_raw_odom  else None
             ),
             # Compute slopes for final MAP trajectory
             "mean_pos_trans_err_slopes_map_traj": (
