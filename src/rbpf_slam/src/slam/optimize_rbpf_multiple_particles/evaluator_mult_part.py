@@ -236,7 +236,7 @@ class RBPFEValMultParticles:
 
         if hasattr(pose, "x") and hasattr(pose, "y") and hasattr(pose, "theta"):
             return np.array([pose.x, pose.y, pose.theta], dtype=np.float64)
-        
+
         if isinstance(pose, (tuple, list, np.ndarray)) and len(pose) >= 3:
             return np.array(pose[:3], dtype=np.float64)
 
@@ -660,7 +660,7 @@ class RBPFEValMultParticles:
             )
         )
 
-        # Find closest particle
+        # Find closest particle before resampling
         step_res.idx_closest_p_before_resampling = np.argmin(trans_errors_before_resampling)
         step_res.trans_err_closest_p_before_resampling = trans_errors_before_resampling[step_res.idx_closest_p_before_resampling]
         step_res.rot_err_closest_p_before_resampling = rot_errs_before_resampling[step_res.idx_closest_p_before_resampling]
@@ -882,6 +882,10 @@ class RBPFEValMultParticles:
             particle_update_counter: int,
             params: Optional[ExperimentParams] = None
     ) -> Dict:
+        # Summarize and filter
+        # ________________________________________________________________________________________
+
+
         # Filter scan matcher information
         scan_match_failed_count = sum(1 for s in step_res if s.scan_match_failed)
         scan_match_fallback_failed_count = sum(1 for s in step_res if s.scan_match_failed_fallback)
@@ -903,14 +907,14 @@ class RBPFEValMultParticles:
             [step.weighted_part_std_pos for step in step_res if step.weighted_part_std_pos is not None]
         )
 
-        # Summarize/Filter Best particle pose errors
+        # Summarize/Filter Best particle pose trajectory metrics
         trans_errs_best_particle = self._finite_values([step.trans_err_best_particle for step in step_res])
         rot_errs_best_particle = self._finite_values([step.rot_err_best_particle for step in step_res])
         best_particle_weight_values = self._finite_values(
             [step.best_particle_weight for step in step_res if step.best_particle_weight is not None]
         )
 
-        # Summarize/Filter Closest particle pose errors before resampling
+        # Summarize/Filter Closest particle pose trajectory metrics
         trans_errs_closest_p_before_resampling = self._finite_values(
             [step.trans_err_closest_p_before_resampling for step in step_res]
         )
@@ -935,12 +939,8 @@ class RBPFEValMultParticles:
         rot_errs_closest_p_after_resampling = self._finite_values(
             [step.rot_err_closest_p_after_resampling for step in step_res]
         )
-        trans_closest_p_after_before_resamp_values = self._finite_values(
-            [step.trans_closest_p_after_before_resamp for step in step_res]
-        )
-        rot_closest_p_after_before_resamp_values = self._finite_values(
-            [step.rot_closest_p_after_before_resamp for step in step_res]
-        )
+
+        # Summarize/Filter Closest particle pose trajectory metrics
         trans_closest_p_after_before_resamp_vals = self._finite_values(
             [
                 step.trans_closest_p_after_before_resamp
@@ -1041,11 +1041,20 @@ class RBPFEValMultParticles:
             [s.t_find_trans for s in step_res if s.t_find_trans is not None]
         )
 
-        # Get trans errors before resampling
+        # Filter neff
+        neff_values = self._finite_values([step.neff for step in step_res if step.neff is not None])
+        neff_ratio_values = self._finite_values([step.neff_ratio for step in step_res if step.neff_ratio is not None])
+        unique_resampled_parents_values = self._finite_values(
+            [step.unique_parents for step in step_res if step.unique_parents is not None]
+        )
+
+        # Summarize/filter trans errors before resampling
         trans_errs_before_resampling_list = [step.trans_errs_before_resampling for step in step_res]
         rot_errs_before_resampling_list = [step.rot_errs_before_resampling for step in step_res]
 
         # Restore MAP trajectory errors
+        # ________________________________________________________________________________________
+
         best_p_idx = step_res[-1].max_weight_idx
         particle_inherit_indices = [step.particle_inherit_indices for step in step_res]
 
@@ -1056,11 +1065,17 @@ class RBPFEValMultParticles:
             rot_errs_before_resampling_list=rot_errs_before_resampling_list
         )
 
+        # Clean tran/rot errors before resampling
+        trans_errs_before_resampling_list = self._finite_values(trans_errs_before_resampling_list)
+        rot_errs_before_resampling_list = self._finite_values(rot_errs_before_resampling_list)
+
         # Ensure finite values in map traj
         trans_errs_map_traj = self._finite_values(trans_errs_map_traj)
         rot_errs_map_traj = self._finite_values(rot_errs_map_traj)
 
         # Compute final map improvement
+        # ________________________________________________________________________________________
+
         trans_errs_map_traj_impr_over_raw_odom = [
             self.compute_improvement(map_err, raw_odom_err)
             for map_err, raw_odom_err in zip(trans_errs_map_traj, trans_errs_raw_odom_unclean)
@@ -1070,7 +1085,7 @@ class RBPFEValMultParticles:
             self.compute_improvement(map_err, raw_odom_err)
             for map_err, raw_odom_err in zip(rot_errs_map_traj, rot_errs_raw_odom_unclean)
         ]
-
+        # Clean improvement metrics
         trans_errs_map_traj_impr_over_raw_odom = self._finite_values(
             trans_errs_map_traj_impr_over_raw_odom
         )
@@ -1079,6 +1094,9 @@ class RBPFEValMultParticles:
         )
 
         # Compute error slopes
+        # ________________________________________________________________________________________
+
+        # Error slopes wieghted mean
         trans_errs_slopes_weighted_mean = self.compute_windowed_slopes(
             data=trans_errs_weighted_mean,
             window_size=10,
@@ -1089,6 +1107,7 @@ class RBPFEValMultParticles:
             window_size=10,
         )
 
+        # Error slopes map traj
         trans_err_slopes_map_traj = self.compute_windowed_slopes(
             data=trans_errs_map_traj,
             window_size=10,
@@ -1104,14 +1123,17 @@ class RBPFEValMultParticles:
         rot_errs_slopes_weighted_mean = self._finite_values(rot_errs_slopes_weighted_mean)
         trans_err_slopes_map_traj = self._finite_values(trans_err_slopes_map_traj)
         rot_err_slopes_map_traj = self._finite_values(rot_err_slopes_map_traj)
+
+        # Store only positive slopes -> Rising error is what is bad and needs to be analyzed
         trans_errs_slopes_weighted_mean = np.maximum(trans_errs_slopes_weighted_mean, 0.0)
         rot_errs_slopes_weighted_mean = np.maximum(rot_errs_slopes_weighted_mean, 0.0)
         trans_err_slopes_map_traj = np.maximum(trans_err_slopes_map_traj, 0.0)
         rot_err_slopes_map_traj = np.maximum(rot_err_slopes_map_traj, 0.0)
 
         
-        # Filter resampling data
         # Compute resampling count
+        # ________________________________________________________________________________________
+
         resampling_count = sum(1 for step in step_res if step.particle_inherit_indices is not None)
         best_p_is_closest_before_resamp_count = sum(
             1
@@ -1120,21 +1142,17 @@ class RBPFEValMultParticles:
             and step.idx_closest_p_before_resampling is not None
             and step.max_weight_idx == step.idx_closest_p_before_resampling
         )
-
-        # Filter neff 
-        neff_values = self._finite_values([step.neff for step in step_res if step.neff is not None])
-        neff_ratio_values = self._finite_values([step.neff_ratio for step in step_res if step.neff_ratio is not None])
-        unique_resampled_parents_values = self._finite_values(
-            [step.unique_parents for step in step_res if step.unique_parents is not None]
-        )
                 
         # Compute summary flags for available metrics
-        has_weighted_mean_errors = (
-            len(trans_errs_weighted_mean) > 0 and len(rot_errs_weighted_mean) > 0
-        )
-        has_weighted_mean_impr_over_raw_odom = (
+        # ________________________________________________________________________________________
+
+        has_trans_weighted_mean_errors = len(trans_errs_weighted_mean) > 0
+        has_rot_weighted_mean_errors = len(rot_errs_weighted_mean) > 0
+        has_trans_weighted_mean_impr_over_raw_odom = (
             len(trans_errs_weighted_mean_impr_over_raw_odom) > 0
-            and len(rot_errs_weighted_mean_impr_over_raw_odom) > 0
+        )
+        has_rot_weighted_mean_impr_over_raw_odom = (
+            len(rot_errs_weighted_mean_impr_over_raw_odom) > 0
         )
         
         has_pose_slopes_trans_weighted_mean = (len(trans_errs_slopes_weighted_mean) > 0)
@@ -1142,16 +1160,16 @@ class RBPFEValMultParticles:
 
         has_weighted_part_std_theta_values = len(weighted_part_std_theta_values) > 0
         has_weighted_part_std_pos_values = len(weighted_part_std_pos_values) > 0
-        has_raw_odom_errors = (
-            len(trans_errs_raw_odom) > 0 and len(rot_errs_raw_odom) > 0
-        )
-        has_best_particle_errors = (
-            len(trans_errs_best_particle) > 0 and len(rot_errs_best_particle) > 0
-        )
+        has_trans_raw_odom_errors = len(trans_errs_raw_odom) > 0
+        has_rot_raw_odom_errors = len(rot_errs_raw_odom) > 0
+        has_trans_best_particle_errors = len(trans_errs_best_particle) > 0
+        has_rot_best_particle_errors = len(rot_errs_best_particle) > 0
         has_best_particle_weight_values = len(best_particle_weight_values) > 0
-        has_closest_particle_before_resampling_errors = (
+        has_trans_closest_particle_before_resampling_errors = (
             len(trans_errs_closest_p_before_resampling) > 0
-            and len(rot_errs_closest_p_before_resampling) > 0
+        )
+        has_rot_closest_particle_before_resampling_errors = (
+            len(rot_errs_closest_p_before_resampling) > 0
         )
         has_gap_trans_best_p_to_closest_before_resamp_values = (
             len(gap_trans_best_p_to_closest_before_resamp_values) > 0
@@ -1165,16 +1183,13 @@ class RBPFEValMultParticles:
         has_gap_rot_best_to_min_before_resamp_values = (
             len(gap_rot_best_to_min_before_resamp_values) > 0
         )
-        has_closest_particle_after_resampling_errors = (
+        has_trans_closest_particle_after_resampling_errors = (
             len(trans_errs_closest_p_after_resampling) > 0
-            and len(rot_errs_closest_p_after_resampling) > 0
         )
-        has_trans_closest_p_after_before_resamp_values = (
-            len(trans_closest_p_after_before_resamp_values) > 0
+        has_rot_closest_particle_after_resampling_errors = (
+            len(rot_errs_closest_p_after_resampling) > 0
         )
-        has_rot_closest_p_after_before_resamp_values = (
-            len(rot_closest_p_after_before_resamp_values) > 0
-        )
+
         has_trans_closest_p_after_before_resamp_vals = (
             len(trans_closest_p_after_before_resamp_vals) > 0
         )
@@ -1198,12 +1213,15 @@ class RBPFEValMultParticles:
         has_unique_resampled_parents_values = len(unique_resampled_parents_values) > 0
 
         # Compute summary if step results are available
+        # ________________________________________________________________________________________
+
         summary = {
             "n_steps": len(step_res),
             "init_counter": init_counter,
             "particle_update_counter": particle_update_counter,
 
             # Compute mean timings
+            # ________________________________________________________________________________________
             "mean_step_duration": self._safe_mean(step_durations),
             # Mean time durations proposal
             "mean_t_sample_poses": self._safe_mean(t_sample_poses_values),
@@ -1231,103 +1249,126 @@ class RBPFEValMultParticles:
             "mean_t_find_trans": self._safe_mean(t_find_trans_values),
 
             # Compute scan matcher statistics
+            # ________________________________________________________________________________________
             "scan_match_failed_count": int(scan_match_failed_count),
             "scan_match_failed_rate": float(scan_match_failed_count) / len(step_res) if step_res else None,
             "scan_match_fallback_failed_count": int(scan_match_fallback_failed_count),
             "scan_match_fallback_failed_rate": float(scan_match_fallback_failed_count) / len(step_res) if step_res else None,
 
             # Raw odom trajectory
+            # ________________________________________________________________________________________
             "mean_trans_err_raw_odom": (
                 float(np.mean(trans_errs_raw_odom))
-                if has_raw_odom_errors else None
+                if has_trans_raw_odom_errors else None
             ),
             "rmse_trans_err_raw_odom": (
                 float(np.sqrt(np.mean(np.square(trans_errs_raw_odom))))
-                if has_raw_odom_errors else None
+                if has_trans_raw_odom_errors else None
             ),
             "worst_trans_err_raw_odom": (
                 float(np.max(trans_errs_raw_odom))
-                if has_raw_odom_errors else None
+                if has_trans_raw_odom_errors else None
             ),
             "mean_rot_err_raw_odom": (
                 float(np.mean(rot_errs_raw_odom))
-                if has_raw_odom_errors else None
+                if has_rot_raw_odom_errors else None
             ),
             "rmse_rot_err_raw_odom": (
                 float(np.sqrt(np.mean(np.square(rot_errs_raw_odom))))
-                if has_raw_odom_errors else None
+                if has_rot_raw_odom_errors else None
             ),
             "worst_rot_err_raw_odom": (
                 float(np.max(rot_errs_raw_odom))
-                if has_raw_odom_errors else None
+                if has_rot_raw_odom_errors else None
             ),
             "final_trans_drift_trans_err_raw_odom": (
                 float(trans_errs_raw_odom[-1])
-                if has_raw_odom_errors else None
+                if has_trans_raw_odom_errors else None
             ),
             "final_rot_drift_rot_err_raw_odom": (
                 float(rot_errs_raw_odom[-1])
-                if has_raw_odom_errors else None
+                if has_rot_raw_odom_errors else None
+            ),
+
+            # Trajectory before resampling
+            # ________________________________________________________________________________________
+            # Correlations
+            "mean_corr_trans_weights_pos": (
+                float(np.mean(corr_trans_weights_pos_values))
+                if has_corr_trans_weights_pos_values else None
+            ),
+            "median_corr_trans_weights_pos": (
+                float(np.median(corr_trans_weights_pos_values))
+                if has_corr_trans_weights_pos_values else None
+            ),
+            "mean_corr_rot_weights_pos": (
+                float(np.mean(corr_rot_weights_pos_values))
+                if has_corr_rot_weights_pos_values else None
+            ),
+            "median_corr_rot_weights_pos": (
+                float(np.median(corr_rot_weights_pos_values))
+                if has_corr_rot_weights_pos_values else None
             ),
 
             # Weighted mean pose trajectory
+            # ________________________________________________________________________________________
             "mean_trans_err_weighted_mean": (
                 float(np.mean(trans_errs_weighted_mean))
-                if has_weighted_mean_errors else None
+                if has_trans_weighted_mean_errors else None
             ),
             "rmse_trans_err_weighted_mean": (
                 float(np.sqrt(np.mean(np.square(trans_errs_weighted_mean))))
-                if has_weighted_mean_errors else None
+                if has_trans_weighted_mean_errors else None
             ),
             "worst_trans_err_weighted_mean": (
                 float(np.max(trans_errs_weighted_mean))
-                if has_weighted_mean_errors else None
+                if has_trans_weighted_mean_errors else None
             ),
             "mean_rot_err_weighted_mean": (
                 float(np.mean(rot_errs_weighted_mean))
-                if has_weighted_mean_errors else None
+                if has_rot_weighted_mean_errors else None
             ),
             "rmse_rot_err_weighted_mean": (
                 float(np.sqrt(np.mean(np.square(rot_errs_weighted_mean))))
-                if has_weighted_mean_errors else None
+                if has_rot_weighted_mean_errors else None
             ),
             "worst_rot_err_weighted_mean": (
                 float(np.max(rot_errs_weighted_mean))
-                if has_weighted_mean_errors else None
+                if has_rot_weighted_mean_errors else None
             ),
             "final_trans_drift_trans_err_weighted_mean": (
                 float(trans_errs_weighted_mean[-1])
-                if has_weighted_mean_errors else None
+                if has_trans_weighted_mean_errors else None
             ),
             "final_rot_drift_rot_err_weighted_mean": (
                 float(rot_errs_weighted_mean[-1])
-                if has_weighted_mean_errors else None
+                if has_rot_weighted_mean_errors else None
             ),
             # improvement of weighted mean over raw odom
             "mean_trans_err_weighted_mean_impr_over_raw_odom": (
                 float(np.mean(trans_errs_weighted_mean_impr_over_raw_odom))
-                if has_weighted_mean_impr_over_raw_odom else None
+                if has_trans_weighted_mean_impr_over_raw_odom else None
             ),
             "median_trans_err_weighted_mean_impr_over_raw_odom": (
                 float(np.median(trans_errs_weighted_mean_impr_over_raw_odom))
-                if has_weighted_mean_impr_over_raw_odom else None
+                if has_trans_weighted_mean_impr_over_raw_odom else None
             ),
             "perc_10_trans_err_weighted_mean_impr_over_raw_odom": (
                 float(np.percentile(trans_errs_weighted_mean_impr_over_raw_odom, 10))
-                if has_weighted_mean_impr_over_raw_odom else None
+                if has_trans_weighted_mean_impr_over_raw_odom else None
             ),
             # Improvement of weighted mean over raw odom
             "mean_rot_err_weighted_mean_impr_over_raw_odom": (
                 float(np.mean(rot_errs_weighted_mean_impr_over_raw_odom))
-                if has_weighted_mean_impr_over_raw_odom else None
+                if has_rot_weighted_mean_impr_over_raw_odom else None
             ),
             "median_rot_err_weighted_mean_impr_over_raw_odom": (
                 float(np.median(rot_errs_weighted_mean_impr_over_raw_odom))
-                if has_weighted_mean_impr_over_raw_odom else None
+                if has_rot_weighted_mean_impr_over_raw_odom else None
             ),
             "perc_10_rot_err_weighted_mean_impr_over_raw_odom": (
                 float(np.percentile(rot_errs_weighted_mean_impr_over_raw_odom, 10))
-                if has_weighted_mean_impr_over_raw_odom else None
+                if has_rot_weighted_mean_impr_over_raw_odom else None
             ),
             # Compute slope for weighted mean errors
             "mean_pos_trans_errs_slopes_weighted_mean": (
@@ -1372,45 +1413,46 @@ class RBPFEValMultParticles:
             ),
 
             # Online MAP / highest-weight particle trajectory
+            # ________________________________________________________________________________________
             "mean_trans_err_best_particle": (
                 float(np.mean(trans_errs_best_particle))
-                if has_best_particle_errors else None
+                if has_trans_best_particle_errors else None
             ),
             "rmse_trans_err_best_particle": (
                 float(np.sqrt(np.mean(np.square(trans_errs_best_particle))))
-                if has_best_particle_errors else None
+                if has_trans_best_particle_errors else None
             ),
             "worst_trans_err_best_particle": (
                 float(np.max(trans_errs_best_particle))
-                if has_best_particle_errors else None
+                if has_trans_best_particle_errors else None
             ),
             "mean_rot_err_best_particle": (
                 float(np.mean(rot_errs_best_particle))
-                if has_best_particle_errors else None
+                if has_rot_best_particle_errors else None
             ),
             "rmse_rot_err_best_particle": (
                 float(np.sqrt(np.mean(np.square(rot_errs_best_particle))))
-                if has_best_particle_errors else None
+                if has_rot_best_particle_errors else None
             ),
             "worst_rot_err_best_particle": (
                 float(np.max(rot_errs_best_particle))
-                if has_best_particle_errors else None
+                if has_rot_best_particle_errors else None
             ),
             "final_trans_drift_trans_err_best_particle": (
                 float(trans_errs_best_particle[-1])
-                if has_best_particle_errors else None
+                if has_trans_best_particle_errors else None
             ),
             "final_rot_drift_rot_err_best_particle": (
                 float(rot_errs_best_particle[-1])
-                if has_best_particle_errors else None
+                if has_rot_best_particle_errors else None
             ),
             "rate_above_thres_trans_err_best_particle": (
                 float(np.mean(trans_errs_best_particle > TRANS_ERRS_BEST_PARTICLE_THRES))
-                if has_best_particle_errors else None
+                if has_trans_best_particle_errors else None
             ),
             "rate_above_thres_rot_err_best_particle": (
                 float(np.mean(rot_errs_best_particle > ROT_ERRS_BEST_PARTICLE_THRES))
-                if has_best_particle_errors else None
+                if has_rot_best_particle_errors else None
             ),
             "mean_best_particle_weight": (
                 float(np.mean(best_particle_weight_values))
@@ -1430,37 +1472,38 @@ class RBPFEValMultParticles:
             ),
 
             # Oracle closest-particle trajectory before resampling
+            # ________________________________________________________________________________________
             "mean_trans_err_closest_p_before_resampling": (
                 float(np.mean(trans_errs_closest_p_before_resampling))
-                if has_closest_particle_before_resampling_errors else None
+                if has_trans_closest_particle_before_resampling_errors else None
             ),
             "rmse_trans_err_closest_p_before_resampling": (
                 float(np.sqrt(np.mean(np.square(trans_errs_closest_p_before_resampling))))
-                if has_closest_particle_before_resampling_errors else None
+                if has_trans_closest_particle_before_resampling_errors else None
             ),
             "worst_trans_err_closest_p_before_resampling": (
                 float(np.max(trans_errs_closest_p_before_resampling))
-                if has_closest_particle_before_resampling_errors else None
+                if has_trans_closest_particle_before_resampling_errors else None
             ),
             "mean_rot_err_closest_p_before_resampling": (
                 float(np.mean(rot_errs_closest_p_before_resampling))
-                if has_closest_particle_before_resampling_errors else None
+                if has_rot_closest_particle_before_resampling_errors else None
             ),
             "rmse_rot_err_closest_p_before_resampling": (
                 float(np.sqrt(np.mean(np.square(rot_errs_closest_p_before_resampling))))
-                if has_closest_particle_before_resampling_errors else None
+                if has_rot_closest_particle_before_resampling_errors else None
             ),
             "worst_rot_err_closest_p_before_resampling": (
                 float(np.max(rot_errs_closest_p_before_resampling))
-                if has_closest_particle_before_resampling_errors else None
+                if has_rot_closest_particle_before_resampling_errors else None
             ),
             "final_trans_drift_trans_err_closest_p_before_resampling": (
                 float(trans_errs_closest_p_before_resampling[-1])
-                if has_closest_particle_before_resampling_errors else None
+                if has_trans_closest_particle_before_resampling_errors else None
             ),
             "final_rot_drift_rot_err_closest_p_before_resampling": (
                 float(rot_errs_closest_p_before_resampling[-1])
-                if has_closest_particle_before_resampling_errors else None
+                if has_rot_closest_particle_before_resampling_errors else None
             ),
             "mean_gap_trans_best_p_to_closest_before_resamp": (
                 float(np.mean(gap_trans_best_p_to_closest_before_resamp_values))
@@ -1496,88 +1539,43 @@ class RBPFEValMultParticles:
             ),
 
             # Oracle closest-particle trajectory after resampling
+            # ________________________________________________________________________________________
             "mean_trans_err_closest_p_after_resampling": (
                 float(np.mean(trans_errs_closest_p_after_resampling))
-                if has_closest_particle_after_resampling_errors else None
+                if has_trans_closest_particle_after_resampling_errors else None
             ),
             "rmse_trans_err_closest_p_after_resampling": (
                 float(np.sqrt(np.mean(np.square(trans_errs_closest_p_after_resampling))))
-                if has_closest_particle_after_resampling_errors else None
+                if has_trans_closest_particle_after_resampling_errors else None
             ),
             "worst_trans_err_closest_p_after_resampling": (
                 float(np.max(trans_errs_closest_p_after_resampling))
-                if has_closest_particle_after_resampling_errors else None
+                if has_trans_closest_particle_after_resampling_errors else None
             ),
             "mean_rot_err_closest_p_after_resampling": (
                 float(np.mean(rot_errs_closest_p_after_resampling))
-                if has_closest_particle_after_resampling_errors else None
+                if has_rot_closest_particle_after_resampling_errors else None
             ),
             "rmse_rot_err_closest_p_after_resampling": (
                 float(np.sqrt(np.mean(np.square(rot_errs_closest_p_after_resampling))))
-                if has_closest_particle_after_resampling_errors else None
+                if has_rot_closest_particle_after_resampling_errors else None
             ),
             "worst_rot_err_closest_p_after_resampling": (
                 float(np.max(rot_errs_closest_p_after_resampling))
-                if has_closest_particle_after_resampling_errors else None
+                if has_rot_closest_particle_after_resampling_errors else None
             ),
             "final_trans_drift_trans_err_closest_p_after_resampling": (
                 float(trans_errs_closest_p_after_resampling[-1])
-                if has_closest_particle_after_resampling_errors else None
+                if has_trans_closest_particle_after_resampling_errors else None
             ),
             "final_rot_drift_rot_err_closest_p_after_resampling": (
                 float(rot_errs_closest_p_after_resampling[-1])
-                if has_closest_particle_after_resampling_errors else None
-            ),
-            "mean_trans_closest_p_after_before_resamp": (
-                float(np.mean(trans_closest_p_after_before_resamp_values))
-                if has_trans_closest_p_after_before_resamp_values else None
-            ),
-            "worst_trans_closest_p_after_before_resamp": (
-                float(np.max(trans_closest_p_after_before_resamp_values))
-                if has_trans_closest_p_after_before_resamp_values else None
-            ),
-            "mean_rot_closest_p_after_before_resamp": (
-                float(np.mean(rot_closest_p_after_before_resamp_values))
-                if has_rot_closest_p_after_before_resamp_values else None
-            ),
-            "worst_rot_closest_p_after_before_resamp": (
-                float(np.max(rot_closest_p_after_before_resamp_values))
-                if has_rot_closest_p_after_before_resamp_values else None
-            ),
-            "mean_trans_closest_p_after_before_resamp_vals": (
-                float(np.mean(trans_closest_p_after_before_resamp_vals))
-                if has_trans_closest_p_after_before_resamp_vals else None
-            ),
-            "worst_trans_closest_p_after_before_resamp_vals": (
-                float(np.max(trans_closest_p_after_before_resamp_vals))
-                if has_trans_closest_p_after_before_resamp_vals else None
-            ),
-            "mean_rot_closest_p_after_before_resamp_vals": (
-                float(np.mean(rot_closest_p_after_before_resamp_vals))
-                if has_rot_closest_p_after_before_resamp_vals else None
-            ),
-            "worst_rot_closest_p_after_before_resamp_vals": (
-                float(np.max(rot_closest_p_after_before_resamp_vals))
-                if has_rot_closest_p_after_before_resamp_vals else None
-            ),
-            "mean_corr_trans_weights_pos": (
-                float(np.mean(corr_trans_weights_pos_values))
-                if has_corr_trans_weights_pos_values else None
-            ),
-            "median_corr_trans_weights_pos": (
-                float(np.median(corr_trans_weights_pos_values))
-                if has_corr_trans_weights_pos_values else None
-            ),
-            "mean_corr_rot_weights_pos": (
-                float(np.mean(corr_rot_weights_pos_values))
-                if has_corr_rot_weights_pos_values else None
-            ),
-            "median_corr_rot_weights_pos": (
-                float(np.median(corr_rot_weights_pos_values))
-                if has_corr_rot_weights_pos_values else None
+                if has_rot_closest_particle_after_resampling_errors else None
             ),
 
+
             # Final MAP particle ancestral trajectory
+            # ________________________________________________________________________________________
             "mean_trans_err_map_traj": (
                 float(np.mean(trans_errs_map_traj))
                 if has_map_trajectory_errors else None
@@ -1668,7 +1666,27 @@ class RBPFEValMultParticles:
                 if has_pos_slope_rot_map_traj else None
             ),
 
+            # Analyze closeset p before and after resampling when only when resampling took place
+            # ________________________________________________________________________________________
+            "mean_trans_closest_p_after_before_resamp_vals": (
+                float(np.mean(trans_closest_p_after_before_resamp_vals))
+                if has_trans_closest_p_after_before_resamp_vals else None
+            ),
+            "worst_trans_closest_p_after_before_resamp_vals": (
+                float(np.max(trans_closest_p_after_before_resamp_vals))
+                if has_trans_closest_p_after_before_resamp_vals else None
+            ),
+            "mean_rot_closest_p_after_before_resamp_vals": (
+                float(np.mean(rot_closest_p_after_before_resamp_vals))
+                if has_rot_closest_p_after_before_resamp_vals else None
+            ),
+            "worst_rot_closest_p_after_before_resamp_vals": (
+                float(np.max(rot_closest_p_after_before_resamp_vals))
+                if has_rot_closest_p_after_before_resamp_vals else None
+            ),
+
             # Compute resampling infos
+            # ________________________________________________________________________________________
             "resampling_count": int(resampling_count),
             "resampling_rate": (
                 float(resampling_count) / int(particle_update_counter) if particle_update_counter else None

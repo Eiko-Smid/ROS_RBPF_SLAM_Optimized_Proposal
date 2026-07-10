@@ -825,7 +825,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
-NUMBER_OF_WORKERS = 1
+NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
