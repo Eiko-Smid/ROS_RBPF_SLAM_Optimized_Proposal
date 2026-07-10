@@ -1160,7 +1160,7 @@ class RBPFEvaluator:
         """
         Computes run-level metrics for optimization and reporting.
         """
-        # Filter out infinite values form data before comptuaing summary metrics
+        # Filter out infinite values form data before computing summary metrics
         trans_err = self._finite_values([s.translation_error for s in step_results if s.translation_error is not None])
         rot_err = self._finite_values([s.rotation_error for s in step_results if s.rotation_error is not None])
         trans_err_raw_odom = self._finite_values([s.trans_err_raw_odom for s in step_results if s.trans_err_raw_odom is not None])
@@ -1251,7 +1251,7 @@ class RBPFEvaluator:
             [s.map_point_keep_ratio for s in step_results if s.map_point_keep_ratio is not None]
         )
         
-        # Access step data and ensure valud values
+        # Access step data and ensure valid values
         trans_err_mu_true_values = self._finite_values([s.trans_err_mu_true for s in step_results if s.trans_err_mu_true is not None])
         rot_err_mu_true_values = self._finite_values([s.rot_err_mu_true for s in step_results if s.rot_err_mu_true is not None])
         pose_err_mu_true_values = self._finite_values([s.pose_err_mu_true for s in step_results if s.pose_err_mu_true is not None])

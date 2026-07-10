@@ -498,33 +498,66 @@ class RBPFEValMultParticles:
         TODO:
         1) Optional: Add measurement model metrics
         '''
+        # Convert input data to numpy arrays
+        true_pose = self._pose_to_np_array(true_pose)
+        raw_odom_pose = self._pose_to_np_array(raw_odom_pose)
+        particle_poses = self._poses_to_np_array(particle_poses)
+        particle_weights = np.array(particle_weights, dtype=np.float64)
+        particle_poses_before_resampling = self._poses_to_np_array(particle_poses_before_resampling)
+        particle_weights_before_resampling = np.array(particle_weights_before_resampling, dtype=np.float64)
+        particle_inherit_indices = (
+            np.array(particle_inherit_indices, dtype=np.int32) if particle_inherit_indices is not None else None
+        )
+
+        # Validate input data
+        if particle_poses is None or particle_poses.size == 0:
+            raise ValueError(f"[Evaluator mp] Particle poses are None or empty at step {step_idx}.")
+        if particle_weights is None or particle_weights.size == 0:
+            raise ValueError(f"[Evaluator mp] Particle weights are None or empty at step {step_idx}.")
+        if particle_poses_before_resampling is None or particle_poses_before_resampling.size == 0:
+            raise ValueError(f"[Evaluator mp] Particle poses before resampling are None or empty at step {step_idx}.")
+        if particle_weights_before_resampling is None or particle_weights_before_resampling.size == 0:
+            raise ValueError(f"[Evaluator mp] Particle weights before resampling are None or empty at step {step_idx}.")
+        if not np.all(np.isfinite(true_pose)):
+            raise ValueError(f"[Evaluator mp] True pose contains non-finite values at step {step_idx}: {true_pose}")
+        if not np.all(np.isfinite(raw_odom_pose)):
+            raise ValueError(f"[Evaluator mp] Raw odometry pose contains non-finite values at step {step_idx}: {raw_odom_pose}")
+        if not np.all(np.isfinite(particle_poses)):
+            raise ValueError(f"[Evaluator mp] Particle poses contain non-finite values at step {step_idx}: {particle_poses}")
+        if not np.all(np.isfinite(particle_weights)):
+            raise ValueError(f"[Evaluator mp] Particle weights contain non-finite values at step {step_idx}: {particle_weights}")
+        if not np.all(np.isfinite(particle_poses_before_resampling)):
+            raise ValueError(f"[Evaluator mp] Particle poses before resampling contain non-finite values at step {step_idx}: {particle_poses_before_resampling}")
+        if not np.all(np.isfinite(particle_weights_before_resampling)):
+            raise ValueError(f"[Evaluator mp] Particle weights before resampling contain non-finite values at step {step_idx}: {particle_weights_before_resampling}")
+
         # Init step results with None values
         step_res = StepResult()
+
+        # Add general step information
         step_res.step_idx = step_idx
         step_res.t = t
         step_res.t_step_duration = float(step_duration) if step_duration is not None else None
 
-        # Convert poses to np arrays and store directly in result
-        step_res.true_pose = self._pose_to_np_array(true_pose)
-        step_res.raw_odom_pose = self._pose_to_np_array(raw_odom_pose)
-        step_res.particle_poses = self._poses_to_np_array(particle_poses)
+        # Store input arrays directly in result
+        step_res.true_pose = true_pose
+        step_res.raw_odom_pose = raw_odom_pose
+        step_res.particle_poses = particle_poses
+        step_res.particle_weights = particle_weights
+        step_res.particle_poses_before_resampling = particle_poses_before_resampling
+        step_res.particle_weights_before_resampling = particle_weights_before_resampling
 
         # Add scan match information
         step_res.scan_match_failed = scan_match_failed
         step_res.scan_match_failed_fallback = scan_match_fallback_failed
 
-        step_res.particle_poses_before_resampling = self._poses_to_np_array(particle_poses_before_resampling)
-        step_res.particle_weights_before_resampling = np.array(particle_weights_before_resampling, dtype=np.float64)
-        
         # Store neff
         step_res.neff = float(neff)
         n_particles = len(particle_poses)
         step_res.neff_ratio = float(neff) / n_particles if n_particles > 0 else None
         
         # Store indices of particles if resampling took place, otherwise None
-        step_res.particle_inherit_indices = (
-            np.array(particle_inherit_indices, dtype=np.int32) if particle_inherit_indices is not None else None
-        )
+        step_res.particle_inherit_indices = particle_inherit_indices
 
         # Estimate if resampling took place
         step_res.resampling = particle_inherit_indices is not None
@@ -534,18 +567,6 @@ class RBPFEValMultParticles:
             else None
         )
 
-        # Check for none finite
-        if not np.all(np.isfinite(step_res.true_pose)):
-            raise ValueError(f"[Evaluator mp] True pose contains non-finite values at step {step_idx}: {step_res.true_pose}")
-        if not np.all(np.isfinite(step_res.raw_odom_pose)):
-            raise ValueError(f"[Evaluator mp] Raw odometry pose contains non-finite values at step {step_idx}: {step_res.raw_odom_pose}")
-        if not np.all(np.isfinite(step_res.particle_poses)):
-            raise ValueError(f"[Evaluator mp] Particle poses contain non-finite values at step {step_idx}: {step_res.particle_poses}")
-        if not np.all(np.isfinite(step_res.particle_weights_before_resampling)):
-            raise ValueError(f"[Evaluator mp] Particle weights before resampling contain non-finite values at step {step_idx}: {step_res.particle_weights_before_resampling}")
-        if not np.all(np.isfinite(step_res.particle_poses_before_resampling)):
-            raise ValueError(f"[Evaluator mp] Particle poses before resampling contain non-finite values at step {step_idx}: {step_res.particle_poses_before_resampling}")
-        
         # Extract proposal metrics and underlying scan matcher and icp metrics
         if proposal_metrics is not None:
             prop_timings = proposal_metrics.get("prop_timings")
@@ -580,17 +601,11 @@ class RBPFEValMultParticles:
                 step_res.t_transf_update_and_results = scan_matcher_info.get("t_transf_update_and_results")
                 step_res.t_find_trans = scan_matcher_info.get("t_find_trans")
 
-        
-        # Convert weights to np array
-        if particle_weights is None or len(particle_weights) == 0:
-            raise ValueError(f"[Evaluator mp] Particle weights are None or empty at step {step_idx}.")
-        
-        step_res.particle_weights = np.array(particle_weights, dtype=np.float64)
-
         # Convert inherit indices to np array if provided
         # if particle_inherit_indices is not None:
         #     raise ValueError(f"[Evaluator mp] Particle inherit indices should be None at step {step_idx}, but got: {particle_inherit_indices}")
 
+        # Normalize particle weights 
         # Check for NaN values in particle weights
         if np.isnan(step_res.particle_weights).any():
             raise ValueError(f"[Evaluator mp] Particle weights contain NaN values at step {step_idx}: {step_res.particle_weights}")
@@ -608,7 +623,7 @@ class RBPFEValMultParticles:
         step_res.rot_err_raw_odom = np.abs(self.angle_diff(step_res.raw_odom_pose[2], step_res.true_pose[2]))
 
         # Compute weighted mean poses
-        step_res.weighted_mean_pose = self.weighted_mean_position(step_res.particle_poses, step_res.particle_weights)
+        step_res.weighted_mean_pose = self.weighted_mean_position(step_res.particle_poses_before_resampling, step_res.particle_weights_before_resampling)
         # Compute trans and rot error of weighted mean pose
         step_res.trans_err_weighted_mean = self.translation_error(step_res.weighted_mean_pose, step_res.true_pose)
         step_res.rot_err_weighted_mean = np.abs(self.angle_diff(step_res.weighted_mean_pose[2], step_res.true_pose[2]))
@@ -620,8 +635,8 @@ class RBPFEValMultParticles:
             step_res.weighted_part_std_theta,
             step_res.weighted_part_std_pos,
         ) = self.compute_weighted_part_std(
-            particle_poses=step_res.particle_poses,
-            particle_weights=step_res.particle_weights,
+            particle_poses=step_res.particle_poses_before_resampling,
+            particle_weights=step_res.particle_weights_before_resampling,
             weighted_mean_poses=step_res.weighted_mean_pose
         )
 
@@ -679,7 +694,7 @@ class RBPFEValMultParticles:
             step_res.rot_err_closest_p_after_resampling - step_res.rot_err_closest_p_before_resampling
         )
 
-        # Closest particle trajectory evaluation arrays 
+        # Store trans and rot errors of particle before/after resampling in step data
         step_res.trans_errs_before_resampling = trans_errors_before_resampling
         step_res.rot_errs_before_resampling = rot_errs_before_resampling
         step_res.trans_errs_after_resampling = trans_errors_after_resampling
@@ -696,7 +711,7 @@ class RBPFEValMultParticles:
             -step_res.rot_errs_before_resampling,
         )
 
-        # Transform into positive corr [-1, 1] -> [2, 0]
+        # Transform into positive corr [-1, 1] -> [0, 2] (2 worst, 0 best)
         step_res.corr_trans_weights_pos = 1 - corr_trans_weights if corr_trans_weights is not None else None
         step_res.corr_rot_weights_pos = 1 - corr_rot_weights if corr_rot_weights is not None else None
 
@@ -871,14 +886,14 @@ class RBPFEValMultParticles:
         scan_match_failed_count = sum(1 for s in step_res if s.scan_match_failed)
         scan_match_fallback_failed_count = sum(1 for s in step_res if s.scan_match_failed_fallback)
 
-        # Filter pose errors
+        # Summarize/Filter pose errors
         # Raw odom
         trans_errs_raw_odom_unclean = [step.trans_err_raw_odom for step in step_res]
         rot_errs_raw_odom_unclean = [step.rot_err_raw_odom for step in step_res]
         trans_errs_raw_odom = self._finite_values(trans_errs_raw_odom_unclean)
         rot_errs_raw_odom = self._finite_values(rot_errs_raw_odom_unclean)
 
-        # Weighted mean pose errors
+        # Summarize/Filter weighted mean pose errors
         trans_errs_weighted_mean = self._finite_values([step.trans_err_weighted_mean for step in step_res])
         rot_errs_weighted_mean = self._finite_values([step.rot_err_weighted_mean for step in step_res])
         weighted_part_std_theta_values = self._finite_values(
@@ -888,14 +903,14 @@ class RBPFEValMultParticles:
             [step.weighted_part_std_pos for step in step_res if step.weighted_part_std_pos is not None]
         )
 
-        # Best particle pose errors
+        # Summarize/Filter Best particle pose errors
         trans_errs_best_particle = self._finite_values([step.trans_err_best_particle for step in step_res])
         rot_errs_best_particle = self._finite_values([step.rot_err_best_particle for step in step_res])
         best_particle_weight_values = self._finite_values(
             [step.best_particle_weight for step in step_res if step.best_particle_weight is not None]
         )
 
-        # Closest particle pose errors before resampling
+        # Summarize/Filter Closest particle pose errors before resampling
         trans_errs_closest_p_before_resampling = self._finite_values(
             [step.trans_err_closest_p_before_resampling for step in step_res]
         )
@@ -1704,12 +1719,19 @@ class RBPFEValMultParticles:
 
 
 def test():
-    vals = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
-    pos_vals = vals >= 0.0
+    # step_res.resampling = particle_inherit_indices is not None
+    scan_match_failed = [False, True, None, True]
+    count = sum(1 for failed in scan_match_failed if failed)
 
+    print(f"Count of scan match failed: {count} (expected: 2)")
 
-    print(f"Original values: {vals}")
-    print(f"Positive values: {vals[pos_vals]}")
+    var = None
+
+    if var:
+        print(True)
+    else:
+        print(False)
+
 
 
 def test_restore_trajectory():
