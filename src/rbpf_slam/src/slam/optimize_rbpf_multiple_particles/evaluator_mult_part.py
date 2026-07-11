@@ -604,11 +604,6 @@ class RBPFEValMultParticles:
         StepResult
             A dataclass containing the evaluation results for the current step.
         '''
-
-        '''
-        TODO:
-        1) Optional: Add measurement model metrics
-        '''
         # Convert input data to numpy arrays
         true_pose = self._pose_to_np_array(true_pose)
         raw_odom_pose = self._pose_to_np_array(raw_odom_pose)
@@ -995,6 +990,11 @@ class RBPFEValMultParticles:
             The number of values to use for each slope computation, by default 10
         stride : Optional[int], optional
             The step size for the next slope computation. If None, the window_size is used, by default None
+
+        Returns
+        -------
+        np.ndarray
+            The computed slopes for each window in the given data.
         '''
         # Transform to numpy array and filter non-finite values
         data = np.asarray(data, dtype=float)
@@ -1209,6 +1209,9 @@ class RBPFEValMultParticles:
         gap_rot_best_p_to_closest_before_resamp_values = self._finite_values(
             [step.gap_rot_best_p_to_closest_before_resamp for step in step_res]
         )
+        gap_rot_best_p_to_closest_before_resamp_values = np.abs(
+            gap_rot_best_p_to_closest_before_resamp_values
+        )
         gap_trans_best_to_min_before_resamp_values = self._finite_values(
             [step.gap_trans_best_to_min_before_resamp for step in step_res]
         )
@@ -1237,6 +1240,9 @@ class RBPFEValMultParticles:
                 if step.resampling and step.rot_closest_p_after_before_resamp is not None
             ]
         )
+        rot_closest_p_after_before_resamp_vals = np.abs(
+            rot_closest_p_after_before_resamp_vals
+        )
         corr_trans_weights_pos_values = self._finite_values(
             [step.corr_trans_weights_pos for step in step_res]
         )
@@ -1250,6 +1256,9 @@ class RBPFEValMultParticles:
         )
         rot_errs_weighted_mean_impr_over_raw_odom = self._finite_values(
             [step.rot_err_weighted_mean_impr_over_raw_odom for step in step_res]
+        )
+        rot_errs_weighted_mean_impr_over_raw_odom = np.abs(
+            rot_errs_weighted_mean_impr_over_raw_odom
         )
 
         # Filter time durations
@@ -1358,8 +1367,8 @@ class RBPFEValMultParticles:
         # )
 
         # Clean tran/rot errors before resampling
-        trans_errs_before_resampling_list = self._finite_values(trans_errs_before_resampling_list)
-        rot_errs_before_resampling_list = self._finite_values(rot_errs_before_resampling_list)
+        # trans_errs_before_resampling_list = self._finite_values(trans_errs_before_resampling_list)
+        # rot_errs_before_resampling_list = self._finite_values(rot_errs_before_resampling_list)
 
         
         # Compute final map improvement
@@ -1399,17 +1408,20 @@ class RBPFEValMultParticles:
         rot_errs_map_traj_impr_over_raw_odom = self._finite_values(
             rot_errs_map_traj_impr_over_raw_odom
         )
+        rot_errs_map_traj_impr_over_raw_odom = np.abs(
+            rot_errs_map_traj_impr_over_raw_odom
+        )
 
         # Compute error slopes
         # ________________________________________________________________________________________
 
         # Error slopes wieghted mean
-        trans_errs_slopes_weighted_mean = self.compute_windowed_slopes(
+        trans_err_slopes_weighted_mean = self.compute_windowed_slopes(
             data=trans_errs_weighted_mean,
             window_size=10,
         )
 
-        rot_errs_slopes_weighted_mean = self.compute_windowed_slopes(
+        rot_err_slopes_weighted_mean = self.compute_windowed_slopes(
             data=rot_errs_weighted_mean,
             window_size=10,
         )
@@ -1426,14 +1438,14 @@ class RBPFEValMultParticles:
         )
 
         # Ensure finite slopes
-        trans_errs_slopes_weighted_mean = self._finite_values(trans_errs_slopes_weighted_mean)
-        rot_errs_slopes_weighted_mean = self._finite_values(rot_errs_slopes_weighted_mean)
+        trans_err_slopes_weighted_mean = self._finite_values(trans_err_slopes_weighted_mean)
+        rot_err_slopes_weighted_mean = self._finite_values(rot_err_slopes_weighted_mean)
         trans_err_slopes_map_traj = self._finite_values(trans_err_slopes_map_traj)
         rot_err_slopes_map_traj = self._finite_values(rot_err_slopes_map_traj)
 
         # Store only positive slopes -> Rising error is what is bad and needs to be analyzed
-        trans_errs_slopes_weighted_mean = np.maximum(trans_errs_slopes_weighted_mean, 0.0)
-        rot_errs_slopes_weighted_mean = np.maximum(rot_errs_slopes_weighted_mean, 0.0)
+        trans_err_slopes_weighted_mean = np.maximum(trans_err_slopes_weighted_mean, 0.0)
+        rot_err_slopes_weighted_mean = np.maximum(rot_err_slopes_weighted_mean, 0.0)
         trans_err_slopes_map_traj = np.maximum(trans_err_slopes_map_traj, 0.0)
         rot_err_slopes_map_traj = np.maximum(rot_err_slopes_map_traj, 0.0)
 
@@ -1492,8 +1504,8 @@ class RBPFEValMultParticles:
             len(rot_errs_weighted_mean_impr_over_raw_odom) > 0
         )
         
-        has_pose_slopes_trans_weighted_mean = (len(trans_errs_slopes_weighted_mean) > 0)
-        has_pose_slopes_rotation_weighted_mean = (len(rot_errs_slopes_weighted_mean) > 0)
+        has_pose_slopes_trans_weighted_mean = (len(trans_err_slopes_weighted_mean) > 0)
+        has_pose_slopes_rotation_weighted_mean = (len(rot_err_slopes_weighted_mean) > 0)
 
         has_weighted_part_std_theta_values = len(weighted_part_std_theta_values) > 0
         has_weighted_part_std_pos_values = len(weighted_part_std_pos_values) > 0
@@ -1709,6 +1721,10 @@ class RBPFEValMultParticles:
                 float(np.max(trans_motion_errs_weighted_mean))
                 if has_trans_motion_errors_weighted_mean else None
             ),
+            "p90_trans_motion_err_weighted_mean": (
+                float(np.percentile(trans_motion_errs_weighted_mean, 90))
+                if has_trans_motion_errors_weighted_mean else None
+            ),
             "mean_rot_motion_err_weighted_mean": (
                 float(np.mean(rot_motion_errs_weighted_mean))
                 if has_rot_motion_errors_weighted_mean else None
@@ -1719,6 +1735,10 @@ class RBPFEValMultParticles:
             ),
             "worst_rot_motion_err_weighted_mean": (
                 float(np.max(rot_motion_errs_weighted_mean))
+                if has_rot_motion_errors_weighted_mean else None
+            ),
+            "p90_rot_motion_err_weighted_mean": (
+                float(np.percentile(rot_motion_errs_weighted_mean, 90))
                 if has_rot_motion_errors_weighted_mean else None
             ),
             # improvement of weighted mean over raw odom
@@ -1749,27 +1769,27 @@ class RBPFEValMultParticles:
             ),
             # Compute slope for weighted mean errors
             "mean_pos_trans_errs_slopes_weighted_mean": (
-                float(np.mean(trans_errs_slopes_weighted_mean))
+                float(np.mean(trans_err_slopes_weighted_mean))
                 if has_pose_slopes_trans_weighted_mean else None
             ),
             "rmse_pos_trans_errs_slopes_weighted_mean": (
-                float(np.sqrt(np.mean(np.square(trans_errs_slopes_weighted_mean))))
+                float(np.sqrt(np.mean(np.square(trans_err_slopes_weighted_mean))))
                 if has_pose_slopes_trans_weighted_mean else None
             ),
             "p90_pos_trans_errs_slopes_weighted_mean": (
-                float(np.percentile(trans_errs_slopes_weighted_mean, 90))
+                float(np.percentile(trans_err_slopes_weighted_mean, 90))
                 if has_pose_slopes_trans_weighted_mean else None
             ),
             "mean_pos_rot_errs_slopes_weighted_mean": (
-                float(np.mean(rot_errs_slopes_weighted_mean))
+                float(np.mean(rot_err_slopes_weighted_mean))
                 if has_pose_slopes_rotation_weighted_mean else None
             ),
             "rmse_pos_rot_errs_slopes_weighted_mean": (
-                float(np.sqrt(np.mean(np.square(rot_errs_slopes_weighted_mean))))
+                float(np.sqrt(np.mean(np.square(rot_err_slopes_weighted_mean))))
                 if has_pose_slopes_rotation_weighted_mean else None
             ),
             "p90_pos_rot_errs_slopes_weighted_mean": (
-                float(np.percentile(rot_errs_slopes_weighted_mean, 90))
+                float(np.percentile(rot_err_slopes_weighted_mean, 90))
                 if has_pose_slopes_rotation_weighted_mean else None
             ),
             "mean_weighted_part_std_theta": (
@@ -1835,6 +1855,10 @@ class RBPFEValMultParticles:
                 float(np.max(trans_motion_errs_best_particle))
                 if has_trans_motion_errors_best_particle else None
             ),
+            "p90_trans_motion_err_best_particle": (
+                float(np.percentile(trans_motion_errs_best_particle, 90))
+                if has_trans_motion_errors_best_particle else None
+            ),
             "mean_rot_motion_err_best_particle": (
                 float(np.mean(rot_motion_errs_best_particle))
                 if has_rot_motion_errors_best_particle else None
@@ -1845,6 +1869,10 @@ class RBPFEValMultParticles:
             ),
             "worst_rot_motion_err_best_particle": (
                 float(np.max(rot_motion_errs_best_particle))
+                if has_rot_motion_errors_best_particle else None
+            ),
+            "p90_rot_motion_err_best_particle": (
+                float(np.percentile(rot_motion_errs_best_particle, 90))
                 if has_rot_motion_errors_best_particle else None
             ),
             "rate_above_thres_trans_err_best_particle": (
@@ -2021,6 +2049,10 @@ class RBPFEValMultParticles:
                 float(np.max(trans_motion_errs_map_traj))
                 if has_trans_motion_errors_map_traj else None
             ),
+            "p90_trans_motion_err_map_traj": (
+                float(np.percentile(trans_motion_errs_map_traj, 90))
+                if has_trans_motion_errors_map_traj else None
+            ),
             "mean_rot_motion_err_map_traj": (
                 float(np.mean(rot_motion_errs_map_traj))
                 if has_rot_motion_errors_map_traj else None
@@ -2031,6 +2063,10 @@ class RBPFEValMultParticles:
             ),
             "worst_rot_motion_err_map_traj": (
                 float(np.max(rot_motion_errs_map_traj))
+                if has_rot_motion_errors_map_traj else None
+            ),
+            "p90_rot_motion_err_map_traj": (
+                float(np.percentile(rot_motion_errs_map_traj, 90))
                 if has_rot_motion_errors_map_traj else None
             ),
             "rate_above_thres_trans_err_map_traj": (
@@ -2065,6 +2101,7 @@ class RBPFEValMultParticles:
                 float(np.percentile(rot_errs_map_traj_impr_over_raw_odom, 10))
                 if has_rot_map_traj_impr_over_raw_odom  else None
             ),
+            
             # Compute slopes for final MAP trajectory
             "mean_pos_trans_err_slopes_map_traj": (
                 float(np.mean(trans_err_slopes_map_traj))

@@ -81,6 +81,7 @@ class RankedRunConverter:
                 "parameter_tag": run.parameter_tag,
                 "parameter_hash": run.parameter_hash,
                 "used_meas_model": getattr(params, "used_meas_model", None),
+                "n_steps": n_steps,
 
                 # Parameters
                 "seed": run.seed,
@@ -126,12 +127,12 @@ class RankedRunConverter:
                 "meas_kernel_size": params.meas_kernel_size,
 
                 # Scan matcher information metrics
-                "scan_match_failed_count": scan_match_failed_count,
-                "scan_match_fallback_failed_count": scan_match_fallback_failed_count,
-                "scan_match_failed_rate": scan_match_failed_rate,
-                "scan_match_fallback_failed_rate": scan_match_fallback_failed_rate,
-                "median_extracted_map_points": cls._read_from_summary(run, "median_extracted_map_points"),
-                "median_map_point_keep_ratio": cls._read_from_summary(run, "median_map_point_keep_ratio"),
+                "scan_match_failed_count": cls._read_from_summary(run, "scan_match_failed_count", scan_match_failed_count),
+                "scan_match_fallback_failed_count": cls._read_from_summary(run, "scan_match_fallback_failed_count", scan_match_fallback_failed_count),
+                "scan_match_failed_rate": cls._read_from_summary(run, "scan_match_failed_rate", scan_match_failed_rate),
+                "scan_match_fallback_failed_rate": cls._read_from_summary(run, "scan_match_fallback_failed_rate", scan_match_fallback_failed_rate),
+                # "median_extracted_map_points": cls._read_from_summary(run, "median_extracted_map_points"),
+                # "median_map_point_keep_ratio": cls._read_from_summary(run, "median_map_point_keep_ratio"),
                 "count_too_few_points": cls._read_from_summary(run, "count_too_few_points", 0),
                 "count_too_few_corresp": cls._read_from_summary(run, "count_too_few_corresp", 0),
                 "infinite_h_or_g": cls._read_from_summary(run, "infinite_h_or_g", 0),
@@ -141,304 +142,163 @@ class RankedRunConverter:
                 "best_transf_too_large": cls._read_from_summary(run, "best_transf_too_large", 0),
                 "best_mean_err_too_large": cls._read_from_summary(run, "best_mean_err_too_large", 0),
 
-                # Pose errors
-                # Translational errors
-                # mean
-                "mean_trans_error_raw_odom": cls._read_from_summary(run, "mean_translation_error_raw_odom"),                
-                "mean_trans_err_sm_true": cls._read_from_summary(run, "mean_trans_err_sm_true"),
-                "mean_trans_err_mu_true": cls._read_from_summary(run, "mean_trans_err_mu_true"),
-                "mean_trans_error": cls._read_from_summary(run, "mean_translation_error"),
-                # "mean_trans_err_mu_sm": cls._summary(run, "mean_trans_err_mu_sm"),
-                
-                # rmse
-                "rmse_trans_error_raw_odom": cls._read_from_summary(run, "rmse_translation_error_raw_odom"),
-                "rmse_trans_err_sm_true": cls._read_from_summary(run, "rmse_trans_err_sm_true"),
-                "rmse_trans_err_mu_true": cls._read_from_summary(run, "rmse_trans_err_mu_true"),
-                "rmse_trans_error": cls._read_from_summary(run, "rmse_translation_error"),            
-                # "rmse_trans_err_mu_sm": cls._summary(run, "rmse_trans_err_mu_sm"),
+                # Pose errs
+                # trans errs
+                # Mean trans errs
+                "mean_trans_err_raw_odom": cls._read_from_summary(run, "mean_trans_err_raw_odom"),
+                "mean_trans_err_weighted_mean": cls._read_from_summary(run, "mean_trans_err_weighted_mean"),
+                "mean_trans_err_best_particle": cls._read_from_summary(run, "mean_trans_err_best_particle"),
+                "mean_trans_err_closest_p_before_resampling": cls._read_from_summary(run, "mean_trans_err_closest_p_before_resampling"),
+                "mean_trans_err_map_traj": cls._read_from_summary(run, "mean_trans_err_map_traj"),
 
-                # worst
-                "worst_trans_err_sm_true": cls._read_from_summary(run, "worst_trans_err_sm_true"),
-                "worst_trans_err_mu_true": cls._read_from_summary(run, "worst_trans_err_mu_true"),
-                "worst_translation_error": cls._read_from_summary(run, "worst_translation_error"),
+                # RMSE trans errs
+                "rmse_trans_err_raw_odom": cls._read_from_summary(run, "rmse_trans_err_raw_odom"),
+                "rmse_trans_err_weighted_mean": cls._read_from_summary(run, "rmse_trans_err_weighted_mean"),
+                "rmse_trans_err_best_particle": cls._read_from_summary(run, "rmse_trans_err_best_particle"),
+                "rmse_trans_err_closest_p_before_resampling": cls._read_from_summary(run, "rmse_trans_err_closest_p_before_resampling"),
+                "rmse_trans_err_map_traj": cls._read_from_summary(run, "rmse_trans_err_map_traj"),
 
-                # Rotational errors
-                # mean
-                "mean_rot_error_raw_odom_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_rotation_error_raw_odom")
+                # Worst trans errs
+                "worst_trans_err_raw_odom": cls._read_from_summary(run, "worst_trans_err_raw_odom"),
+                "worst_trans_err_weighted_mean": cls._read_from_summary(run, "worst_trans_err_weighted_mean"),
+                "worst_trans_err_best_particle": cls._read_from_summary(run, "worst_trans_err_best_particle"),
+                "worst_trans_err_closest_p_before_resampling": cls._read_from_summary(run, "worst_trans_err_closest_p_before_resampling"),
+                "worst_trans_err_map_traj": cls._read_from_summary(run, "worst_trans_err_map_traj"),
+
+                # rot errs
+                # Mean rot errs
+                "mean_rot_err_raw_odom_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rot_err_raw_odom")
                 ),
-                "mean_rot_err_sm_true_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_rot_err_sm_true")
+                "mean_rot_err_weighted_mean_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rot_err_weighted_mean")
                 ),
-                "mean_rot_err_mu_true_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_rot_err_mu_true")
+                "mean_rot_err_best_particle_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rot_err_best_particle")
                 ),
-                "mean_rot_error_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_rotation_error")
-                ),        
-                # TODO: Add mean rot err sm true        
-                # "mean_rot_err_mu_sm_deg": cls._deg(
-                #     cls._summary(run, "mean_rot_err_mu_sm")
-                # ),
-                
-                # rmse
-                "rmse_rot_error_raw_odom_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_rotation_error_raw_odom")
-                ),                
-                "rmse_rot_err_sm_true_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_rot_err_sm_true")
+                "mean_rot_err_closest_p_before_resampling_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rot_err_closest_p_before_resampling")
                 ),
-                "rmse_rot_err_mu_true_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_rot_err_mu_true")
-                ),
-                "rmse_rot_error_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_rotation_error")
+                "mean_rot_err_map_traj_deg": cls._deg(
+                    cls._read_from_summary(run, "mean_rot_err_map_traj")
                 ),
 
-                # worst
-                "worst_rot_err_sm_true_deg": cls._deg(
-                    cls._read_from_summary(run, "worst_rot_err_sm_true")
+                # RMSE rot errs
+                "rmse_rot_err_raw_odom_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rot_err_raw_odom")
                 ),
-                "worst_rot_err_mu_true_deg": cls._deg(
-                    cls._read_from_summary(run, "worst_rot_err_mu_true")
+                "rmse_rot_err_weighted_mean_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rot_err_weighted_mean")
                 ),
-                "worst_rot_error_deg": cls._deg(
-                    cls._read_from_summary(run, "worst_rotation_error")
+                "rmse_rot_err_best_particle_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rot_err_best_particle")
                 ),
-
-                # XJ errors
-                # trans err
-                # mean
-                "mean_min_trans_err_xjs": cls._read_from_summary(run, "mean_min_trans_err_xjs"),
-                "mean_min_xj_trans_err_true": cls._read_from_summary(run, "mean_min_xj_trans_err_true"),
-                "mean_best_xj_trans_err_true": cls._read_from_summary(run, "mean_best_xj_trans_err_true"),
-                # rmse
-                "rmse_min_trans_err_xjs": cls._read_from_summary(run, "rmse_min_trans_err_xjs"),
-                "rmse_min_xj_trans_err_true": cls._read_from_summary(run, "rmse_min_xj_trans_err_true"),
-                "rmse_best_xj_trans_err_true": cls._read_from_summary(run, "rmse_best_xj_trans_err_true"),
-                # rot err
-                # mean
-                "mean_min_rot_err_xjs_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_min_rot_err_xjs")
+                "rmse_rot_err_closest_p_before_resampling_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rot_err_closest_p_before_resampling")
                 ),
-                "mean_min_xj_rot_err_true_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_min_xj_rot_err_true")
-                ),
-                "mean_best_xj_rot_err_true_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_best_xj_rot_err_true")
-                ),
-                # rmse
-                "rmse_min_rot_err_xjs_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_min_rot_err_xjs")
-                ),
-                "rmse_min_xj_rot_err_true_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_min_xj_rot_err_true")
-                ),
-                "rmse_best_xj_rot_err_true_deg": cls._deg(
-                    cls._read_from_summary(run, "rmse_best_xj_rot_err_true")
+                "rmse_rot_err_map_traj_deg": cls._deg(
+                    cls._read_from_summary(run, "rmse_rot_err_map_traj")
                 ),
 
-                # pose errors
-                "mean_pose_err_sm_true": cls._read_from_summary(run, "mean_pose_err_sm_true"),
-                "mean_pose_err_mu_true": cls._read_from_summary(run, "mean_pose_err_mu_true"),
-                "mean_min_xj_pose_err_true": cls._read_from_summary(run, "mean_min_xj_pose_err_true"),
-                "mean_weight_min_xj_err": cls._read_from_summary(run, "mean_weight_min_xj_err"),
-                "mean_best_weighted_xj_pose_err_true": cls._read_from_summary(
-                    run, "mean_best_weighted_xj_pose_err_true"
+                # Worst rot errs
+                "worst_rot_err_raw_odom_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_raw_odom")
                 ),
-                "mean_weight_best_xj": cls._read_from_summary(run, "mean_weight_best_xj"),
-
-                # Final drift metrics
-                # trans           
-                "drift_trans_err_raw_odom": cls._read_from_summary(run, "drift_trans_err_raw_odom"),
-                "drift_trans_err": cls._read_from_summary(run, "drift_trans_err"),
-                # rot
-                "drift_rot_err_raw_odom_deg": cls._deg(
-                    cls._read_from_summary(run, "drift_rot_err_raw_odom")            
+                "worst_rot_err_weighted_mean_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_weighted_mean")
                 ),
-                "drift_rot_err_deg": cls._deg(
-                    cls._read_from_summary(run, "drift_rot_err")            
-                ),                                                
-
-                # Improvement metrics
-                "mean_min_xj_true_err_improves_over_sm_true": cls._read_from_summary(
-                    run, "mean_min_xj_true_err_improves_over_sm_true"
+                "worst_rot_err_best_particle_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_best_particle")
                 ),
-                "mean_best_xj_true_err_improves_over_sm_true": cls._read_from_summary(
-                    run, "mean_best_xj_true_err_improves_over_sm_true"
+                "worst_rot_err_closest_p_before_resampling_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_closest_p_before_resampling")
                 ),
-                "mean_mu_true_err_improves_over_sm_true": cls._read_from_summary(
-                    run, "mean_mu_true_err_improves_over_sm_true"
-                ),                
-                "mu_true_better_than_sm_true_rate": cls._read_from_summary(
-                    run, "mu_true_better_than_sm_true_rate"
+                "worst_rot_err_map_traj_deg": cls._deg(
+                    cls._read_from_summary(run, "worst_rot_err_map_traj")
                 ),
 
-                # Covariance and correlation metrics of proposal                
-                "mean_xj_eff": cls._read_from_summary(run, "mean_xj_eff"),
-                "mean_xj_eff_motion": cls._read_from_summary(run, "mean_xj_eff_motion"),
-                "mean_xj_eff_meas": cls._read_from_summary(run, "mean_xj_eff_meas"),
-                
-                "mean_weight_best_xj": cls._read_from_summary(run, "mean_weight_best_xj"),
-                "mean_weight_ratio_min_best_weight": cls._read_from_summary(
-                    run, "mean_weight_ratio_min_best_weight"
+                # Final drift
+                # Trans drift
+                "final_trans_drift_trans_err_raw_odom": cls._read_from_summary(
+                    run, "final_trans_drift_trans_err_raw_odom"
                 ),
-                "median_weight_ratio_min_best_weight": cls._read_from_summary(
-                    run, "median_weight_ratio_min_best_weight"
+                "final_trans_drift_trans_err_weighted_mean": cls._read_from_summary(
+                    run, "final_trans_drift_trans_err_weighted_mean"
                 ),
-                "mean_log_motion_range": cls._read_from_summary(run, "mean_log_motion_range"),
-                "median_log_motion_range": cls._read_from_summary(run, "median_log_motion_range"),
-                "mean_log_meas_range": cls._read_from_summary(run, "mean_log_meas_range"),
-                "median_log_meas_range": cls._read_from_summary(run, "median_log_meas_range"),
-                "mean_log_weight_range": cls._read_from_summary(run, "mean_log_weight_range"),
-                
-                # xj and weight analysis metrics
-                "mean_min_xj_is_best_xj": cls._read_from_summary(run, "mean_min_xj_is_best_xj"),
-                "min_xj_better_sm_pose_rate": cls._read_from_summary(run, "min_xj_better_sm_pose_rate"),
-                "best_xj_better_sm_pose_rate": cls._read_from_summary(run, "best_xj_better_sm_pose_rate"),
-
-                "mean_min_xj_true_err_weight_score": cls._read_from_summary(
-                    run, "mean_min_xj_true_err_weight_score"
+                "final_trans_drift_trans_err_best_particle": cls._read_from_summary(
+                    run, "final_trans_drift_trans_err_best_particle"
                 ),
-
-                # Compute correlations (Does high weight, prob, etc correlate with low xj pose errors to true pose)
-                # corr for pose errors
-                "mean_corr_xjs_weights": cls._read_from_summary(run, "mean_corr_xjs_weights"),
-                "median_corr_xjs_weights": cls._read_from_summary(run, "median_corr_xjs_weights"),
-                "mean_corr_xjs_motion": cls._read_from_summary(run, "mean_corr_xjs_motion"),
-                "median_corr_xjs_motion": cls._read_from_summary(run, "median_corr_xjs_motion"),
-                "mean_corr_xjs_meas": cls._read_from_summary(run, "mean_corr_xjs_meas"),
-                "median_corr_xjs_meas": cls._read_from_summary(run, "median_corr_xjs_meas"),
-                "mean_corr_weights_motion": cls._read_from_summary(run, "mean_corr_weights_motion"),
-                "median_corr_weights_motion": cls._read_from_summary(run, "median_corr_weights_motion"),
-                "mean_corr_weights_meas": cls._read_from_summary(run, "mean_corr_weights_meas"),
-                "median_corr_weights_meas": cls._read_from_summary(run, "median_corr_weights_meas"),
-                # corr for trans and rot errors
-                "mean_corr_xj_trans_weights": cls._read_from_summary(run, "mean_corr_xj_trans_weights"),
-                "median_corr_xj_trans_weights": cls._read_from_summary(run, "median_corr_xj_trans_weights"),
-                "mean_corr_xj_trans_motion": cls._read_from_summary(run, "mean_corr_xj_trans_motion"),
-                "median_corr_xj_trans_motion": cls._read_from_summary(run, "median_corr_xj_trans_motion"),
-                "mean_corr_xj_trans_meas": cls._read_from_summary(run, "mean_corr_xj_trans_meas"),
-                "median_corr_xj_trans_meas": cls._read_from_summary(run, "median_corr_xj_trans_meas"),
-                "mean_corr_xj_rot_weights": cls._read_from_summary(run, "mean_corr_xj_rot_weights"),
-                "median_corr_xj_rot_weights": cls._read_from_summary(run, "median_corr_xj_rot_weights"),
-                "mean_corr_xj_rot_motion": cls._read_from_summary(run, "mean_corr_xj_rot_motion"),
-                "median_corr_xj_rot_motion": cls._read_from_summary(run, "median_corr_xj_rot_motion"),
-                "mean_corr_xj_rot_meas": cls._read_from_summary(run, "mean_corr_xj_rot_meas"),
-                "median_corr_xj_rot_meas": cls._read_from_summary(run, "median_corr_xj_rot_meas"),
-
-                # "mean_best_xj_score": cls._summary(run, "mean_best_xj_score"),
-                # "rmse_best_xj_score": cls._summary(run, "rmse_best_xj_score"),
-                # "mean_motion_rank_score": cls._summary(run, "mean_motion_rank_score"),
-                # "mean_meas_rank_score": cls._summary(run, "mean_meas_rank_score"),
-
-                # Covariance matrix information of proposal distribution
-                "mean_prop_std_xy": cls._read_from_summary(run, "mean_prop_std_xy"),
-                "mean_prop_std_theta_deg": cls._deg(
-                    cls._read_from_summary(run, "mean_prop_std_theta")
+                "final_trans_drift_trans_err_closest_p_before_resampling": cls._read_from_summary(
+                    run, "final_trans_drift_trans_err_closest_p_before_resampling"
                 ),
-                "mean_prop_corr_xy": cls._read_from_summary(run, "mean_prop_corr_xy"),
-                "mean_prop_corr_x_theta": cls._read_from_summary(run, "mean_prop_corr_x_theta"),
-                "mean_prop_corr_y_theta": cls._read_from_summary(run, "mean_prop_corr_y_theta"),
-                
-                # Step information
-                "n_steps": cls._read_from_summary(run, "n_steps"),
-                "mean_step_duration_ms": cls._optional_ms(
-                    cls._read_from_summary(run, "mean_step_duration")
+                "final_trans_drift_trans_err_map_traj": cls._read_from_summary(
+                    run, "final_trans_drift_trans_err_map_traj"
+                ),
+                # Rot drift
+                "final_rot_drift_rot_err_raw_odom_deg": cls._deg(
+                    cls._read_from_summary(run, "final_rot_drift_rot_err_raw_odom")
+                ),
+                "final_rot_drift_rot_err_weighted_mean_deg": cls._deg(
+                    cls._read_from_summary(run, "final_rot_drift_rot_err_weighted_mean")
+                ),
+                "final_rot_drift_rot_err_best_particle_deg": cls._deg(
+                    cls._read_from_summary(run, "final_rot_drift_rot_err_best_particle")
+                ),
+                "final_rot_drift_rot_err_closest_p_before_resampling_deg": cls._deg(
+                    cls._read_from_summary(run, "final_rot_drift_rot_err_closest_p_before_resampling")
+                ),
+                "final_rot_drift_rot_err_map_traj_deg": cls._deg(
+                    cls._read_from_summary(run, "final_rot_drift_rot_err_map_traj")
                 ),
 
-                # Measurement model metrics
-                # Proposal 
-                # Counters
-                "meas_model_prop_call_count": cls._read_from_summary(
-                    run, "meas_model_prop_call_count"
+
+                # Translational/rot rates of map traj
+                "rate_above_thres_trans_err_map_traj": cls._read_from_summary(
+                    run, "rate_above_thres_trans_err_map_traj"
                 ),
-                "meas_model_prop_valid_beam_count": cls._read_from_summary(
-                    run, "meas_model_prop_valid_beam_count"
+                "rate_above_thres_rot_err_map_traj": cls._read_from_summary(
+                    run, "rate_above_thres_rot_err_map_traj"
                 ),
-                "meas_model_prop_map_hit_count": cls._read_from_summary(
-                    run, "meas_model_prop_map_hit_count"
+
+                # Raw odom improvement
+                "median_trans_err_map_traj_impr_over_raw_odom": cls._read_from_summary(
+                    run, "median_trans_err_map_traj_impr_over_raw_odom"
                 ),
-                "meas_model_prop_no_map_hit_count": cls._read_from_summary(
-                    run, "meas_model_prop_no_map_hit_count"
+                "median_rot_err_map_traj_impr_over_raw_odom": cls._read_from_summary(
+                    run, "median_rot_err_map_traj_impr_over_raw_odom"
                 ),
-                "meas_model_prop_out_of_map_count": cls._read_from_summary(
-                    run, "meas_model_prop_out_of_map_count"
+
+                # Positive Error slopes
+                "p90_pos_trans_err_slopes_map_traj": cls._read_from_summary(
+                    run, "p90_pos_trans_err_slopes_map_traj"
                 ),
-                "meas_model_prop_unknown_ray_count": cls._read_from_summary(
-                    run, "meas_model_prop_unknown_ray_count"
+                "p90_pos_rot_err_slopes_map_traj_deg": cls._deg(
+                    cls._read_from_summary(run, "p90_pos_rot_err_slopes_map_traj")
                 ),
-                "meas_model_prop_known_free_ray_count": cls._read_from_summary(
-                    run, "meas_model_prop_known_free_ray_count"
+
+                # Motion errors
+                "p90_trans_motion_err_map_traj": cls._read_from_summary(
+                    run, "p90_trans_motion_err_map_traj"
                 ),
-                "meas_model_prop_unexpected_known_free_count": cls._read_from_summary(
-                    run, "meas_model_prop_unexpected_known_free_count"
+                "p90_rot_motion_err_map_traj_deg": cls._deg(
+                    cls._read_from_summary(run, "p90_rot_motion_err_map_traj")
                 ),
-                # Rates
-                "meas_model_prop_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_prop_map_hit_rate"
+
+
+                # Correlations
+                "median_corr_trans_weights_pos": cls._read_from_summary(
+                    run, "median_corr_trans_weights_pos"
                 ),
-                "meas_model_prop_out_of_map_rate": cls._read_from_summary(
-                    run, "meas_model_prop_out_of_map_rate"
+                "median_corr_rot_weights_pos": cls._read_from_summary(
+                    run, "median_corr_rot_weights_pos"
                 ),
-                "meas_model_prop_no_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_prop_no_map_hit_rate"
+                "rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap": cls._read_from_summary(
+                    run, "rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap"
                 ),
-                "meas_model_prop_unknown_no_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_prop_unknown_no_map_hit_rate"
+                "rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap": cls._read_from_summary(
+                    run, "rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap"
                 ),
-                "meas_model_prop_known_free_no_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_prop_known_free_no_map_hit_rate"
-                ),
-                "meas_model_prop_unexpected_known_free_rate": cls._read_from_summary(
-                    run, "meas_model_prop_unexpected_known_free_rate"
-                ),
-                # Fallback
-                # Counters
-                "meas_model_fallback_call_count": cls._read_from_summary(
-                    run, "meas_model_fallback_call_count"
-                ),
-                "meas_model_fallback_valid_beam_count": cls._read_from_summary(
-                    run, "meas_model_fallback_valid_beam_count"
-                ),
-                "meas_model_fallback_map_hit_count": cls._read_from_summary(
-                    run, "meas_model_fallback_map_hit_count"
-                ),
-                "meas_model_fallback_no_map_hit_count": cls._read_from_summary(
-                    run, "meas_model_fallback_no_map_hit_count"
-                ),
-                "meas_model_fallback_out_of_map_count": cls._read_from_summary(
-                    run, "meas_model_fallback_out_of_map_count"
-                ),
-                "meas_model_fallback_unknown_ray_count": cls._read_from_summary(
-                    run, "meas_model_fallback_unknown_ray_count"
-                ),
-                "meas_model_fallback_known_free_ray_count": cls._read_from_summary(
-                    run, "meas_model_fallback_known_free_ray_count"
-                ),
-                "meas_model_fallback_unexpected_known_free_count": cls._read_from_summary(
-                    run, "meas_model_fallback_unexpected_known_free_count"
-                ),
-                # Rates
-                "meas_model_fallback_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_fallback_map_hit_rate"
-                ),
-                "meas_model_fallback_out_of_map_rate": cls._read_from_summary(
-                    run, "meas_model_fallback_out_of_map_rate"
-                ),
-                "meas_model_fallback_no_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_fallback_no_map_hit_rate"
-                ),
-                "meas_model_fallback_unknown_no_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_fallback_unknown_no_map_hit_rate"
-                ),
-                "meas_model_fallback_known_free_no_map_hit_rate": cls._read_from_summary(
-                    run, "meas_model_fallback_known_free_no_map_hit_rate"
-                ),
-                "meas_model_fallback_unexpected_known_free_rate": cls._read_from_summary(
-                    run, "meas_model_fallback_unexpected_known_free_rate"
-                ),
-                
+
             }
 
             rows.append(row)
@@ -490,10 +350,23 @@ class ResultAggregator:
 
     def aggregate_by_dataset_and_param(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
         '''
-        Groupes the df by dataset_id and parameter_hash and computes metrics for each group. These metrics are then used 
-        to compute a score. At the end the df is sorted by score in ascending order and a rank column is added.
+        Groups the run-level dataframe by dataset_id and parameter_hash and aggregates all metrics that are
+        currently written by RankedRunConverter.to_dataframe(...).
+
+        The output is one row per dataset/parameter-set/meas-model combination. The method keeps the same basic
+        structure as the old aggregator:
+            1) define required columns
+            2) check missing columns
+            3) group and aggregate
+            4) compute pooled rates where raw counts and denominators are available
+            5) compute dataset_param_score
+            6) rank by dataset_param_score
         '''
-        # Estimate if all needed columns exist
+        
+        # 1) Required columns
+        # _____________________________________________________________________________________
+
+        # Define required columns needed for aggrgation stage
         required_cols = [
             # Grouping columns
             "dataset_id",
@@ -506,112 +379,78 @@ class ResultAggregator:
             "score",
             "seed",
             "n_steps",
-            "measurement_stddev",
 
-            # Translational pose errors
-            "mean_trans_error",
-            "mean_trans_err_sm_true",
-            "mean_trans_err_mu_true",
-
-            "rmse_trans_err_sm_true",
-            "rmse_trans_err_mu_true",
-            "rmse_trans_error",
-
-            "worst_trans_err_sm_true",
-            "worst_trans_err_mu_true",
-            "worst_translation_error",
-
-            # Rotational pose errors
-            "mean_rot_err_sm_true_deg",
-            "mean_rot_err_mu_true_deg",
-            "mean_rot_error_deg",
-
-            "rmse_rot_err_sm_true_deg",
-            "rmse_rot_err_mu_true_deg",
-            "rmse_rot_error_deg",
-
-            "worst_rot_err_sm_true_deg",
-            "worst_rot_err_mu_true_deg",
-            "worst_rot_error_deg",
-
-            # Scan-matcher information
+            # Scan matcher metrics
             "scan_match_failed_count",
             "scan_match_fallback_failed_count",
-            "median_extracted_map_points",
-            "median_map_point_keep_ratio",
+            "count_too_few_points",
+            "count_too_few_corresp",
+            "infinite_h_or_g",
+            "ill_cond_H",
+            "infinite_dtransform",
+            "infinite_mean_err",
+            "best_transf_too_large",
+            "best_mean_err_too_large",
 
-            # Proposal metrics
-            "mu_true_better_than_sm_true_rate",
+            # Translation errors
+            "mean_trans_err_raw_odom",
+            "mean_trans_err_weighted_mean",
+            "mean_trans_err_best_particle",
+            "mean_trans_err_closest_p_before_resampling",
+            "mean_trans_err_map_traj",
+            "rmse_trans_err_raw_odom",
+            "rmse_trans_err_weighted_mean",
+            "rmse_trans_err_best_particle",
+            "rmse_trans_err_closest_p_before_resampling",
+            "rmse_trans_err_map_traj",
+            "worst_trans_err_raw_odom",
+            "worst_trans_err_weighted_mean",
+            "worst_trans_err_best_particle",
+            "worst_trans_err_closest_p_before_resampling",
+            "worst_trans_err_map_traj",
 
-            "mean_min_xj_is_best_xj",
-            "mean_min_xj_pose_err_true",
-            "mean_best_weighted_xj_pose_err_true",
+            # Rotation errors, already converted to degree by to_dataframe()
+            "mean_rot_err_raw_odom_deg",
+            "mean_rot_err_weighted_mean_deg",
+            "mean_rot_err_best_particle_deg",
+            "mean_rot_err_closest_p_before_resampling_deg",
+            "mean_rot_err_map_traj_deg",
+            "rmse_rot_err_raw_odom_deg",
+            "rmse_rot_err_weighted_mean_deg",
+            "rmse_rot_err_best_particle_deg",
+            "rmse_rot_err_closest_p_before_resampling_deg",
+            "rmse_rot_err_map_traj_deg",
+            "worst_rot_err_raw_odom_deg",
+            "worst_rot_err_weighted_mean_deg",
+            "worst_rot_err_best_particle_deg",
+            "worst_rot_err_closest_p_before_resampling_deg",
+            "worst_rot_err_map_traj_deg",
 
-            "mean_min_xj_true_err_improves_over_sm_true",
-            "min_xj_better_sm_pose_rate",
+            # Final drift
+            "final_trans_drift_trans_err_raw_odom",
+            "final_trans_drift_trans_err_weighted_mean",
+            "final_trans_drift_trans_err_best_particle",
+            "final_trans_drift_trans_err_closest_p_before_resampling",
+            "final_trans_drift_trans_err_map_traj",
+            "final_rot_drift_rot_err_raw_odom_deg",
+            "final_rot_drift_rot_err_weighted_mean_deg",
+            "final_rot_drift_rot_err_best_particle_deg",
+            "final_rot_drift_rot_err_closest_p_before_resampling_deg",
+            "final_rot_drift_rot_err_map_traj_deg",
 
-            "mean_best_xj_true_err_improves_over_sm_true",
-            "best_xj_better_sm_pose_rate",
-
-            "median_log_motion_range",
-            "median_log_meas_range",
-
-            # XJ error metrics
-            "mean_min_trans_err_xjs",
-            "mean_min_xj_trans_err_true",
-            "mean_best_xj_trans_err_true",
-            "rmse_min_trans_err_xjs",
-            "rmse_min_xj_trans_err_true",
-            "rmse_best_xj_trans_err_true",
-            "mean_min_rot_err_xjs_deg",
-            "mean_min_xj_rot_err_true_deg",
-            "mean_best_xj_rot_err_true_deg",
-            "rmse_min_rot_err_xjs_deg",
-            "rmse_min_xj_rot_err_true_deg",
-            "rmse_best_xj_rot_err_true_deg",
-            
-            # Correlations
-            # corr for pose errors
-            "mean_corr_xjs_motion",
-            "mean_corr_xjs_meas",
-            # corr for trans errors
-            "mean_corr_xj_trans_weights",
-            "mean_corr_xj_trans_motion",
-            "mean_corr_xj_trans_meas",
-            # corr for rot errors
-            "mean_corr_xj_rot_weights",
-            "mean_corr_xj_rot_motion",
-            "mean_corr_xj_rot_meas",
-
-            # Measurement model metrics
-            "meas_model_prop_call_count",
-            "meas_model_prop_valid_beam_count",
-            "meas_model_prop_map_hit_count",
-            "meas_model_prop_no_map_hit_count",
-            "meas_model_prop_out_of_map_count",
-            "meas_model_prop_unknown_ray_count",
-            "meas_model_prop_known_free_ray_count",
-            "meas_model_prop_unexpected_known_free_count",
-            # "meas_model_prop_map_hit_rate",
-            # "meas_model_prop_out_of_map_rate",
-            # "meas_model_prop_no_map_hit_rate",
-            # "meas_model_prop_unknown_no_map_hit_rate",
-            # "meas_model_prop_known_free_no_map_hit_rate",
-            # "meas_model_prop_unexpected_known_free_rate",
-            "meas_model_fallback_call_count",
-            "meas_model_fallback_valid_beam_count",
-            "meas_model_fallback_map_hit_count",
-            "meas_model_fallback_no_map_hit_count",
-            "meas_model_fallback_out_of_map_count",
-            "meas_model_fallback_unknown_ray_count",
-            "meas_model_fallback_known_free_ray_count",
-            "meas_model_fallback_unexpected_known_free_count",
-            # "meas_model_fallback_map_hit_rate",
-            # "meas_model_fallback_out_of_map_rate",
-            # "meas_model_fallback_no_map_hit_rate",
-            # "meas_model_fallback_unknown_no_map_hit_rate",
-            # "meas_model_fallback_known_free_no_map_hit_rate",
-            # "meas_model_fallback_unexpected_known_free_rate"
+            # Scorer metrics / additional evaluator metrics
+            "rate_above_thres_trans_err_map_traj",
+            "rate_above_thres_rot_err_map_traj",
+            "median_trans_err_map_traj_impr_over_raw_odom",
+            "median_rot_err_map_traj_impr_over_raw_odom",
+            "p90_pos_trans_err_slopes_map_traj",
+            "p90_pos_rot_err_slopes_map_traj_deg",
+            "p90_trans_motion_err_map_traj",
+            "p90_rot_motion_err_map_traj_deg",
+            "median_corr_trans_weights_pos",
+            "median_corr_rot_weights_pos",
+            "rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap",
+            "rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap",
         ]
 
         # Estimate missing columns
@@ -620,238 +459,248 @@ class ResultAggregator:
             raise ValueError(
                 "aggregate_by_dataset_and_param missing required columns: " + ", ".join(missing)
             )
+        
+        
+        # 2) Build aggregation specification in the desired output order
+        # _____________________________________________________________________________________
 
-        # Compute metrics from grouped columns
+        agg_spec = {}
+
+        # Define agg methods to use for the columns
+        agg_spec["map"] = ("map", "first")
+        agg_spec["parameter_tag"] = ("parameter_tag", "first")
+        agg_spec["n_runs"] = ("score", "size")
+        agg_spec["n_seeds"] = ("seed", "nunique")
+        agg_spec["total_n_steps"] = ("n_steps", "sum")
+
+
+        # Score statistics. The aggregation score is intentionally based on the scorer output itself.
+        agg_spec["mean_score"] = ("score", "mean")
+        agg_spec["best_score"] = ("score", "min")
+        agg_spec["worst_score"] = ("score", "max")
+        agg_spec["std_score"] = ("score", "std")
+
+        # Scan matcher information.
+        # Counts are summed because they are event counts. Rates are also aggregated as mean/worst because
+        # n_steps may not be present in the dataframe. If n_steps exists, pooled rates are computed after groupby.
+        agg_spec["total_scan_match_failed_count"] = ("scan_match_failed_count", "sum")
+        agg_spec["total_scan_match_fallback_failed_count"] = ("scan_match_fallback_failed_count", "sum")
+        
+        scan_match_count_cols = [
+            "count_too_few_points",
+            "count_too_few_corresp",
+            "infinite_h_or_g",
+            "ill_cond_H",
+            "infinite_dtransform",
+            "infinite_mean_err",
+            "best_transf_too_large",
+            "best_mean_err_too_large",
+        ]
+        for col in scan_match_count_cols:
+            agg_spec[f"total_{col}"] = (col, "sum")
+
+        # Pose error trajectories.
+        pose_sources = [
+            "raw_odom",
+            "weighted_mean",
+            "best_particle",
+            "closest_p_before_resampling",
+            "map_traj",
+        ]
+
+        # Aggregate translational errors
+        # trans
+        for src in pose_sources:
+            agg_spec[f"mean_trans_err_{src}"] = (f"mean_trans_err_{src}", "mean")
+        # rmse
+        for src in pose_sources:
+            agg_spec[f"mean_rmse_trans_err_{src}"] = (f"rmse_trans_err_{src}", "mean")
+            agg_spec[f"worst_rmse_trans_err_{src}"] = (f"rmse_trans_err_{src}", "max")
+        # worst
+        # for src in pose_sources:
+        #     agg_spec[f"worst_trans_err_{src}"] = (f"worst_trans_err_{src}", "max")
+
+        # Aggregate Rotational errors in degrees.
+        for src in pose_sources:
+            agg_spec[f"mean_rot_err_{src}_deg"] = (f"mean_rot_err_{src}_deg", "mean")
+        for src in pose_sources:
+            agg_spec[f"mean_rmse_rot_err_{src}_deg"] = (f"rmse_rot_err_{src}_deg", "mean")
+            agg_spec[f"worst_rmse_rot_err_{src}_deg"] = (f"rmse_rot_err_{src}_deg", "max")
+        # for src in pose_sources:
+        #     agg_spec[f"max_rot_err_{src}_deg"] = (f"worst_rot_err_{src}_deg", "max")
+
+        # Aggregate Final drift 
+        # trans
+        for src in pose_sources:
+            agg_spec[f"mean_final_trans_drift_trans_err_{src}"] = (
+                f"final_trans_drift_trans_err_{src}",
+                "mean",
+            )
+            agg_spec[f"worst_final_trans_drift_trans_err_{src}"] = (
+                f"final_trans_drift_trans_err_{src}",
+                "max",
+            )
+        # rot
+        for src in pose_sources:
+            agg_spec[f"mean_final_rot_drift_rot_err_{src}_deg"] = (
+                f"final_rot_drift_rot_err_{src}_deg",
+                "mean",
+            )
+            agg_spec[f"worst_final_rot_drift_rot_err_{src}_deg"] = (
+                f"final_rot_drift_rot_err_{src}_deg",
+                "max",
+            )
+
+        # MAP trajectory threshold rates. No raw counts are stored, so we aggregate the run-level rates.
+        agg_spec["mean_rate_above_thres_trans_err_map_traj"] = (
+            "rate_above_thres_trans_err_map_traj",
+            "mean",
+        )
+        agg_spec["worst_rate_above_thres_trans_err_map_traj"] = (
+            "rate_above_thres_trans_err_map_traj",
+            "max",
+        )
+        agg_spec["mean_rate_above_thres_rot_err_map_traj"] = (
+            "rate_above_thres_rot_err_map_traj",
+            "mean",
+        )
+        agg_spec["worst_rate_above_thres_rot_err_map_traj"] = (
+            "rate_above_thres_rot_err_map_traj",
+            "max",
+        )
+
+        # Improvement metrics. Higher is better, so the worst run is the minimum improvement.
+        agg_spec["mean_median_trans_err_map_traj_impr_over_raw_odom"] = (
+            "median_trans_err_map_traj_impr_over_raw_odom",
+            "mean",
+        )
+        agg_spec["worst_median_trans_err_map_traj_impr_over_raw_odom"] = (
+            "median_trans_err_map_traj_impr_over_raw_odom",
+            "min",
+        )
+        agg_spec["mean_median_rot_err_map_traj_impr_over_raw_odom"] = (
+            "median_rot_err_map_traj_impr_over_raw_odom",
+            "mean",
+        )
+        agg_spec["worst_median_rot_err_map_traj_impr_over_raw_odom"] = (
+            "median_rot_err_map_traj_impr_over_raw_odom",
+            "min",
+        )
+
+        # Positive error slopes. Lower is better, so the worst run is the maximum value.
+        agg_spec["mean_p90_pos_trans_err_slopes_map_traj"] = (
+            "p90_pos_trans_err_slopes_map_traj",
+            "mean",
+        )
+        agg_spec["worst_p90_pos_trans_err_slopes_map_traj"] = (
+            "p90_pos_trans_err_slopes_map_traj",
+            "max",
+        )
+        agg_spec["mean_p90_pos_rot_err_slopes_map_traj_deg"] = (
+            "p90_pos_rot_err_slopes_map_traj_deg",
+            "mean",
+        )
+        agg_spec["worst_p90_pos_rot_err_slopes_map_traj_deg"] = (
+            "p90_pos_rot_err_slopes_map_traj_deg",
+            "max",
+        )
+
+        # Motion errors. Lower is better, so the worst run is the maximum value.
+        agg_spec["mean_p90_trans_motion_err_map_traj"] = (
+            "p90_trans_motion_err_map_traj",
+            "mean",
+        )
+        agg_spec["worst_p90_trans_motion_err_map_traj"] = (
+            "p90_trans_motion_err_map_traj",
+            "max",
+        )
+        agg_spec["mean_p90_rot_motion_err_map_traj_deg"] = (
+            "p90_rot_motion_err_map_traj_deg",
+            "mean",
+        )
+        agg_spec["worst_p90_rot_motion_err_map_traj_deg"] = (
+            "p90_rot_motion_err_map_traj_deg",
+            "max",
+        )
+
+        # Particle weighting / selection quality. These are already badness-like rates/metrics, so max is worst.
+        agg_spec["mean_median_corr_trans_weights_pos"] = ("median_corr_trans_weights_pos", "mean")
+        agg_spec["worst_median_corr_trans_weights_pos"] = ("median_corr_trans_weights_pos", "max")
+        agg_spec["mean_median_corr_rot_weights_pos"] = ("median_corr_rot_weights_pos", "mean")
+        agg_spec["worst_median_corr_rot_weights_pos"] = ("median_corr_rot_weights_pos", "max")
+        agg_spec["mean_rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap"] = (
+            "rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap",
+            "mean",
+        )
+        agg_spec["worst_rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap"] = (
+            "rate_gap_trans_best_to_min_before_resamp_above_max_trans_gap",
+            "max",
+        )
+        agg_spec["mean_rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap"] = (
+            "rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap",
+            "mean",
+        )
+        agg_spec["worst_rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap"] = (
+            "rate_gap_rot_best_to_min_before_resamp_above_max_rot_gap",
+            "max",
+        )
+        
+        # 3) Group and aggregate
+        # _____________________________________________________________________________________
+
         agg_dataset_param_df = self._groupby(
             ranked_run_df,
             ["dataset_id", "parameter_hash", "used_meas_model"],
-        )
-        agg_dataset_param_df: pd.DataFrame = agg_dataset_param_df.agg(
-            # general information
-            map=("map", "first"),
-            parameter_tag=("parameter_tag", "first"),
-            # used_meas_model=("used_meas_model", "first"),
-            n_runs=("score", "size"),
-            n_seeds=("seed", "nunique"),
+        ).agg(**agg_spec).reset_index()
 
-            total_n_steps=("n_steps", "sum"),
-            measurement_stddev=("measurement_stddev", "first"),
-
-            # Metrics for score computation
-            mean_score=("score", "mean"),
-            worst_score=("score", "max"),
-            std_score=("score", "std"),
-
-            # Pose errors
-            # Translational err
-            # mean
-            mean_trans_err=("mean_trans_error", "mean"),
-            mean_trans_err_sm_true=("mean_trans_err_sm_true", "mean"),
-            mean_trans_err_mu_true=("mean_trans_err_mu_true", "mean"),
-            # rmse
-            mean_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "mean"),
-            mean_rmse_trans_err_mu_true=("rmse_trans_err_mu_true", "mean"),
-            mean_rmse_trans_error=("rmse_trans_error", "mean"),
-            # worst rmse
-            worst_rmse_trans_err_sm_true=("rmse_trans_err_sm_true", "max"),
-            worst_rmse_trans_err_mu_true=("rmse_trans_err_mu_true", "max"),
-            worst_rmse_trans_error=("rmse_trans_error", "max"),
-            # max values (These are the max vals over all steps for all runs)
-            max_trans_err_sm_true=("worst_trans_err_sm_true", "max"),
-            max_trans_err_mu_true=("worst_trans_err_mu_true", "max"),
-            max_trans_err=("worst_translation_error", "max"),
-
-            # Rotational errors
-            # mean
-            mean_rot_err_sm_true_deg=("mean_rot_err_sm_true_deg", "mean"),
-            mean_rot_err_mu_true_deg=("mean_rot_err_mu_true_deg", "mean"),
-            mean_rot_error_deg=("mean_rot_error_deg", "mean"),
-            # rmse
-            mean_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "mean"),
-            mean_rmse_rot_err_mu_true_deg=("rmse_rot_err_mu_true_deg", "mean"),
-            mean_rmse_rot_error_deg=("rmse_rot_error_deg", "mean"),
-            # worst
-            worst_rmse_rot_err_sm_true_deg=("rmse_rot_err_sm_true_deg", "max"),
-            worst_rmse_rot_err_mu_true_deg=("rmse_rot_err_mu_true_deg", "max"),
-            worst_rmse_rot_error_deg=("rmse_rot_error_deg", "max"),
-            # max values
-            max_rot_err_sm_true_deg=("worst_rot_err_sm_true_deg", "max"),
-            max_rot_err_mu_true_deg=("worst_rot_err_mu_true_deg", "max"),
-            max_rot_err_deg=("worst_rot_error_deg", "max"),
-
-            # Scan matcher info            
-            total_scan_match_failed_count=("scan_match_failed_count", "sum"),
-            total_scan_match_fallback_failed_count=("scan_match_fallback_failed_count", "sum"),
-            
-            median_extracted_map_points=("median_extracted_map_points", "median"),
-            median_map_point_keep_ratio=("median_map_point_keep_ratio", "median"),                          
-
-            # Proposal information metrics
-            mean_mu_true_better_than_sm_true_rate=("mu_true_better_than_sm_true_rate", "mean"),
-            worst_mu_true_better_than_sm_true_rate=("mu_true_better_than_sm_true_rate", "min"),
-
-            mean_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "mean"),
-            worst_min_xj_is_best_xj=("mean_min_xj_is_best_xj", "min"),
-
-            mean_min_xj_pose_err_true=("mean_min_xj_pose_err_true", "mean"),
-            worst_min_xj_pose_err_true=("mean_min_xj_pose_err_true", "max"),
-
-            mean_best_weighted_xj_pose_err_true=("mean_best_weighted_xj_pose_err_true", "mean"),
-            worst_best_weighted_xj_pose_err_true=("mean_best_weighted_xj_pose_err_true", "max"),
-
-            mean_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "mean"),
-            worst_min_xj_true_err_improves_over_sm_true =("mean_min_xj_true_err_improves_over_sm_true", "min"),
-
-            mean_min_xj_better_sm_pose_rate =("min_xj_better_sm_pose_rate", "mean"),
-            worst_min_xj_better_sm_pose_rate =("min_xj_better_sm_pose_rate", "min"),
-            
-            mean_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "mean"),
-            worst_best_xj_true_err_improves_over_sm_true =("mean_best_xj_true_err_improves_over_sm_true", "min"),
-
-            mean_best_xj_better_sm_pose_rate =("best_xj_better_sm_pose_rate", "mean"),
-            worst_best_xj_better_sm_pose_rate =("best_xj_better_sm_pose_rate", "min"),
-
-            median_log_motion_range=("median_log_motion_range", "median"),
-            median_log_meas_range=("median_log_meas_range", "median"),
-
-            # XJ error metrics
-            mean_min_trans_err_xjs=("mean_min_trans_err_xjs", "mean"),
-            mean_min_xj_trans_err_true=("mean_min_xj_trans_err_true", "mean"),
-            mean_best_xj_trans_err_true=("mean_best_xj_trans_err_true", "mean"),
-            mean_rmse_min_trans_err_xjs=("rmse_min_trans_err_xjs", "mean"),
-            mean_rmse_min_xj_trans_err_true=("rmse_min_xj_trans_err_true", "mean"),
-            mean_rmse_best_xj_trans_err_true=("rmse_best_xj_trans_err_true", "mean"),
-            mean_min_rot_err_xjs_deg=("mean_min_rot_err_xjs_deg", "mean"),
-            mean_min_xj_rot_err_true_deg=("mean_min_xj_rot_err_true_deg", "mean"),
-            mean_best_xj_rot_err_true_deg=("mean_best_xj_rot_err_true_deg", "mean"),
-            mean_rmse_min_rot_err_xjs_deg=("rmse_min_rot_err_xjs_deg", "mean"),
-            mean_rmse_min_xj_rot_err_true_deg=("rmse_min_xj_rot_err_true_deg", "mean"),
-            mean_rmse_best_xj_rot_err_true_deg=("rmse_best_xj_rot_err_true_deg", "mean"),
-
-            # Correlations
-            # corr for pose errors
-            mean_corr_xjs_motion=("mean_corr_xjs_motion", "mean"),            
-            mean_corr_xjs_meas=("mean_corr_xjs_meas", "mean"),
-            worst_corr_xjs_motion=("mean_corr_xjs_motion", "min"),
-            worst_corr_xjs_meas=("mean_corr_xjs_meas", "min"),
-            # corr for trans errors
-            mean_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "mean"),            
-            mean_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "mean"),
-            worst_corr_xj_trans_meas=("mean_corr_xj_trans_meas", "min"),
-            worst_corr_xj_trans_motion=("mean_corr_xj_trans_motion", "min"),
-            # corr for rot errors
-            mean_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "mean"),
-            mean_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "mean"),
-            worst_corr_xj_rot_meas=("mean_corr_xj_rot_meas", "min"),
-            worst_corr_xj_rot_motion=("mean_corr_xj_rot_motion", "min"),
-
-            # Measurement model metrics
-            # Proposal
-            meas_model_prop_call_count=("meas_model_prop_call_count", "sum"),
-            meas_model_prop_valid_beam_count=("meas_model_prop_valid_beam_count", "sum"),
-            meas_model_prop_map_hit_count=("meas_model_prop_map_hit_count", "sum"),
-            meas_model_prop_no_map_hit_count=("meas_model_prop_no_map_hit_count", "sum"),
-            meas_model_prop_out_of_map_count=("meas_model_prop_out_of_map_count", "sum"),
-            meas_model_prop_unknown_ray_count=("meas_model_prop_unknown_ray_count", "sum"),
-            meas_model_prop_known_free_ray_count=("meas_model_prop_known_free_ray_count", "sum"),
-            meas_model_prop_unexpected_known_free_count=("meas_model_prop_unexpected_known_free_count", "sum"),
-            # Fallback
-            meas_model_fallback_call_count=("meas_model_fallback_call_count", "sum"),
-            meas_model_fallback_valid_beam_count=("meas_model_fallback_valid_beam_count", "sum"),
-            meas_model_fallback_map_hit_count=("meas_model_fallback_map_hit_count", "sum"),
-            meas_model_fallback_no_map_hit_count=("meas_model_fallback_no_map_hit_count", "sum"),
-            meas_model_fallback_out_of_map_count=("meas_model_fallback_out_of_map_count", "sum"),
-            meas_model_fallback_unknown_ray_count=("meas_model_fallback_unknown_ray_count", "sum"),
-            meas_model_fallback_known_free_ray_count=("meas_model_fallback_known_free_ray_count", "sum"),
-            meas_model_fallback_unexpected_known_free_count=("meas_model_fallback_unexpected_known_free_count", "sum"),
-
-        ).reset_index()
-
-        # Place map name directly after dataset id
+     
+        # Place map name directly after dataset id, like in the old aggregator.
         agg_dataset_param_df = self._place_col_after_col(
             df=agg_dataset_param_df,
             col="map",
-            col_after="dataset_id"
+            col_after="dataset_id",
         )
 
-        # Compute failed rates for sm
-        # Here we don't compute mean from rates before because here we can safely compute this by the n_steps. This
-        # is because we aggregate per map. This is the correct computation
-        n_steps = agg_dataset_param_df["total_n_steps"]
-        agg_dataset_param_df["scan_match_failed_rate"] = (
-            agg_dataset_param_df["total_scan_match_failed_count"] / n_steps
+        
+        # 4) Compute pooled rates where possible
+        # _____________________________________________________________________________________
+
+        def _safe_div(numerator_col: str, denominator_col: str) -> pd.Series:
+            numerator = pd.to_numeric(agg_dataset_param_df[numerator_col], errors="coerce")
+            denominator = pd.to_numeric(agg_dataset_param_df[denominator_col], errors="coerce")
+            result = pd.Series(np.nan, index=agg_dataset_param_df.index, dtype=float)
+            valid = denominator.gt(0) & numerator.ge(0)
+            result.loc[valid] = numerator.loc[valid] / denominator.loc[valid]
+            return result
+
+        # Best option: pooled count / pooled number of steps.
+        agg_dataset_param_df["scan_match_failed_rate"] = _safe_div(
+            "total_scan_match_failed_count",
+            "total_n_steps",
+        )
+        agg_dataset_param_df["scan_match_fallback_failed_rate"] = _safe_div(
+            "total_scan_match_fallback_failed_count",
+            "total_n_steps",
         )
 
-        agg_dataset_param_df["scan_match_fallback_failed_rate"] = (
-            agg_dataset_param_df["total_scan_match_fallback_failed_count"] / n_steps
-        )
-
-        # Place scan match fallback rates directly after scan match counts
+        # Place main pooled/fallback scan-match rates next to their counts.
         agg_dataset_param_df = self._place_col_after_col(
             df=agg_dataset_param_df,
             col="scan_match_failed_rate",
-            col_after="total_scan_match_failed_count"
+            col_after="total_scan_match_fallback_failed_count",
         )
         agg_dataset_param_df = self._place_col_after_col(
             df=agg_dataset_param_df,
             col="scan_match_fallback_failed_rate",
-            col_after="total_scan_match_fallback_failed_count"
+            col_after="scan_match_failed_rate",
         )
 
-        # Compute measurement model metrics
-        def _rate(numerator_col: str, denominator_col: str, call_count_col: str):
-            numerator = pd.to_numeric(agg_dataset_param_df[numerator_col], errors="coerce")
-            denominator = pd.to_numeric(agg_dataset_param_df[denominator_col], errors="coerce")
-            call_count = pd.to_numeric(agg_dataset_param_df[call_count_col], errors="coerce")
-            valid = call_count.gt(0) & denominator.gt(0) & numerator.ge(0)
-            result = pd.Series(np.nan, index=agg_dataset_param_df.index, dtype=float)
-            result.loc[valid] = numerator.loc[valid] / denominator.loc[valid]
-            return result
+        
+        # 5) Compute dataset-level parameter score
+        # _____________________________________________________________________________________
 
-        # Proposal rates
-        agg_dataset_param_df["meas_model_prop_map_hit_rate"] = _rate(
-            "meas_model_prop_map_hit_count", "meas_model_prop_valid_beam_count", "meas_model_prop_call_count"
-        )
-        agg_dataset_param_df["meas_model_prop_out_of_map_rate"] = _rate(
-            "meas_model_prop_out_of_map_count", "meas_model_prop_valid_beam_count", "meas_model_prop_call_count"
-        )
-        agg_dataset_param_df["meas_model_prop_no_map_hit_rate"] = _rate(
-            "meas_model_prop_no_map_hit_count", "meas_model_prop_valid_beam_count", "meas_model_prop_call_count"
-        )
-        agg_dataset_param_df["meas_model_prop_unknown_no_map_hit_rate"] = _rate(
-            "meas_model_prop_unknown_ray_count", "meas_model_prop_no_map_hit_count", "meas_model_prop_call_count"
-        )
-        agg_dataset_param_df["meas_model_prop_known_free_no_map_hit_rate"] = _rate(
-            "meas_model_prop_known_free_ray_count", "meas_model_prop_no_map_hit_count", "meas_model_prop_call_count"
-        )
-        agg_dataset_param_df["meas_model_prop_unexpected_known_free_rate"] = _rate(
-            "meas_model_prop_unexpected_known_free_count", "meas_model_prop_known_free_ray_count", "meas_model_prop_call_count"
-        )
-
-        # Fallback rates
-        agg_dataset_param_df["meas_model_fallback_map_hit_rate"] = _rate(
-            "meas_model_fallback_map_hit_count", "meas_model_fallback_valid_beam_count", "meas_model_fallback_call_count"
-        )
-        agg_dataset_param_df["meas_model_fallback_out_of_map_rate"] = _rate(
-            "meas_model_fallback_out_of_map_count", "meas_model_fallback_valid_beam_count", "meas_model_fallback_call_count"
-        )
-        agg_dataset_param_df["meas_model_fallback_no_map_hit_rate"] = _rate(
-            "meas_model_fallback_no_map_hit_count", "meas_model_fallback_valid_beam_count", "meas_model_fallback_call_count"
-        )
-        agg_dataset_param_df["meas_model_fallback_unknown_no_map_hit_rate"] = _rate(
-            "meas_model_fallback_unknown_ray_count", "meas_model_fallback_no_map_hit_count", "meas_model_fallback_call_count"
-        )
-        agg_dataset_param_df["meas_model_fallback_known_free_no_map_hit_rate"] = _rate(
-            "meas_model_fallback_known_free_ray_count", "meas_model_fallback_no_map_hit_count", "meas_model_fallback_call_count"
-        )
-        agg_dataset_param_df["meas_model_fallback_unexpected_known_free_rate"] = _rate(
-            "meas_model_fallback_unexpected_known_free_count", "meas_model_fallback_known_free_ray_count", "meas_model_fallback_call_count"
-        )
-
-        # Use 0.0 score if score is none
         agg_dataset_param_df["std_score"] = agg_dataset_param_df["std_score"].fillna(0.0)
 
-        # Compute score 
         dataset_param_score = (
             1.0 * agg_dataset_param_df["mean_score"]
             + 0.5 * agg_dataset_param_df["worst_score"]

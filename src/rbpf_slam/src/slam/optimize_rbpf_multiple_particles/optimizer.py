@@ -124,8 +124,10 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     run_result = _WORKER_RUNNER.run(run_playback_data, params)
 
     # TODO: Update scorer to new pipeline goals
-    # score = _WORKER_SCORER.score(run_result.summary)
-    score = 1.0
+    score = _WORKER_SCORER.score(run_result.summary)
+    print(f"\nNumber of metrics in scorer is: {_WORKER_SCORER.n_scorer_metrics}")
+    print(f"Summary score for parameter set {param_hash} with seed {run_seed}: {score:.6f}")
+    print(f"Number of metrics in summary is: {len(run_result.summary.keys())}")
 
     return RankedRun(
         params=params,
