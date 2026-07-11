@@ -831,11 +831,11 @@ KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 60             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
-# SEED_LIST = [22]
+# SEED_LIST = [22, 56]
+SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -897,10 +897,10 @@ PLAYBACK_DATA_LIST = [
         playback_suffix="1781885725",
     ), 
     # AWS indoor map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885274",
-    ), 
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_suffix="1781885274",
+    # ), 
     # AWS bookstore map   
     # PlaybackDataset(
     #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
@@ -2318,7 +2318,7 @@ def _grid_axes() -> dict:
         ],
         
         # Motion model params
-        "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
+        "sigma_xy_motion": [0.12, 0.16],            # motion model uncertainty in x and y direction [m]
         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
@@ -3019,13 +3019,13 @@ def rbpf_tuning_pipeline_multiprocessing():
     agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
 
     # # Froupe and rank by paramters 
-    # agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
+    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
 
     # Build ranked parameter overview with one row per parameter_hash.
-    # ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
-    #     agg_param_df=agg_param_df,
-    #     ranked_runs=ranked_run_list,
-    # )
+    ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
+        agg_param_df=agg_param_df,
+        ranked_runs=ranked_run_list,
+    )
 
     # # Save results
     result_writer.write_dataframe_csv(
@@ -3043,29 +3043,29 @@ def rbpf_tuning_pipeline_multiprocessing():
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 
-    # result_writer.write_dataframe_csv(
-    #     path=agg_param_path,
-    #     df=agg_param_df,
-    #     override=OVERRIDE_EXISTING_RESULTS,
-    #     float_decimals=CSV_FLOAT_DECIMALS,
-    # )
+    result_writer.write_dataframe_csv(
+        path=agg_param_path,
+        df=agg_param_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
 
-    # result_writer.write_dataframe_csv(
-    #     path=ranked_param_overview_path,
-    #     df=ranked_param_overview_df,
-    #     override=OVERRIDE_EXISTING_RESULTS,
-    #     float_decimals=CSV_FLOAT_DECIMALS,
-    # )
+    result_writer.write_dataframe_csv(
+        path=ranked_param_overview_path,
+        df=ranked_param_overview_df,
+        override=OVERRIDE_EXISTING_RESULTS,
+        float_decimals=CSV_FLOAT_DECIMALS,
+    )
 
 
-    # # Save independent per-step diagnostic traces for each ranked run.
-    # if KEEP_STEP_RESULTS:
-    #     result_writer.write_run_steps_csv(
-    #         output_path=STEP_TRACE_PATH,
-    #         ranked_runs=ranked_run_list,
-    #         override=OVERRIDE_EXISTING_RESULTS,
-    #         float_decimals=CSV_FLOAT_DECIMALS,
-    #     )
+    # Save independent per-step diagnostic traces for each ranked run.
+    if KEEP_STEP_RESULTS:
+        result_writer.write_run_steps_csv(
+            output_path=STEP_TRACE_PATH,
+            ranked_runs=ranked_run_list,
+            override=OVERRIDE_EXISTING_RESULTS,
+            float_decimals=CSV_FLOAT_DECIMALS,
+        )
 
     # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
     # TODO: Add proposal weights again
