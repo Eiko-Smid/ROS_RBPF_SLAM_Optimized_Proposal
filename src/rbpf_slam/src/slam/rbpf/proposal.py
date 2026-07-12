@@ -748,6 +748,63 @@ class ProposalEstimator:
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
 
 
+    @staticmethod
+    def shrink_and_clip_cov(
+        mu: np.ndarray,
+        cov: np.ndarray,
+        std_scale: float=0.5,
+        max_std_xy: float=0.02,
+        min_std_xy: float=0.0,
+        max_std_theta: float=0.02,
+        min_std_theta: float=0.0
+    ):
+        cov = np.asarray(cov, dtype=float)
+
+        # Extract std
+        old_var = np.maximum(np.diag(cov), 1e-12)
+        old_std = np.sqrt(old_var)
+
+        # Scale std
+        new_std = std_scale * old_std
+
+        # Clip std
+        new_std[0] = np.clip(new_std[0], min_std_xy, max_std_xy)
+        new_std[1] = np.clip(new_std[1], min_std_xy, max_std_xy)
+        new_std[2] = np.clip(new_std[2], min_std_theta, max_std_theta)
+
+        new_cov = np.diag(new_std**2)
+        new_cov += 1e-9 * np.eye(3) 
+
+        return new_cov
+
+
+    def sample_from_proposal_limited(
+        self,
+        mu: np.ndarray,
+        cov: np.ndarray,
+        std_scale: float=0.5,
+        max_std_xy: float=0.02,
+        min_std_xy: float=0.0,
+        max_std_theta: float=0.02,
+        min_std_theta: float=0.0
+    ):
+        new_cov = self.shrink_and_clip_cov(
+            mu=mu,
+            cov=cov,
+            std_scale=std_scale,
+            max_std_xy=max_std_xy,
+            min_std_xy=min_std_xy,
+            max_std_theta=max_std_theta,
+            min_std_theta=min_std_theta
+        )       
+
+        new_pose = np.random.multivariate_normal(mean=mu, cov=new_cov)
+        new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
+        
+        return new_pose
+        
+
+
     def estimate_proposal_range_finder(
         self,
         scan_match_pose: Pose2D,
@@ -784,10 +841,20 @@ class ProposalEstimator:
         # Estimate new particle pose
         # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
         t_sample_from_proposal_start = time.perf_counter()
-        new_p_pose = mu
+        # new_p_pose = mu
         # new_p_pose = self.sample_from_proposal(mu, cov)
 
-        # new_p_pose = self.sample_from_proposal(mu, cov)
+        # Sample from proposal and limit the standard deviation to avoid particle poses far away from proposal mu
+        new_p_pose = self.sample_from_proposal_limited(
+            mu=mu,
+            cov=cov,
+            std_scale=0.5,
+            max_std_xy=0.02,
+            min_std_xy=0.0,
+            max_std_theta=0.02,
+            min_std_theta=0.0
+        )
+
         self.t_sample_from_prop = time.perf_counter() - t_sample_from_proposal_start
 
         prop_timings = {

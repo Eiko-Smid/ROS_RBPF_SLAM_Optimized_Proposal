@@ -20,17 +20,17 @@ class RunScorer:
     rot_scale: float = math.radians(3.0)
 
     # Smoothness / drift-growth scales
-    trans_motion_scale: float = 0.02
-    rot_motion_scale: float = math.radians(1.0)
-    trans_slope_scale: float = 0.003
-    rot_slope_scale: float = math.radians(0.15)
+    trans_motion_scale: float = 0.05
+    rot_motion_scale: float = math.radians(1.5)
+    trans_slope_scale: float = 0.005
+    rot_slope_scale: float = math.radians(0.25)
 
     # Runtime soft scales
     step_duration_scale: float = 0.10
     scan_matching_time_scale: float = 0.05
 
-    # SLAM should improve over odom by at least this much (10%)
-    improvement_scale: float = 0.10
+    # SLAM should improve over odom by at least this much (20%)
+    improvement_scale: float = 0.20
 
     # Generic caps
     max_scaled_badness: float = 5.0

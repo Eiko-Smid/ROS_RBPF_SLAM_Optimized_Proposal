@@ -805,37 +805,51 @@ Synchronized playback data
         -   n_particles = [15, 20, 25]
 
         Results:
-            
+
+
+36. Analyze particle weight/err correlation
+
+
+    36.1 Weight corr for particle poes = mu
+
+
+    36.2 Weight corr for particle pose = sample from proposal
+
+
+    36.3 same as 36.2 but with limited proposal uncertainty
+
+
+
 '''
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
-NUMBER_OF_WORKERS = 1
+NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = False
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 40             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22, 56]
-SEED_LIST = [22]
+SEED_LIST = [22, 56]
+# SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -897,15 +911,15 @@ PLAYBACK_DATA_LIST = [
         playback_suffix="1781885725",
     ), 
     # AWS indoor map
-    # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-    #     playback_suffix="1781885274",
-    # ), 
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885274",
+    ), 
     # AWS bookstore map   
-    # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-    #     playback_suffix="1782917349",
-    # )
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1782917349",
+    )
 ]
 
 # Evaluation data
@@ -2189,7 +2203,7 @@ def _compute_wheel_separation() -> float:
 #         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
 #         "every_nth_beam_map": [2],                  # use every nth beam for map update
 #         "n_particles": [15, 20, 25],                         # number of particles in the RBPF
-#         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+#         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
 
 #         # Measurement model params
 #         "sigma_measurement": [0.06],                # measurement uncertainty [m]
@@ -2265,7 +2279,6 @@ def _compute_wheel_separation() -> float:
 #         # TODO: Delete proposal values when no longer needed later on
 #         "proposal_alpha": [1.0],
 #         "proposal_beta": [1.0],
-
 #         # ScanMatcherParams (map extraction)
 #         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
 #         "min_free_ratio": [0.4],
@@ -2281,8 +2294,8 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [15, 25],                        # number of particles in the RBPF
-        "neff_threshold": [1],                     # Number of effective particles threshold for resampling
+        "n_particles": [15, 25],                    # number of particles in the RBPF
+        "neff_threshold": [None],                     # Number of effective particles threshold for resampling
 
         # Measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
@@ -2318,7 +2331,7 @@ def _grid_axes() -> dict:
         ],
         
         # Motion model params
-        "sigma_xy_motion": [0.12, 0.16],            # motion model uncertainty in x and y direction [m]
+        "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty

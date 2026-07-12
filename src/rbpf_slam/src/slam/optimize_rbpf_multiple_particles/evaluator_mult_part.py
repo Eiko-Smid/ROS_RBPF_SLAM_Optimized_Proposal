@@ -186,9 +186,11 @@ class RBPFEValMultParticles:
         """
         Computes the Spearman correlation only for aligned, finite, non-constant arrays.
         """
+        # Transform data to numpy arrays
         arr_a = np.asarray(a, dtype=float)
         arr_b = np.asarray(b, dtype=float)
-
+        
+        # Validate data shape and finite vals
         if arr_a.shape != arr_b.shape or arr_a.size < 2:
             return None
 
@@ -199,6 +201,7 @@ class RBPFEValMultParticles:
         arr_a = arr_a[finite_mask]
         arr_b = arr_b[finite_mask]
 
+        # Skip spearmen if values are to close to each other -> avoid numpy warnings in terminal
         if np.allclose(arr_a, arr_a[0]) or np.allclose(arr_b, arr_b[0]):
             return None
 
@@ -1258,9 +1261,9 @@ class RBPFEValMultParticles:
         rot_errs_weighted_mean_impr_over_raw_odom = self._finite_values(
             [step.rot_err_weighted_mean_impr_over_raw_odom for step in step_res]
         )
-        rot_errs_weighted_mean_impr_over_raw_odom = np.abs(
-            rot_errs_weighted_mean_impr_over_raw_odom
-        )
+        # rot_errs_weighted_mean_impr_over_raw_odom = np.abs(
+        #     rot_errs_weighted_mean_impr_over_raw_odom
+        # )
 
         # Filter time durations
         step_durations = self._finite_values([s.t_step_duration for s in step_res if s.t_step_duration is not None])
@@ -1397,9 +1400,9 @@ class RBPFEValMultParticles:
         rot_errs_map_traj_impr_over_raw_odom = self._finite_values(
             rot_errs_map_traj_impr_over_raw_odom
         )
-        rot_errs_map_traj_impr_over_raw_odom = np.abs(
-            rot_errs_map_traj_impr_over_raw_odom
-        )
+        # rot_errs_map_traj_impr_over_raw_odom = np.abs(
+        #     rot_errs_map_traj_impr_over_raw_odom
+        # )
 
         # Compute error slopes
         # ________________________________________________________________________________________
