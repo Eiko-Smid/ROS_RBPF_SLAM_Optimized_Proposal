@@ -888,7 +888,8 @@ class RBPFEValMultParticles:
         trajectory = np.asarray(trajectory[::-1], dtype=float)
 
         # Exclude NaN values
-        trajectory = np.isfinite(trajectory)
+        valid_mask = np.all(np.isfinite(trajectory), axis=1) 
+        trajectory = trajectory[valid_mask]
 
         return trajectory
 
@@ -1357,18 +1358,6 @@ class RBPFEValMultParticles:
 
         trans_errs_map_traj = self.trans_err_trajectory(traj_particle_map, traj_true_poses)
         rot_errs_map_traj = self.rot_err_trajectory(traj_particle_map, traj_true_poses)
-        
-        
-        # trans_errs_map_traj, rot_errs_map_traj = self._restore_map_trajectory_errors(
-        #     best_particle_idx=best_p_idx,
-        #     particle_inherit_indices=particle_inherit_indices,
-        #     trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-        #     rot_errs_before_resampling_list=rot_errs_before_resampling_list
-        # )
-
-        # Clean tran/rot errors before resampling
-        # trans_errs_before_resampling_list = self._finite_values(trans_errs_before_resampling_list)
-        # rot_errs_before_resampling_list = self._finite_values(rot_errs_before_resampling_list)
 
         
         # Compute final map improvement
@@ -2200,17 +2189,11 @@ class RBPFEValMultParticles:
 
 def test():
     # step_res.resampling = particle_inherit_indices is not None
-    scan_match_failed = [False, True, None, True]
-    count = sum(1 for failed in scan_match_failed if failed)
+    arr = [True, True, True]
 
-    print(f"Count of scan match failed: {count} (expected: 2)")
-
-    var = None
-
-    if var:
-        print(True)
-    else:
-        print(False)
+    arr_flaot = np.asarray(arr, dtype=float)
+    print(f"Arr before conversion to float: {arr}")
+    print(f"Arr after conversion to float: {arr_flaot}")
 
 
 
