@@ -779,6 +779,12 @@ Synchronized playback data
         -   Here we just the maps we originally trained the algorithm on
 
         -   Surprisingly the rbpf is even more accurate over these maps
+
+
+    34.6 Evaluation with best parameter set over all maps and all seeds
+
+        -   Here we wanne sumarize the results of the best parameter set over all maps
+        -   We later use these metrics as the goal standard which we need to beat!
         
 
 
@@ -819,20 +825,27 @@ Synchronized playback data
     36.3 same as 36.2 but with limited proposal uncertainty
 
 
+    36.4 Grid run with different scale and fixed limit values of cov
+
+    36.5 Same as 46_4 but with 30 particles
+
+        -   This is the max number of particles I can use to be fast enough for real time slam
+        -
+
 
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_3_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_params.json'
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_4_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -906,10 +919,10 @@ class PlaybackDataset:
 
 PLAYBACK_DATA_LIST = [
     # Turtle bot map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885725",
-    ), 
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_suffix="1781885725",
+    # ),
     # AWS indoor map
     PlaybackDataset(
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
@@ -2289,12 +2302,118 @@ def _compute_wheel_separation() -> float:
 #     }
 
 
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [30],                    # number of particles in the RBPF
+#         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
+
+#         # Measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Beam range finder measurement model params
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         "beam_model_param_sets": [
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         "beam_extra_param_sets": [
+#                # Candidate B measurement region
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },       
+#         ],
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             }
+#         ],
+#         # Proposal covariance scale/limit params (bound sets).
+#         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
+#         "scale_limit_cov": [
+#             {
+#                 "cov_std_scale": 0.25,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.0,
+#                 "min_std_theta": 0.0,
+#             },
+#             {
+#                 "cov_std_scale": 0.35,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.0,
+#                 "min_std_theta": 0.0,
+#             },
+#             {
+#                 "cov_std_scale": 0.50,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.0,
+#                 "min_std_theta": 0.0,
+#             },
+#             {
+#                 "cov_std_scale": 0.75,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.0,
+#                 "min_std_theta": 0.0,
+#             },
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.4],
+
+#         # ICP jump thresholds
+#         "max_translation_jump": [0.7],
+#         "max_rotation_jump_deg": [45.0],
+#     }
+
+
+
+# Estimate good min values
 def _grid_axes() -> dict:
     return {
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [15, 25],                    # number of particles in the RBPF
+        "n_particles": [30],                    # number of particles in the RBPF
         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
 
         # Measurement model params
@@ -2347,6 +2466,39 @@ def _grid_axes() -> dict:
                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
             }
         ],
+        # Proposal covariance scale/limit params (bound sets).
+        # Each dict is one fixed combination propagated to sample_from_proposal_limit.
+        "scale_limit_cov": [
+            {
+                "cov_std_scale": 0.35,
+                "cov_max_std_xy": 0.020,
+                "cov_max_std_theta": np.deg2rad(1.15),
+                "min_std_xy": 0.001,
+                "min_std_theta": 0.03,
+            },
+            {
+                "cov_std_scale": 0.35,
+                "cov_max_std_xy": 0.020,
+                "cov_max_std_theta": np.deg2rad(1.15),
+                "min_std_xy": 0.002,
+                "min_std_theta": 0.05,
+            },
+            {
+                "cov_std_scale": 0.35,
+                "cov_max_std_xy": 0.020,
+                "cov_max_std_theta": np.deg2rad(1.15),
+                "min_std_xy": 0.003,
+                "min_std_theta": 0.08,
+            },
+            {
+                "cov_std_scale": 0.35,
+                "cov_max_std_xy": 0.020,
+                "cov_max_std_theta": np.deg2rad(1.15),
+                "min_std_xy": 0.005,
+                "min_std_theta": 0.1,
+            },            
+            
+        ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
         "proposal_beta": [1.0],
@@ -2359,7 +2511,6 @@ def _grid_axes() -> dict:
         "max_translation_jump": [0.7],
         "max_rotation_jump_deg": [45.0],
     }
-
 
 
 def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
@@ -2438,6 +2589,32 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
     if not proposal_triplets:
         raise ValueError("No proposal parameter sets configured.")
 
+    scale_limit_cov = axes.get("scale_limit_cov", [])
+    scale_limit_cov_triplets = []
+    for i, scale_limit_cov_set in enumerate(scale_limit_cov):
+        if not isinstance(scale_limit_cov_set, dict):
+            raise TypeError(
+                f"scale_limit_cov[{i}] must be a dict, got {type(scale_limit_cov_set)}"
+            )
+
+        try:
+            scale_limit_cov_triplets.append(
+                (
+                    float(scale_limit_cov_set["cov_std_scale"]),
+                    float(scale_limit_cov_set["cov_max_std_xy"]),
+                    float(scale_limit_cov_set["cov_max_std_theta"]),
+                    float(scale_limit_cov_set["min_std_xy"]),
+                    float(scale_limit_cov_set["min_std_theta"]),
+                )
+            )
+        except KeyError as exc:
+            raise KeyError(
+                f"scale_limit_cov[{i}] is missing required key: {exc}"
+            ) from exc
+
+    if not scale_limit_cov_triplets:
+        raise ValueError("No proposal covariance scale/limit sets configured.")
+
     meas_kernel_size = axes.get("meas_kernel_size", [1])
     beam_occ_thresh = axes.get("beam_occ_thresh", [1.4])
     beam_free_thresh = axes.get("beam_free_thresh", [0.8])
@@ -2485,6 +2662,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             ctrl_turn,
             neff_th,
             proposal_triplet,
+            scale_limit_cov_triplet,
             kernel_size,
             beam_occ_th,
             beam_free_th,
@@ -2509,6 +2687,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             ctrl_turn_fac,
             neff_threshold,
             proposal_triplets,
+            scale_limit_cov_triplets,
             meas_kernel_size,
             beam_occ_thresh,
             beam_free_thresh,
@@ -2524,6 +2703,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             max_rotation_jump_deg,
         ):
             sigma_xy, sigma_theta, samples_dir = proposal_triplet
+            cov_std_scale, cov_max_std_xy, cov_max_std_theta, min_std_xy, min_std_theta = scale_limit_cov_triplet
 
             measurement_model_params = BeamRangeFinderMeasModelParams(
                 occ_thresh=beam_occ_th,
@@ -2614,6 +2794,11 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                 proposal_sigma_xy=sigma_xy,
                 proposal_sigma_theta=sigma_theta,
                 proposal_n_samples=samples_dir,
+                cov_std_scale=cov_std_scale,
+                cov_max_std_xy=cov_max_std_xy,
+                cov_max_std_theta=cov_max_std_theta,
+                min_std_xy=min_std_xy,
+                min_std_theta=min_std_theta,
                 meas_kernel_size=kernel_size,
                 gaussian_sigma=0.05,
                 proposal_alpha=alpha,
@@ -2624,6 +2809,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
                     f"meas{sigma_meas}_nthf{every_nth_filter}_nmp{every_nth_map}_npart{n_part}_"
                     f"smxy{sigma_xy_m}_smth{sigma_theta_m}_cmf{ctrl_motion}_ctf{ctrl_turn}_"
                     f"neff{neff_th}_psig{sigma_xy}_psth{sigma_theta}_nsdir{samples_dir}_mks{kernel_size}_"
+                    f"covss{cov_std_scale}_covmsxy{cov_max_std_xy}_covmsth{cov_max_std_theta}_"
+                    f"minstdxy{min_std_xy}_minstdth{min_std_theta}_"
                     f"boct{beam_occ_th}_bfr{beam_free_th}_buth{beam_unknown_ratio_th}_bkfr{beam_known_free_ratio_th}_"
                     f"bsh{beam_extra_set['beam_sigma_hit']}_bwh{beam_model_set['beam_w_hit']}_"
                     f"bws{beam_model_set['beam_w_short']}_bls{beam_model_set['beam_lambda_short']}_"

@@ -49,6 +49,11 @@ class ExperimentParams:
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10
+    cov_std_scale: float = 0.5
+    cov_max_std_xy: float = 0.02
+    cov_max_std_theta: float = 0.02
+    min_std_xy: float = 0.0
+    min_std_theta: float = 0.0
     meas_kernel_size: int = 1
     gaussian_sigma: float = 0.05
     proposal_alpha: float = 0.5

@@ -112,6 +112,11 @@ class ParticleUpdateTask:
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10
+    cov_std_scale: float = 0.5
+    cov_max_std_xy: float = 0.02
+    cov_max_std_theta: float = 0.02
+    min_std_xy: float = 0.0
+    min_std_theta: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,11 @@ def update_particle_worker(
     proposal_sigma_xy: float = task.proposal_sigma_xy
     proposal_sigma_theta: float = task.proposal_sigma_theta
     proposal_n_samples: int = task.proposal_n_samples
+    cov_std_scale: float = task.cov_std_scale
+    cov_max_std_xy: float = task.cov_max_std_xy
+    cov_max_std_theta: float = task.cov_max_std_theta
+    min_std_xy: float = task.min_std_xy
+    min_std_theta: float = task.min_std_theta
 
     # Init proposal
     proposal = ProposalEstimator()
@@ -200,6 +210,11 @@ def update_particle_worker(
             sigma_xy=proposal_sigma_xy,
             sigma_theta=proposal_sigma_theta,
             n_samples=proposal_n_samples,
+            cov_std_scale=cov_std_scale,
+            cov_max_std_xy=cov_max_std_xy,
+            cov_max_std_theta=cov_max_std_theta,
+            min_std_xy=min_std_xy,
+            min_std_theta=min_std_theta,
         )
 
     # Fallback strategy if scan matching failed
@@ -1570,6 +1585,11 @@ class RBPF:
         proposal_sigma_xy: float,
         proposal_sigma_theta: float,
         proposal_n_samples: int,
+        cov_std_scale: float,
+        cov_max_std_xy: float,
+        cov_max_std_theta: float,
+        min_std_xy: float,
+        min_std_theta: float,
     ):
         # Set metrics to None
         prop_metrics = None 
@@ -1606,6 +1626,11 @@ class RBPF:
                 sigma_xy=proposal_sigma_xy,
                 sigma_theta=proposal_sigma_theta,
                 n_samples=proposal_n_samples,
+                cov_std_scale=cov_std_scale,
+                cov_max_std_xy=cov_max_std_xy,
+                cov_max_std_theta=cov_max_std_theta,
+                min_std_xy=min_std_xy,
+                min_std_theta=min_std_theta,
             )
 
             t_prop_s = time.perf_counter() - t_prop_start
@@ -1789,6 +1814,11 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
+        cov_std_scale: float = 0.5,
+        cov_max_std_xy: float = 0.02,
+        cov_max_std_theta: float = 0.02,
+        min_std_xy: float = 0.0,
+        min_std_theta: float = 0.0,
     ) -> Tuple[float, Pose2D]:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
@@ -1994,6 +2024,11 @@ class RBPF:
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
+                cov_std_scale=cov_std_scale,
+                cov_max_std_xy=cov_max_std_xy,
+                cov_max_std_theta=cov_max_std_theta,
+                min_std_xy=min_std_xy,
+                min_std_theta=min_std_theta,
             )
 
             log_particle_weights.append(log_p_weight)
@@ -2115,6 +2150,11 @@ class RBPF:
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
+        cov_std_scale: float = 0.5,
+        cov_max_std_xy: float = 0.02,
+        cov_max_std_theta: float = 0.02,
+        min_std_xy: float = 0.0,
+        min_std_theta: float = 0.0,
     ) -> Tuple[float, Pose2D]:
         # Init measurement model counters
         self.meas_model_counters_fallback = {
@@ -2243,6 +2283,11 @@ class RBPF:
                 proposal_sigma_xy=proposal_sigma_xy,
                 proposal_sigma_theta=proposal_sigma_theta,
                 proposal_n_samples=proposal_n_samples,
+                cov_std_scale=cov_std_scale,
+                cov_max_std_xy=cov_max_std_xy,
+                cov_max_std_theta=cov_max_std_theta,
+                min_std_xy=min_std_xy,
+                min_std_theta=min_std_theta,
                 )
             tasks.append(task)
         

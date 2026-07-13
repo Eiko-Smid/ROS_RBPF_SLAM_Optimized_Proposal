@@ -780,6 +780,17 @@ Synchronized playback data
         -   Surprisingly the rbpf is even more accurate over these maps
         
 
+    34.6 Evaluation with best parameter set over all maps and all seeds (Sampled from proposal scaled)
+
+        -   Here we wanne sumarize the results of the best parameter set over all maps
+        -   We later use these metrics as the goal standard which we need to beat!
+        
+
+    34.7 Evaluation with best parameter set over all maps and all seeds (proposal mu as p pose)
+        - Same as 34.6 but withut proposal sampling
+
+
+
 
 35. Implementing uncertainty into RBPF
 
@@ -809,15 +820,15 @@ Synchronized playback data
 
 
 # Playback data path defs
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_32_5_params.json'
+OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_34_7_summary'
+STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_34_7_steps.csv'
+PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_34_7_proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_34_7_params.json'
 
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_params.json'
+# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_summary'
+# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_steps.csv'
+# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_35_1_params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -889,23 +900,23 @@ class PlaybackDataset:
 #     ),    
 # ]
 
-PLAYBACK_DATA_LIST = [
-    # Turtle bot map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885725",
-    ), 
-    # AWS indoor map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885274",
-    ), 
+# PLAYBACK_DATA_LIST = [
+#     # Turtle bot map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885725",
+#     ), 
+#     # AWS indoor map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885274",
+#     ), 
     # AWS bookstore map   
     # PlaybackDataset(
     #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
     #     playback_suffix="1782917349",
     # )
-]
+# ]
 
 # Evaluation data
 # PLAYBACK_DATA_LIST = [
@@ -930,6 +941,43 @@ PLAYBACK_DATA_LIST = [
 #         playback_suffix="1783014916",
 #     ),
 # ]
+
+
+
+# All maps (Train + eval)
+PLAYBACK_DATA_LIST = [
+    # Turtle bot map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885725",
+    ), 
+    # AWS indoor map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885274",
+    ),
+    # Turtle bot map unsee area
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783013274",
+    ),
+    # AWS indoor map different path, same area
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783014916",
+    ),
+    # Cafe map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783013816",
+    ),
+    # AWS bookstore map   
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1782917349",
+    ),
+]
+
 
 # Bookstore map
 # PLAYBACK_DATA_LIST = [
@@ -2282,7 +2330,7 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [15, 20, 25],                        # number of particles in the RBPF
+        "n_particles": [1],                        # number of particles in the RBPF
         "neff_threshold": [1],                     # Number of effective particles threshold for resampling
 
         # Measurement model params

@@ -749,7 +749,7 @@ class ProposalEstimator:
 
 
     @staticmethod
-    def shrink_and_clip_cov(
+    def shrink_and_limit_cov(
         mu: np.ndarray,
         cov: np.ndarray,
         std_scale: float=0.5,
@@ -778,7 +778,7 @@ class ProposalEstimator:
         return new_cov
 
 
-    def sample_from_proposal_limited(
+    def sample_from_proposal_limit(
         self,
         mu: np.ndarray,
         cov: np.ndarray,
@@ -788,7 +788,8 @@ class ProposalEstimator:
         max_std_theta: float=0.02,
         min_std_theta: float=0.0
     ):
-        new_cov = self.shrink_and_clip_cov(
+    # Chrink and limit the std in the cov variance to sample closer to estimated mean of proposal
+        new_cov = self.shrink_and_limit_cov(
             mu=mu,
             cov=cov,
             std_scale=std_scale,
@@ -816,6 +817,11 @@ class ProposalEstimator:
         sigma_xy: float=1.0,
         sigma_theta: float=1.0,
         n_samples: int=3,
+        cov_std_scale: float=0.5,
+        cov_max_std_xy: float=0.02,
+        cov_max_std_theta: float=0.02,
+        min_std_xy: float=0.0,
+        min_std_theta: float=0.0,
     ):
         # Rest proposal timings
         self.t_sample_poses = 0.0
@@ -841,18 +847,20 @@ class ProposalEstimator:
         # Estimate new particle pose
         # TODO: Repalce that at the end to get different poses for teh particles. THink about how to do/sample 
         t_sample_from_proposal_start = time.perf_counter()
+
+        # Estimate new particle pose
         # new_p_pose = mu
         # new_p_pose = self.sample_from_proposal(mu, cov)
 
         # Sample from proposal and limit the standard deviation to avoid particle poses far away from proposal mu
-        new_p_pose = self.sample_from_proposal_limited(
+        new_p_pose = self.sample_from_proposal_limit(
             mu=mu,
             cov=cov,
-            std_scale=0.5,
-            max_std_xy=0.02,
-            min_std_xy=0.0,
-            max_std_theta=0.02,
-            min_std_theta=0.0
+            std_scale=cov_std_scale,
+            max_std_xy=cov_max_std_xy,
+            min_std_xy=min_std_xy,
+            max_std_theta=cov_max_std_theta,
+            min_std_theta=min_std_theta
         )
 
         self.t_sample_from_prop = time.perf_counter() - t_sample_from_proposal_start

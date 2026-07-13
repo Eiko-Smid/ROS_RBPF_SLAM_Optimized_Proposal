@@ -166,6 +166,11 @@ class PlaybackRunner:
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
+                cov_std_scale=params.cov_std_scale,
+                cov_max_std_xy=params.cov_max_std_xy,
+                cov_max_std_theta=params.cov_max_std_theta,
+                min_std_xy=params.min_std_xy,
+                min_std_theta=params.min_std_theta,
             )
 
             # Measure step duration
@@ -479,6 +484,11 @@ class PlaybackRunner:
                     proposal_sigma_xy=params.proposal_sigma_xy,
                     proposal_sigma_theta=params.proposal_sigma_theta,
                     proposal_n_samples=params.proposal_n_samples,
+                    cov_std_scale=params.cov_std_scale,
+                    cov_max_std_xy=params.cov_max_std_xy,
+                    cov_max_std_theta=params.cov_max_std_theta,
+                    min_std_xy=params.min_std_xy,
+                    min_std_theta=params.min_std_theta,
                 )
 
                 # Measure step duration
@@ -687,6 +697,11 @@ class PlaybackRunner:
                     proposal_sigma_xy=params.proposal_sigma_xy,
                     proposal_sigma_theta=params.proposal_sigma_theta,
                     proposal_n_samples=params.proposal_n_samples,
+                    cov_std_scale=params.cov_std_scale,
+                    cov_max_std_xy=params.cov_max_std_xy,
+                    cov_max_std_theta=params.cov_max_std_theta,
+                    min_std_xy=params.min_std_xy,
+                    min_std_theta=params.min_std_theta,
                 )
 
                 # Measure step duration
