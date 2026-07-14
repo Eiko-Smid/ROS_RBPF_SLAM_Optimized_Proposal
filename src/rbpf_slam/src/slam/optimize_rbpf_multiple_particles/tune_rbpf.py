@@ -45,807 +45,60 @@ from .aggregator import RankedRunConverter, ResultAggregator
 
 
 '''
-9.0 Run after numba for map update
-- The mean_tran_err was at 7.42 m
 
-9.1 Another run with numba for map update
-- Here we were at 4.83
+1. Analyze RBPF with multiple particles on new tuning pipeline
 
-9.2 Run without numba but used new method which already had (35 % speedup)
-- Already way closer to the original results
-- Here we had mean_tran_err = 1.2 
-- But i am still unsure why the results differ that much
 
-9.3 with completly old ogm (despite angle normalization)
-- mean trasn err = 0.418
+    1.1 Weight corr for particle poes = mu
 
-9.4 with completly old ogm (despite angle normalization)
-- mean trasn err = 0.535
 
-9.5 With corrected numba version
-- mean trans err = 
+    1.2 Weight corr for particle pose = sample from proposal
 
-9.6 Added possibility to run the same grid param several time in a row. This is to check the stability of the results.
-- We ran the same grid parameters 5 times. 
-- We used the same playback data and the same code in each run.
-- Unfortunately we ended up with totally different results
-- We must check if numba variant produces the same results than old ogm. IF so it's not the fault of the new optimized code
-- If not the numba version is wrong
 
+    1.3 same as 1.2 but with limited proposal uncertainty
 
-10: Implemented seed
 
-- Made it possible to create determinitic runs by setting a global seed.
+    1.4 Grid run with different scale and fixed limit values of cov
 
-
-11. used new dataset 
-
-- We are still using the cafe map here but another dataset is used. 
-
-
-12: Updated ICP algorithm
-
-- Before we used the tf of the icp no matter if it succeeded or not. 
-- This could lead to problems if the icp failed and returned a bad tf.
-    Bad tf -> bad pose for propüosal estimation
-- We added some safety checks and added an inidcator wheather to use or not use the returned transformation.
-
-    12.1 Full run
-
-        - We ended up with a large error in transltion. About 0.1 m more than before icp update
-        - But thats definitely because the icp tfs are often declared as not valid.
-        - 
-
-    12.2 ICP param change
-
-        - We are changing the params as follows:
-            max_translation_jump=0.8,  # was 0.3
-            max_rotation_jump=np.deg2rad(120.0),  # was 60
-            max_acceptable_mean_error=0.15 # was 2.5e-3 = 0.0025
-
-
-    12.3 
-
-
-
-14. New icp transformation update
-
-    - We are now using: T = dT @ T insetad of T = T + dT
-    - The one before is mathematically only valid for small dT vals.
-
-    14.1 With new transformation update
-
-
-    14.2 Same params old TF update
-
-
-15. Test with scan matcher pose insetad of proposal pose
-
-    15.1 Full run with scan matcher pose and proposal weights
-        - Low uncertainty values
-        -> worse than scan matching only variant
-
-    15.2 Full run with scan matcher pose and proposal weights
-        - High uncertainty values
-        -> made it worse
-
-    15.3 No uncertainty in scan match fallback
-        - Before everytime sm failed we added noise to odom and prdeict the pose based on noisy odom
-        - Now in fallback we used raw odom without adding noise to predict particle pose
-        -> Result is exactly as good as sm only variant
-
-        
-16. Test rbpf with proposal pose but no uncertainty in scan match fallback
-    - Better result than 15.1
-    - But still worse than scan matching only variant.
-
-
-17. use mean of proposal instead of sampling a value
-
-    17.1 Full run by adapting measurement and motion model uncertainty params.
-
-        "sigma_measurement": [0.05, 0.15],
-        "every_nth_beam_filter": [4],
-        "every_nth_beam_map": [2],
-        "n_particles": [40],
-        "sigma_xy_motion": [0.08, 0.18],
-        "sigma_theta": [0.05, 0.1],
-        "ctrl_motion_fac": [0.1],
-        "ctrl_turn_fac": [0.15],
-        "neff_threshold": [20],
-        "proposal_sigma_xy": [0.05],
-        "proposal_sigma_theta": [0.02],
-        "proposal_n_samples": [10],
- 
-    17.2 Use best motion and uncertainty from 17.1 and adapt proposal params only (TODO)
-
-
-18. Use deterministic sampling around scan match pose (Best run so far!!!)
-
-    - Instead of taken random samples around scan matcher maxima we are using a deterministic sampling pattern. 
-    - This test resulted in the best result so far. 
-    - Unfortuntely the computation time for the proposal estimation increased a lot because we are now using 27 samples 
-      instead of 10. 
-
-
-19. Speedup of proposal computation
-
-    - because we have more xjs now due to deterministic sampling, the proposal estimation time increased a lot.
-    - To counter that we introduced a batch version for measurement likelihood and motion probability computation.
-    - The vectorized computation enabled a much faster proposal estimation
-
-    Results:
-        proposal computation time before: proposal.estimate_proposal: 12.718832830819338 ms (count=20240)
-        proposal estimation time after: proposal.estimate_proposal: 2.711988692958292 ms (count=20520)
-
-        -> 4.7x speedup
-
-
-    19_1: Speedversion test
-
-        Result:
-
-            - Same result as 18 only difference is the score because it depends on computation time and we are much faster now.
-    
-    
-    19_2: Without clipping measurements
-        
-        - This time we run the measurement likelihood without clipping the distances to the nearest neighbor.
-        - This should make the measurement likelihood more sensitive to bad correspondences but also more robust to good correspondences. 
-        - Before we clipped the distances to 1.0 which means that we did not penalize bad correspondences more than a distance of 1.0 m.
-
-
-
-20. Turtlebot map test     
-
-    - Now we are testing our algorithm on the turtlebot map dataset. 
-    - THis map has more unique structures than the cafe map 
-    - Normally this should make it easier to localize and should lead to better results.
-
-    Results:
-        mean translation error: 0.3017 m -> worse than 0.058 (best cafe map result)
-        mean rotation error: 0.6854 deg -> worse than 0.4139 deg (best cafe map result)
-
-        - Before we tuned params on cafe map -> maybe overfitted to cafe map
-        - Also we use deterministic sampling around scan match pose and use mu of proposal directly
-        - Therefore all particles end up with the same weight and we have no probabilitic inside now 
-        - We need to change this and therefore optimize the computation of the probabilits in the proposal estimation.
-
-
-21. Added proposal metrics
-    21.1: Proposal metrics test
-        - We added some metrics to the proposal estimation to better understand the behavior of the proposal distribution 
-          and its impact on the overall performance.
-
-
-
-22. Analyze of turtle bot map based on new metrics 
-    22.1. Turtle bot map run with fixed param
-
-    22.1. Turtle bot map run with grid params
-
-
-23. Added multiple metrics to analyze proposal
-
-    23.1 Analyse which xj gets preferred and if it is correct
-
-        - Short answer: 
-            - The xj closest to the true pose is most of the time not the one with the highest weight. 
-            - This means we can and must improve the weight compuation.
-
-    
-    23.2 Don't clip measurement model this time
-            
-        - We are not clipping the NN distances now in measurement lieklihood computation. 
-
-        Results:
-            - Made the pose errors of sm, proposal and xj worse
-            - xj closest to true pose still doesn't get the highest weights most of the time
-    
-            
-    23.3 Clip t0 1.5 insetad of 1 m
-
-        Results:
-            - Compared to clip of 1 m this also made the pose errorsr worse
-            - Also the xj closest to true pose now got even slightly worse weights 
-            
-    
-    23.4 Clip even clsoer (0.7 m)
-
-        Results:
-            - Kind of like same results than 23.3
-            - 1m clipping seems to be near sweet spot for this dataset and param combination. 
-            - Clipping is a double edged sword. It can make the measurement likelihood more
-            robust to outliers but also less sensitive to good correspondences
-
-
-24. Test different grid resolutions
-
-    24.1 Higher gird resolution (0.06 m)
-        
-    Results:
-        - The trans/rot error and pose errors are all higher than with grid resolution of 0.1 m
-
-        
-25. Analyse motion and measurement model probs
-
-    -  Now we need to analyze why we follow the wrong xj most of the time
-
-    25.1
-
-        results:
-            Motion model:
-                - The motion model shows a normal correlation with the xj pose errors (0.342). 
-                - However the model shows strong correlation with the weights (0.904)
-                - This means the motion model is the main driver for the proposal distribution and its values are reasonable
-                - From the "median_log_motion_range" we can also see that the distribution of the weights is quiet flat 0.381916
-                  This values shows us how far away the max and min probs values of each step are away in average over an entire run
-
-            Measurement model:
-                - The measurement model shows a weaker correlation to the xj pose errors than the motion model (0.275)
-                - However the model shows stronger correlation to the weights, but not as much as motion model (0.641)
-                - This means that the measruement model don't benefit good xj poses, which is bad
-                - Also the overall probs are to equal. They are big but they are not spreaded out well. We can see this from the 
-                  "mean_log_meas_range" which has a value of 0.229785 which is even more flat than the motion model probs. 
-                  Measurement models shouls have a high peak and therefore a high range between max and min values. 
-
-            Conclusion:
-
-                - For now the motion model is finde
-                - But we need to make the measurement model a lot sharper
-                - Currently we computing the mean over all distacnes between the map points and the beam endppoints. This makes
-                  the measurement model too flat.
-
-
-26. Adapt weight computaion
-
-    26.1 Compute weights in log Odds space with scaling factors
-        - We are now scaling the motion and measurement weights in klgo odds space
-        
-        Results:
-            - We coldnt beat the ebst result so far
-            - As expected the measurement weights are still as close to each other as before -> Flat measurement distribution
-            - The correlations between the motion model and the xj pose err are as they were before. Lower alpha values reduce this fact
-            - The corr between motion and weights could be reduced thanks to alpha
-            
-            - The corr between the measurment probs and the xjs errors have not really been increases. SO we still don't punish bad xjs
-            - The corr between the meas probs and the weights could be increased. But this is meanigless if the models distribution is flat. 
-        
-    
-    26.2 Use scaled measruement probs
-
-        mean_error = np.mean(
-            (distances / self.sigma) ** 2,
-            axis=1,
-        )
-
-        k = 5.0
-        scaled_mean = -0.5 * k * mean_error
-        
-        # probs = np.exp(-0.5 * mean_error)
-        probs = np.exp(scaled_mean)
-
-        
-        26.2.1 K = 5    
-
-            this does the following:
-                old: 0.95 vs 0.90
-                new: 0.95^5 vs 0.90^5
-                    0.774 vs 0.590
-
-            So it should make the measurements distribution more peaked
-
-            
-        26.2.1 K = 10
-        
-
-        26.2.3 k = 5 
-
-
-27. Adapt measruement model
-
-    - make changes accordign to chatgpt chat. Dont forget to negatze some of the former changes, 
-    - But gpt wrote this already down.
-
-
-    27.1 gmapping style likelihood computation on NN version
-
-        - Here we used the old distances computation based on the trained map pints from the NN kdtree from scan matcher
-        - But we replaced the likelihood computation with the gmapping style:
-            - Define distance threshold
-            - All distances above max_distance threshold are treated as invalid distances and are punished by the same value (no_hit)
-            - 
-
-        27.1.1 Old sampling window
-            - Run with new likelihood computation but old sampling window (27 samples)
-
-            Result:
-                - For more see one note
-                - More stable trans and rot errors but also worse than before (best 6 runs under 0.2 trans error)
-                - Correlation between xj errors amd measurement probs is still very low.
-                    -> Main issue stays the same
-
-
-        27.1.2 new sampling window
-            - Run with new likelihood computation but new sampling window (125 samples)
-
-            Result:
-                - See one drive
-                - Increasing samples made results even worse
-                - Main problem is still the measurement model itself. SO our NN approach alone is not enough
-
-
-    27.2 gmapping style likelihood computation
-        - We implemented the original gmapping measurement likelihood computation consisting of:
-            - Estimate reflecting grid cell
-            - Define a small grid search around the beam endpoint
-            - Check if cell before occ candidate in beam direction is free -> valid candidate
-            - Find closest distance among all valid candidates
-            - Compute log_likelihood based on that
-        
-            27.2.1 Test run
-        
-                
-    27.2 likelihood field model
-
-        27.2.1 First run
-
-
-        27.2.2 Make measurement likelihood more uncertain
-
-          sigma_measurement = [0.2, 0.5, 1.0, 2.0]
-
-    
-    27.3 Beam range finder model 
-    
-
-
-28. After map shift problem solved
-
-    - Before we had the followignn rpbolems
-        ○ We only recorded data when the robot actually drives
-		○ So the first playback stp was not at position (0, 0, 0)
-		○ It was the position after we drove
-		○ Then we also have no map values available
-		○ In the secodn step we had occupied cells and perfomed scan matching
-		○ But here we already had an offset in our map and our map didnt aligned with the real map from teh beginning on
-		○ We carried that offset from tehbeginning on
-		○ Because the inital created map was already in the wrong frame, our whole apporach failes
-
-        • In the tutle bot map there was another error on top of that
-        • We started directly with am translational error of 0.30331 because we spawned the robot at pose (0, 0.3, 0.0) but assumed the pose actually is (0.0, 0.0, 0.0)
-        • Thats why the error was that big right away
-        • At the end our drift almost exactly matched that value
-        • This meaans we were never really off we simply had an offset from beginning on
-    
-
-    - Now we also tuned the scan mtacher on both maps with different seeds to find stable params. 
-    - Here we will use these prams and test if we are now able to shift the proposal towards the xj with the min err
-      to the true pose.
-
-        28.1 turtle map
-
-            28.1.1 First full run
-
-                Results:
-
-                    - Pose (trans, rot) errors almost identical to scan match only 
-                    - Unfortunately the problem that the proposal doesn't follow the true pose is still there
-                    - Since we are using the old measurement model we also don't shift the proposal towards the ebst xj
-                      U can easily see this from the metrics:
-                        - mean_log_motion_range = 0.428531
-                        - mean_log_meas_range = 0.200502 -> measurement model more flat than motion model
-                        - mean_corr_xjs_meas = 0.264045 -> Weak correlation between xj pose errr and measurement prob
-                    
-                TODOs:
-                    - Update scorer to compare results over different runs and find best params for each map
-                    - We need a new parameter search over both maps and different seeds 
-                    - Then we need to compare the results and find best common params
-                    - Then we need to try this for the different measurement models 
-                    - If we are not able to improve we tzune icp for grid resolution of 0.05 instead of 0.1
-                    - IF this still doesnt imrpvoe proposal than we need to change measurement model (ogm with mean positions stored)
-
-        28.2 cafe map
-
-            
-            28.2.1 First full run
-
-                - THis run failed completly
-                - Doesn't make sense at all cause scan matcher made good estimate and then suddenly failed
-                - The result was an increasing error in the pose which the system wasn't able to recover from 
-                - That shoudnt have happened
-
-
-            28.2.2 Test sm only
-
-                - We overwrote the proposal results such that we got sm only results
-
-                Result:
-                    - Same results than in sm pipeline!
-                    - That means proposal was the reason for teh bad results in 28.2.1 
-                    - i will delete this cause its no longer needed and takes away memory 
-
-
-29. Updated scorer
-    - We updated the scorer to better reflect the new insights we got from the proposal analysis.
-
-    29.1 Turtle bot map analysis with new scorer
-
-        29.1.1 Full run with new scorer
-
-
-        29.1.2 run with adapted scorer
-    
-
-    29.2 Cafe map analysis with new scorer
-
-
-30. Create automated optimization pipeline
-    - We created an automated pipelien that is able to run the rbpf on multiple maps, with multiple param sets on different seeds
-      and finds the best overall performing metrics. 
-    
-      Attention!    
-        Step duration will be longer here cause we iterate over different seeds!
-    
-        30.1 First run
-            - cafe and turtle bot map
-            - 72 different params
-            - 3 seeds
-
-            -> 2*72*3 = 864 runs in total
-
-
-        30.2 Second run on new AWS indoor map 
-
-
-31 Implemented Laser range finder model (ray tracing based)
-
-    - Implemented new ray tracing measurement model in order to get better measurement probabilities 
-
-    31.1 V1 LaserRangeFinderMeasurementModel
-
-        This are the results from the first variant of the LaserRangeFinderMeasurementModel. 
-
-        - The results are slightly better than the oens of rbpf
-        - But still the measurement model is unable to find the min xj 
-        - Thats why a lot of the times the scan matcher results are a tiny bit better than the proposal results
-    
-        
-
-    31.2 V2 LaserRangeFinderMeasurementModel
-
-        This time we made a few changes to the measurement model:
-            - We adapted the raw measrument model to the one from the porbabilistic robotics book. We added:
-                z_rand and z_max component to the model
-            - We also made an overview of the things that can go wrong and implemented a fallback method for each case
-            - This should give us more numerically stability
-            - For example we give a different fallback log_klikelihood depending on how many unknwon cells the beam has passed.
-              The ratio beam_known_free_ratio_thresh defines the border. 
-    
-        Results:
-            - Only sllightly better than 31.1 
-            - We improved the translational error. 
-            - The downside is that the rotational error and the scan matcher failure rate increased
-            - The difference to 31.1 is soo small that it doesn't really make sense to change the params
-
-            
-32. After Implementing measruement model metrics ans snyced playback data
-
-New measurement model metrics
-    - We added a log of metrics inb order to be able to analyze the current Beam Range Finder model
-    - The metrics are part of the summary as well as the aggregation stages
-
-Synchronized playback data
-    - We had the problem that the laser range finder published data with 10 Hz
-    - The link states were published at much higher frequency 
-    - The dl dr have been coputed in external node
-    - We updated the palyback with 2 Hz on the data we simply had 
-        -> No snyc
-        -> scan was not guranteed to match true pose
-    
-    - Now we synced them within 10 ms -> scan matches poe and dl/dr pretty good
-
-    
-    32. 1 Firs run on new synced playback data 
-
-        - We ran the rbpf with a wide search on turtlebot and aws map
-        - Results a tiny bit worse than before buit only a bit
-        - trans really good, proposal improves sm
-        - rot worse, makes sm result worse
-
-    
-    32.2 Phase 1: Tune motion and proposal 
-
-        - here we freezed everything beside the motion and proposal params
-        - Goal was to find good combination between proposal and motion model params and see influence of 
-          motion model
-        
-        Results:
-            - Overall we are now again in mm area -> close to saturation, overfitting
-            - Global score improved from 4.57 -> 4.11 
-            - mean rmse imporved about 0.005 m = 5 mm 
-            - Closest xj now receives now in 44.9 % = 50% of the cases the highest weight (35.9 % before) 
-
-            - Winning score is a bit more seed sensitive
-            - Therefore we will not only use rank run params for newxt phase we will also use a second variant
-            - No matter that, the proposal param winner is clear:
-                "proposal_sigma_xy": 0.06,
-                "proposal_sigma_theta": 0.025,
-                "n_samples_dir": 3,
-
-            - The motion model is unclear. Rank run had:
-                sigma_xy_motion = 0.12
-                sigma_theta = 0.11
-
-            - We also have more stable variant:
-                sigma_xy_motion = 0.15
-                sigma_theta = 0.05
-
-            - Measurement model
-
-                - For both map we haev > 95% all cases beam finds cell by raycasting
-                - When no occ cell has been found then we had
-                    > 60% cases most part the beam traversed was unknown. 
-                    (>90 turtle bot, >60% aws map)
-
-
-    32.3 Phase 2: Measurement model param tuning
-
-        Goal:
-            Try to find best measurement model params
-
-        Results:
-
-            - We got a few really good idividual results that outperformed the individual results from before
-            - Unfortunately the aggregated results didnt inproved at all 
-                -> Our measurement model params were already good
-
-
-
-    32.4 Phase 3: Measurement model extra param training
-
-        Goal:
-            - Finetune the extra measurement model params
-            - Here we wanne improve the cases when a beam doesn't find a occ cell by raytracing
-            - Cause the number of cases were this happens is quiet low, we will probably not see that much improvement
-              here. 
-
-        Results:
-
-            - Compared to 32.3 we improved in rotational accuracy while getting worse translational accuracy
-            - Seems like we need to find a compromiss between both. 
-            - Also our model seems to be saturated. These is no real irmovement, so we are at the end of what is possible
-
-            - Proposal
-                - The number of times the correct xj has been choosen is lower than before
-                - This is not a good sign. The angle got better due to the wrong reason. 
-
-
-
-
-33. Performance optimization
-
-    - We tried to implement parallelization but it was actually slower due to serialization of big objects like the particle
-    - Each article owns a scan matcher instance wwhich own the ogm and icp -> huge amount of data
-    - Instead we optimized the measruement model and implemented some time measurements to actually verify it. 
-
-    Unfortunately the multiprocessing implementation of the RBPF (run particle update in paralllel) didn't 
-        made things faster due to deserialization
-    -   Also Numba threadng didnt worked well because the functions were also too short (1-2 ms)
-        Numba threading does work in general and can result into huge speedup, but only for bigger tasks.  
-
-    -   Measrues that resulted into speed up:
-            1) batch xj measruement computation
-                Didnt affect metrics
-            2) Scipy cKDtree isntead of sklearn NN tree
-                Affected metrics
-
-    - Measures that stabelized RBPF results
-        We increased the max trans and rot jumps in ICP 
-            -   On the new map the old model performed really bad
-                mean_trans_error    
-                    0.137958
-                    0.181836
-                    0.261013
-
-                mean_rot_error_deg
-                    1.437116
-                    2.755953
-                    2.162284
-
-            - The ICP failed a lot of the times because the computed tranformations were bigger than the threshold values
-                # max_translation_jump=0.5,
-                # max_rotation_jump=np.deg2rad(45.0),
-
-            - Therefore we replaced the max trans errors wiht wider ones!
-    
-    
-    33.1 Old maps with three seeds and good param set
-
-        -   Here we ran a stable param set on both maps and stable seeds
-        -   ckdtree used
-        -   Also we replaced the old max transf thresholds with newer, wider ones
-            - max_translation_jump 0.5 -> 0.7
-            - max_rot_jump 45° -> 60°
-
-        Results:
-
-            -   Results of AWS are a bit worse. 
-            -   But therfore the reaults of the turtle bot map is better 
-            -   Also the results are less seed independend
-
-    
-    33.2 old transformation thresholds on bookstore map
-
-        - In order to see the impact of the new thresholds, we first run with old transformation thresholds
-
-        Results:
-            mean_trans_error    
-                0.137958
-                0.181836
-                0.261013
-            
-            worst_translation_error
-                0.889951
-                0.952975
-                2.202677
-
-            mean_rot_error_deg
-                1.437116
-                2.755953
-                2.162284
-            
-            worst_rot_error_deg
-                14.728069
-                27.242341
-                30.790487
-    
-    
-    33.3 new transformation thresholds on bookstore map
-
-        - Way better results!
-
-        mean_trans_error
-            0.030835
-            0.035676
-            0.055280
-
-        worst_translation_error
-            0.194507
-            0.190814
-            0.319710
-        
-        mean_rot_error_deg
-            0.566760
-            0.505020
-            0.900341
-        
-        worst_rot_error_deg
-            10.829881
-            8.668666
-            18.042712
-
-    
-    33.4 Same trans thres but lower rot htres
-
-        Result:
-            -   rotation doesnt affect the result at all  
-
-
-    33.5 Test on all three maps
-
-
-34. Evaluation
-
-    -   here we wanne run the algorithm with one particle on unseen data
-    -   We are using the following playback data:
-        -   cafe map
-        -   AWS Bookstore map
-        -   turtlebot map unseen area
-        -   AWS indoor new path, same area
-
-    34.1 Evaluation with one param set on all maps over all seeds
-
-        Results:
-            -   We are overall under mean trans err of 6 cm, alos for cafe map which has been deleted from
-                evaluation before because the results were to bad. We thought map is not hadnleable by algorithm
-                due  to huge free areas. Seems no longer the case
-
-
-    34.2  Evaluation with one param set on all maps over all seeds (old max trans and rot jump thresholds)
-        Results:
-            - Results are muc more worse
-            - Worst seed is seed 22 for all maps which resulted into very bad results for cafe map
-            - noit useable
-    
-
-    34.3 Evaluation with one param set on all maps over all seeds (higher max trans jump threshold)
-
-        - here we used max trans jump of 0.8 instead of 0.7
-
-        Results:
-            - This value also reesulted into bad results on cafe map
-            - Sweetspot is max trans jump = 0.7 for all maps!
-
-
-    34.4 Evaluation over all candidates and evaluation maps
-
-        -   here we used all 3 parameter candidates and determined the best parameterset
-    
-
-    34.5 Evaluation over original maps (AWS indoor and turtle bot)
-
-        -   in order to compare the results of the unseen maps with the seen maps, we made this run.
-        -   Here we just the maps we originally trained the algorithm on
-
-        -   Surprisingly the rbpf is even more accurate over these maps
-
-
-    34.6 Evaluation with best parameter set over all maps and all seeds
-
-        -   Here we wanne sumarize the results of the best parameter set over all maps
-        -   We later use these metrics as the goal standard which we need to beat!
-        
-
-
-35. Implementing uncertainty into RBPF
-
-    -   Currently the RBPF filter runs with one particle and withpout uncertainty
-    -   originally the RBPF should sample from the estimated proposal based on it's covariance metrics
-    -   Runs in the past have shown that this concept doesn't really work. 
-    -   The filter loses track instead of improving its pose estimations
-    -   Therefore we need to find a way to make this work
-
-    -   In order for that to work, we need to take a closer look on the uncertatinty in the proposal
-    -   One way would be to scaling the uncertainty down by factors and sampling from that
-    -   We could also add boundarys for the uncertainty. If the uncertainty is above the threshold we don't sample
-    -   We currently know the pose estimation errors for one particle without sampling from the proposal
-    -   If we sample we need to stay close to that result. 
-
-    
-    35.1 RUn with n particles and proposal sampling 
-
-        -   We are usung the maps we trained the rbpf on (AWS indoor and turtle bot map)
-        -   We adapting the number of particles
-        -   We sample the new particle poses from the estimated proposal with its estimated var-cov-matrix
-        -   n_particles = [15, 20, 25]
-
-        Results:
-
-
-36. Analyze particle weight/err correlation
-
-
-    36.1 Weight corr for particle poes = mu
-
-
-    36.2 Weight corr for particle pose = sample from proposal
-
-
-    36.3 same as 36.2 but with limited proposal uncertainty
-
-
-    36.4 Grid run with different scale and fixed limit values of cov
-
-    36.5 Same as 46_4 but with 30 particles
+    1.5 Same as 46_4 but with 30 particles
 
         -   This is the max number of particles I can use to be fast enough for real time slam
         -
+
+    1.6 run with best 3 obtained scales and max values and adapting limit here
+
+        Goal: See if different min values can fix our problem
+
+        Result:
+            - Seems like this really worked
+            - Because we ensure enough particle diversity when we don't scale the values too low! 
+
+
+    1.7 Test best configurations on all maps/seeds
+
+        -   Now we wanne test if the configurtaions we found are stabel on all maps and seeds
+        -   If not we can't use them!
 
 
 '''
 
 
 # Playback data path defs
-OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_summary'
-STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_steps.csv'
-PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_36_6_params.json'
+STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
-# OPTM_SUMMARY_PATH= '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_summary'
-# STEP_TRACE_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_steps.csv'
-# PROPOSAL_WEIGHTS_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = '/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/proposal_optm_test_3_params.json'
+# Default storage
+# SUB_DIR = "proposal_optm_1_8/"
+# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+
+# Test storage
+SUB_DIR = "proposal_optm_test_1/"
+OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -861,8 +114,8 @@ OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
-# SEED_LIST = [22]
+# SEED_LIST = [22, 56]
+SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -958,6 +211,43 @@ PLAYBACK_DATA_LIST = [
 #         playback_suffix="1783014916",
 #     ),
 # ]
+
+
+# All maps (Train + eval)
+# PLAYBACK_DATA_LIST = [
+#     # Turtle bot map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885725",
+#     ), 
+#     # AWS indoor map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885274",
+#     ),
+#     # Turtle bot map unsee area
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1783013274",
+#     ),
+#     # AWS indoor map different path, same area
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1783014916",
+#     ),
+#     # Cafe map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1783013816",
+#     ),
+#     # AWS bookstore map   
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1782917349",
+#     ),
+# ]
+
+
 
 # Bookstore map
 # PLAYBACK_DATA_LIST = [
@@ -2408,12 +1698,196 @@ def _compute_wheel_separation() -> float:
 
 
 # Estimate good min values
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         # "n_particles": [15, 25, 30],                    # number of particles in the RBPF
+#         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
+
+#         # Measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Beam range finder measurement model params
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         "beam_model_param_sets": [
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         "beam_extra_param_sets": [
+#                # Candidate B measurement region
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },       
+#         ],
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             }
+#         ],
+#         # Proposal covariance scale/limit params (bound sets).
+#         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
+
+#         "scale_limit_cov": [
+#             # ============================================================
+#             # cov_std_scale = 0.35
+#             # ============================================================
+#             {
+#                 "n_particles": 30,
+#                 "cov_std_scale": 0.35,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.001,
+#                 "min_std_theta": np.deg2rad(0.03),
+#             },
+#             {
+#                 "n_particles": 30,
+#                 "cov_std_scale": 0.35,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.002,
+#                 "min_std_theta": np.deg2rad(0.05),
+#             },
+#             {
+#                 "n_particles": 30,
+#                 "cov_std_scale": 0.35,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.003,
+#                 "min_std_theta": np.deg2rad(0.08),
+#             },
+#             {
+#                 "n_particles": 30,
+#                 "cov_std_scale": 0.35,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.005,
+#                 "min_std_theta": np.deg2rad(0.10),
+#             },
+
+#             # ============================================================
+#             # cov_std_scale = 0.50
+#             # ============================================================
+#             {
+#                 "n_particles": 25,
+#                 "cov_std_scale": 0.50,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.001,
+#                 "min_std_theta": np.deg2rad(0.03),
+#             },
+#             {
+#                 "n_particles": 25,
+#                 "cov_std_scale": 0.50,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.002,
+#                 "min_std_theta": np.deg2rad(0.05),
+#             },
+#             {
+#                 "n_particles": 25,
+#                 "cov_std_scale": 0.50,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.003,
+#                 "min_std_theta": np.deg2rad(0.08),
+#             },
+#             {
+#                 "n_particles": 25,
+#                 "cov_std_scale": 0.50,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.005,
+#                 "min_std_theta": np.deg2rad(0.10),
+#             },
+
+#             # ============================================================
+#             # cov_std_scale = 0.25
+#             # ============================================================
+#             {
+#                 "n_particles": 15,
+#                 "cov_std_scale": 0.25,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.001,
+#                 "min_std_theta": np.deg2rad(0.03),
+#             },
+#             {
+#                 "n_particles": 15,
+#                 "cov_std_scale": 0.25,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.002,
+#                 "min_std_theta": np.deg2rad(0.05),
+#             },
+#             {
+#                 "n_particles": 15,
+#                 "cov_std_scale": 0.25,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.003,
+#                 "min_std_theta": np.deg2rad(0.08),
+#             },
+#             {
+#                 "n_particles": 15,
+#                 "cov_std_scale": 0.25,
+#                 "cov_max_std_xy": 0.020,
+#                 "cov_max_std_theta": np.deg2rad(1.15),
+#                 "min_std_xy": 0.005,
+#                 "min_std_theta": np.deg2rad(0.10),
+#             },
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.4],
+
+#         # ICP jump thresholds
+#         "max_translation_jump": [0.7],
+#         "max_rotation_jump_deg": [45.0],
+#     }
+
+# Validate best candidates against all maps
 def _grid_axes() -> dict:
     return {
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [30],                    # number of particles in the RBPF
+        # "n_particles": [15, 25, 30],                    # number of particles in the RBPF
         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
 
         # Measurement model params
@@ -2468,36 +1942,24 @@ def _grid_axes() -> dict:
         ],
         # Proposal covariance scale/limit params (bound sets).
         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
+
         "scale_limit_cov": [
             {
+                "n_particles": 30,
                 "cov_std_scale": 0.35,
-                "cov_max_std_xy": 0.020,
-                "cov_max_std_theta": np.deg2rad(1.15),
-                "min_std_xy": 0.001,
-                "min_std_theta": 0.03,
-            },
-            {
-                "cov_std_scale": 0.35,
-                "cov_max_std_xy": 0.020,
-                "cov_max_std_theta": np.deg2rad(1.15),
-                "min_std_xy": 0.002,
-                "min_std_theta": 0.05,
-            },
-            {
-                "cov_std_scale": 0.35,
-                "cov_max_std_xy": 0.020,
-                "cov_max_std_theta": np.deg2rad(1.15),
-                "min_std_xy": 0.003,
-                "min_std_theta": 0.08,
-            },
-            {
-                "cov_std_scale": 0.35,
-                "cov_max_std_xy": 0.020,
+                "cov_max_std_xy": 0.02,
                 "cov_max_std_theta": np.deg2rad(1.15),
                 "min_std_xy": 0.005,
-                "min_std_theta": 0.1,
+                "min_std_theta": np.deg2rad(0.10),
+            },
+            {
+                "n_particles": 15,
+                "cov_std_scale": 0.25,
+                "cov_max_std_xy": 0.02,
+                "cov_max_std_theta": np.deg2rad(1.15),
+                "min_std_xy": 0.001,
+                "min_std_theta": np.deg2rad(0.03),
             },            
-            
         ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
@@ -2511,6 +1973,7 @@ def _grid_axes() -> dict:
         "max_translation_jump": [0.7],
         "max_rotation_jump_deg": [45.0],
     }
+
 
 
 def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
@@ -2559,7 +2022,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
     sigma_measurement = axes.get("sigma_measurement", [0.05])
     every_nth_beam_filter = axes.get("every_nth_beam_filter", [4])
     every_nth_beam_map = axes.get("every_nth_beam_map", [2])
-    n_particles = axes.get("n_particles", [40])
+    fallback_n_particles = axes.get("n_particles", [40])
     sigma_xy_motion = axes.get("sigma_xy_motion", [0.12])
     sigma_theta_motion = axes.get("sigma_theta", [0.05])
     ctrl_motion_fac = axes.get("ctrl_motion_fac", [0.1])
@@ -2598,15 +2061,27 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             )
 
         try:
-            scale_limit_cov_triplets.append(
-                (
-                    float(scale_limit_cov_set["cov_std_scale"]),
-                    float(scale_limit_cov_set["cov_max_std_xy"]),
-                    float(scale_limit_cov_set["cov_max_std_theta"]),
-                    float(scale_limit_cov_set["min_std_xy"]),
-                    float(scale_limit_cov_set["min_std_theta"]),
-                )
+            cov_tuple = (
+                float(scale_limit_cov_set["cov_std_scale"]),
+                float(scale_limit_cov_set["cov_max_std_xy"]),
+                float(scale_limit_cov_set["cov_max_std_theta"]),
+                float(scale_limit_cov_set["min_std_xy"]),
+                float(scale_limit_cov_set["min_std_theta"]),
             )
+
+            n_particle_values = (
+                [scale_limit_cov_set["n_particles"]]
+                if "n_particles" in scale_limit_cov_set
+                else fallback_n_particles
+            )
+
+            for n_part in n_particle_values:
+                scale_limit_cov_triplets.append(
+                    (
+                        int(n_part),
+                        *cov_tuple,
+                    )
+                )
         except KeyError as exc:
             raise KeyError(
                 f"scale_limit_cov[{i}] is missing required key: {exc}"
@@ -2655,7 +2130,6 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             sigma_meas,
             every_nth_filter,
             every_nth_map,
-            n_part,
             sigma_xy_m,
             sigma_theta_m,
             ctrl_motion,
@@ -2680,7 +2154,6 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             sigma_measurement,
             every_nth_beam_filter,
             every_nth_beam_map,
-            n_particles,
             sigma_xy_motion,
             sigma_theta_motion,
             ctrl_motion_fac,
@@ -2703,7 +2176,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             max_rotation_jump_deg,
         ):
             sigma_xy, sigma_theta, samples_dir = proposal_triplet
-            cov_std_scale, cov_max_std_xy, cov_max_std_theta, min_std_xy, min_std_theta = scale_limit_cov_triplet
+            n_part, cov_std_scale, cov_max_std_xy, cov_max_std_theta, min_std_xy, min_std_theta = scale_limit_cov_triplet
 
             measurement_model_params = BeamRangeFinderMeasModelParams(
                 occ_thresh=beam_occ_th,

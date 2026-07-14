@@ -748,15 +748,43 @@ class ProposalEstimator:
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
 
 
+    # @staticmethod
+    # def shrink_and_limit_cov(
+    #     cov: np.ndarray,
+    #     std_scale: float=0.5,
+    #     max_std_xy: float=0.02,
+    #     min_std_xy: float=0.0,
+    #     max_std_theta: float=0.02,
+    #     min_std_theta: float=0.0
+    # ):
+    #     cov = np.asarray(cov, dtype=float)
+
+    #     # Extract std
+    #     old_var = np.maximum(np.diag(cov), 1e-12)
+    #     old_std = np.sqrt(old_var)
+
+    #     # Scale std
+    #     new_std = std_scale * old_std
+
+    #     # Clip std
+    #     new_std[0] = np.clip(new_std[0], min_std_xy, max_std_xy)
+    #     new_std[1] = np.clip(new_std[1], min_std_xy, max_std_xy)
+    #     new_std[2] = np.clip(new_std[2], min_std_theta, max_std_theta)
+
+    #     new_cov = np.diag(new_std**2)
+    #     new_cov += 1e-9 * np.eye(3) 
+
+    #     return new_cov
+
+    
     @staticmethod
     def shrink_and_limit_cov(
-        mu: np.ndarray,
         cov: np.ndarray,
         std_scale: float=0.5,
-        max_std_xy: float=0.02,
-        min_std_xy: float=0.0,
-        max_std_theta: float=0.02,
-        min_std_theta: float=0.0
+        max_std_xy: Optional[float]=None,
+        min_std_xy: Optional[float]=None,
+        max_std_theta: Optional[float]=None,
+        min_std_theta: Optional[float]=None
     ):
         cov = np.asarray(cov, dtype=float)
 
@@ -768,9 +796,12 @@ class ProposalEstimator:
         new_std = std_scale * old_std
 
         # Clip std
-        new_std[0] = np.clip(new_std[0], min_std_xy, max_std_xy)
-        new_std[1] = np.clip(new_std[1], min_std_xy, max_std_xy)
-        new_std[2] = np.clip(new_std[2], min_std_theta, max_std_theta)
+        if max_std_xy is not None and min_std_xy is not None:
+            new_std[0] = np.clip(new_std[0], min_std_xy, max_std_xy)
+            new_std[1] = np.clip(new_std[1], min_std_xy, max_std_xy)
+        
+        if max_std_theta is not None and min_std_theta is not None:
+            new_std[2] = np.clip(new_std[2], min_std_theta, max_std_theta)
 
         new_cov = np.diag(new_std**2)
         new_cov += 1e-9 * np.eye(3) 
@@ -778,19 +809,19 @@ class ProposalEstimator:
         return new_cov
 
 
+
     def sample_from_proposal_limit(
         self,
         mu: np.ndarray,
         cov: np.ndarray,
         std_scale: float=0.5,
-        max_std_xy: float=0.02,
-        min_std_xy: float=0.0,
-        max_std_theta: float=0.02,
-        min_std_theta: float=0.0
+        max_std_xy: Optional[float]=None,
+        min_std_xy: Optional[float]=None,
+        max_std_theta: Optional[float]=None,
+        min_std_theta: Optional[float]=None
     ):
     # Chrink and limit the std in the cov variance to sample closer to estimated mean of proposal
         new_cov = self.shrink_and_limit_cov(
-            mu=mu,
             cov=cov,
             std_scale=std_scale,
             max_std_xy=max_std_xy,
@@ -803,7 +834,8 @@ class ProposalEstimator:
         new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
         
         return new_pose
-        
+    
+    
 
 
     def estimate_proposal_range_finder(
