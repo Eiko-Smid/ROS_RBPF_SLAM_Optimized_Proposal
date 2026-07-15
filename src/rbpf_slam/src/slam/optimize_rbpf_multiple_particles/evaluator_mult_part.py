@@ -1580,6 +1580,7 @@ class RBPFEValMultParticles:
             # Compute mean timings
             # ________________________________________________________________________________________
             "mean_step_duration": self._safe_mean(step_durations),
+            "run_duration": sum(step_durations),
             # Mean time durations proposal
             "mean_t_sample_poses": self._safe_mean(t_sample_poses_values),
             "mean_t_pred_poses": self._safe_mean(t_pred_poses_values),

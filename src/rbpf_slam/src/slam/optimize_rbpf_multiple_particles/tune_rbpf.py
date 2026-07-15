@@ -80,6 +80,19 @@ from .aggregator import RankedRunConverter, ResultAggregator
         -   If not we can't use them!
 
 
+    1.8 Adapt scaling again without changing min/max limits of proposal downscaling
+        -   We now only test it with different scaling and different neff thresholds on two different maps and seeds
+
+
+    1.9 do same experiemnt as 1.8 but dont ignore the cov in cov-matrix downsampling 
+        - Before we only extracted the std values of the cov and scaled this
+        - THis time we scaled the whole cov matrix including the cov values of the off-diagonal elements
+        - These define the shape by the mahalanobis distance and therefore the shape of the proposal distribution
+        - So we also take care of teh orientation of the proposal distribution 
+
+        
+
+
 '''
 
 
@@ -87,18 +100,18 @@ from .aggregator import RankedRunConverter, ResultAggregator
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-# SUB_DIR = "proposal_optm_1_8/"
-# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
-# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
-# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-
-# Test storage
-SUB_DIR = "proposal_optm_test_1/"
+SUB_DIR = "proposal_optm_1_9/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+
+# Test storage
+# SUB_DIR = "proposal_optm_test_2/"
+# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -114,8 +127,8 @@ OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22, 56]
-SEED_LIST = [22]
+SEED_LIST = [22, 56]
+# SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -1887,8 +1900,8 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        # "n_particles": [15, 25, 30],                    # number of particles in the RBPF
-        "neff_threshold": [None],                     # Number of effective particles threshold for resampling
+        "n_particles": [20, 30],                    # number of particles in the RBPF
+        "neff_thres_ratio": [0.3, 0.5, 0.7],             # neff threshold as ratio of n_particles
 
         # Measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
@@ -1945,21 +1958,34 @@ def _grid_axes() -> dict:
 
         "scale_limit_cov": [
             {
-                "n_particles": 30,
-                "cov_std_scale": 0.35,
-                "cov_max_std_xy": 0.02,
-                "cov_max_std_theta": np.deg2rad(1.15),
-                "min_std_xy": 0.005,
-                "min_std_theta": np.deg2rad(0.10),
+                "cov_std_scale": 0.9,
+                "cov_max_std_xy": 1.0,
+                "cov_max_std_theta": np.deg2rad(10),
+                "min_std_xy": 0.0,
+                "min_std_theta": np.deg2rad(0.0),
             },
             {
-                "n_particles": 15,
-                "cov_std_scale": 0.25,
-                "cov_max_std_xy": 0.02,
-                "cov_max_std_theta": np.deg2rad(1.15),
-                "min_std_xy": 0.001,
-                "min_std_theta": np.deg2rad(0.03),
-            },            
+                "cov_std_scale": 0.8,
+                "cov_max_std_xy": 1.0,
+                "cov_max_std_theta": np.deg2rad(10),
+                "min_std_xy": 0.0,
+                "min_std_theta": np.deg2rad(0.0),
+            },
+            {
+                "cov_std_scale": 0.7,
+                "cov_max_std_xy": 1.0,
+                "cov_max_std_theta": np.deg2rad(10),
+                "min_std_xy": 0.0,
+                "min_std_theta": np.deg2rad(0.0),
+            },
+            {
+                "cov_std_scale": 0.6,
+                "cov_max_std_xy": 1.0,
+                "cov_max_std_theta": np.deg2rad(10),
+                "min_std_xy": 0.0,
+                "min_std_theta": np.deg2rad(0.0),
+            },
+
         ],
         # TODO: Delete proposal values when no longer needed later on
         "proposal_alpha": [1.0],
@@ -2022,12 +2048,14 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
     sigma_measurement = axes.get("sigma_measurement", [0.05])
     every_nth_beam_filter = axes.get("every_nth_beam_filter", [4])
     every_nth_beam_map = axes.get("every_nth_beam_map", [2])
-    fallback_n_particles = axes.get("n_particles", [40])
+    n_particles = axes.get("n_particles", [40])
     sigma_xy_motion = axes.get("sigma_xy_motion", [0.12])
     sigma_theta_motion = axes.get("sigma_theta", [0.05])
     ctrl_motion_fac = axes.get("ctrl_motion_fac", [0.1])
     ctrl_turn_fac = axes.get("ctrl_turn_fac", [0.15])
-    neff_threshold = axes.get("neff_threshold", [20])
+    neff_thres_ratio = axes.get("neff_thres_ratio", [None])
+    if neff_thres_ratio is None:
+        neff_thres_ratio = [None]
     proposal_param_sets = axes.get("proposal_param_sets", [])
     proposal_triplets = []
     for i, proposal_set in enumerate(proposal_param_sets):
@@ -2061,27 +2089,15 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             )
 
         try:
-            cov_tuple = (
-                float(scale_limit_cov_set["cov_std_scale"]),
-                float(scale_limit_cov_set["cov_max_std_xy"]),
-                float(scale_limit_cov_set["cov_max_std_theta"]),
-                float(scale_limit_cov_set["min_std_xy"]),
-                float(scale_limit_cov_set["min_std_theta"]),
-            )
-
-            n_particle_values = (
-                [scale_limit_cov_set["n_particles"]]
-                if "n_particles" in scale_limit_cov_set
-                else fallback_n_particles
-            )
-
-            for n_part in n_particle_values:
-                scale_limit_cov_triplets.append(
-                    (
-                        int(n_part),
-                        *cov_tuple,
-                    )
+            scale_limit_cov_triplets.append(
+                (
+                    float(scale_limit_cov_set["cov_std_scale"]),
+                    float(scale_limit_cov_set["cov_max_std_xy"]),
+                    float(scale_limit_cov_set["cov_max_std_theta"]),
+                    float(scale_limit_cov_set["min_std_xy"]),
+                    float(scale_limit_cov_set["min_std_theta"]),
                 )
+            )
         except KeyError as exc:
             raise KeyError(
                 f"scale_limit_cov[{i}] is missing required key: {exc}"
@@ -2130,11 +2146,12 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             sigma_meas,
             every_nth_filter,
             every_nth_map,
+            n_part,
             sigma_xy_m,
             sigma_theta_m,
             ctrl_motion,
             ctrl_turn,
-            neff_th,
+            neff_thres,
             proposal_triplet,
             scale_limit_cov_triplet,
             kernel_size,
@@ -2154,11 +2171,12 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             sigma_measurement,
             every_nth_beam_filter,
             every_nth_beam_map,
+            n_particles,
             sigma_xy_motion,
             sigma_theta_motion,
             ctrl_motion_fac,
             ctrl_turn_fac,
-            neff_threshold,
+            neff_thres_ratio,
             proposal_triplets,
             scale_limit_cov_triplets,
             meas_kernel_size,
@@ -2176,7 +2194,8 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
             max_rotation_jump_deg,
         ):
             sigma_xy, sigma_theta, samples_dir = proposal_triplet
-            n_part, cov_std_scale, cov_max_std_xy, cov_max_std_theta, min_std_xy, min_std_theta = scale_limit_cov_triplet
+            cov_std_scale, cov_max_std_xy, cov_max_std_theta, min_std_xy, min_std_theta = scale_limit_cov_triplet
+            neff_th = None if neff_thres is None else float(neff_thres) * n_part
 
             measurement_model_params = BeamRangeFinderMeasModelParams(
                 occ_thresh=beam_occ_th,

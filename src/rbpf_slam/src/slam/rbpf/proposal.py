@@ -835,7 +835,62 @@ class ProposalEstimator:
         
         return new_pose
     
-    
+
+    @staticmethod
+    def shrink_and_limit_cov_v2(
+        cov: np.ndarray,
+        std_scale: float=0.5,
+        max_std_xy: Optional[float]=None,
+        min_std_xy: Optional[float]=None,
+        max_std_theta: Optional[float]=None,
+        min_std_theta: Optional[float]=None
+    ):
+        cov = np.asarray(cov, dtype=float)
+        cov = 0.5 * (cov + cov.T)
+
+        old_var = np.maximum(np.diag(cov), 1e-12)
+        old_std = np.sqrt(old_var)
+
+        new_std = old_std * std_scale
+
+        new_std[0] = np.clip(new_std[0], min_std_xy, max_std_xy)
+        new_std[1] = np.clip(new_std[1], min_std_xy, max_std_xy)
+        new_std[2] = np.clip(new_std[2], min_std_theta, max_std_theta)
+
+        scale = new_std / old_std
+        scale_matrix = np.diag(scale)
+
+        new_cov = scale_matrix @ cov @ scale_matrix
+        new_cov = 0.5 * (new_cov + new_cov.T)
+
+        new_cov += 1e-9 * np.eye(3)
+
+        return new_cov
+
+
+    def sample_from_proposal_limit_2(
+        self,
+        mu: np.ndarray,
+        cov: np.ndarray,
+        std_scale: float=0.5,
+        max_std_xy: Optional[float]=None,
+        min_std_xy: Optional[float]=None,
+        max_std_theta: Optional[float]=None,
+        min_std_theta: Optional[float]=None
+    ):
+        new_cov = self.shrink_and_limit_cov_v2(
+            cov=cov,
+            std_scale=std_scale,
+            max_std_xy=max_std_xy,
+            min_std_xy=min_std_xy,
+            max_std_theta=max_std_theta,
+            min_std_theta=min_std_theta
+        )
+
+        new_pose = np.random.multivariate_normal(mean=mu, cov=new_cov)
+        new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
+
+        return new_pose
 
 
     def estimate_proposal_range_finder(
@@ -885,7 +940,17 @@ class ProposalEstimator:
         # new_p_pose = self.sample_from_proposal(mu, cov)
 
         # Sample from proposal and limit the standard deviation to avoid particle poses far away from proposal mu
-        new_p_pose = self.sample_from_proposal_limit(
+        # new_p_pose = self.sample_from_proposal_limit(
+        #     mu=mu,
+        #     cov=cov,
+        #     std_scale=cov_std_scale,
+        #     max_std_xy=cov_max_std_xy,
+        #     min_std_xy=min_std_xy,
+        #     max_std_theta=cov_max_std_theta,
+        #     min_std_theta=min_std_theta
+        # )
+
+        new_p_pose = self.sample_from_proposal_limit_2(
             mu=mu,
             cov=cov,
             std_scale=cov_std_scale,
@@ -894,6 +959,7 @@ class ProposalEstimator:
             max_std_theta=cov_max_std_theta,
             min_std_theta=min_std_theta
         )
+
 
         self.t_sample_from_prop = time.perf_counter() - t_sample_from_proposal_start
 

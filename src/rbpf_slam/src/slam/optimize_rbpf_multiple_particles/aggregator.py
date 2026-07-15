@@ -82,6 +82,8 @@ class RankedRunConverter:
                 "parameter_hash": run.parameter_hash,
                 "used_meas_model": getattr(params, "used_meas_model", None),
                 "n_steps": n_steps,
+                "mean_step_duration_ms": cls._optional_ms(cls._read_from_summary(run, "mean_step_duration")),
+                "run_duration_s": cls._read_from_summary(run, "run_duration"),
 
                 # Parameters
                 "seed": run.seed,
