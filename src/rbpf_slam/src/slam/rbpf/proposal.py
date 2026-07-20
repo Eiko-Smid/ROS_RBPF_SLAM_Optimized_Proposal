@@ -732,6 +732,13 @@ class ProposalEstimator:
         # Compute mu
         mu = np.sum(samples * weights[:, None], axis=0) / norm
 
+        # TODO: Add this later on again when tuning from beginning
+        # Handle angles correctly
+        # mu[self.IDX_THETA] = np.arctan2(
+        #     np.sum(weights * np.sin(samples[:, self.IDX_THETA])),
+        #     np.sum(weights * np.cos(samples[:, self.IDX_THETA]))
+        # )
+
         # Compute covariance matrix
         # Compute deviation from the mean
         x_minus_mu = samples - mu

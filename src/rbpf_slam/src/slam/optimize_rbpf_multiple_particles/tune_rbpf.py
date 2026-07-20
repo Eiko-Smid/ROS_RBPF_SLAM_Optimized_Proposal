@@ -91,6 +91,28 @@ from .aggregator import RankedRunConverter, ResultAggregator
         - So we also take care of teh orientation of the proposal distribution 
 
         
+    1.10 Same computation as before but this time we used valid angles in mu of optimized proposal
+
+
+    1.11 Delete valid angles verify new candidate from 1.9 on all maps
+    
+        -   Since the valid angle in the proposal mu changed the results we deleted it for the moment
+        -   Candidate's:
+                n_particles = 30
+                cov_std_scale = [0.5, 0.6]
+                neff_thres_ratio = [0.3]
+                cov_max_std_xy = 0.02
+                cov_max_std_theta = np.deg2rad(1.15)
+                min_std_xy = [0.0, 0.001]
+                min_std_theta = [0.0, np.deg2rad(0.03)]
+
+        - This time we added max and min limits for proposal again
+
+
+    1.12 Also validation run but this time without min/max limits for proposal downscaling
+
+
+    1.13 Same as 1.12 but with higher max trans jump
 
 
 '''
@@ -100,7 +122,7 @@ from .aggregator import RankedRunConverter, ResultAggregator
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-SUB_DIR = "proposal_optm_1_9/"
+SUB_DIR = "proposal_optm_1_12/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
@@ -126,8 +148,8 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
 # SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
@@ -183,23 +205,23 @@ class PlaybackDataset:
 #     ),    
 # ]
 
-PLAYBACK_DATA_LIST = [
+# PLAYBACK_DATA_LIST = [
     # Turtle bot map
     # PlaybackDataset(
     #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
     #     playback_suffix="1781885725",
     # ),
     # AWS indoor map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885274",
-    ), 
-    # AWS bookstore map   
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1782917349",
-    )
-]
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885274",
+#     ), 
+#     # AWS bookstore map   
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1782917349",
+#     )
+# ]
 
 # Evaluation data
 # PLAYBACK_DATA_LIST = [
@@ -227,38 +249,38 @@ PLAYBACK_DATA_LIST = [
 
 
 # All maps (Train + eval)
-# PLAYBACK_DATA_LIST = [
-#     # Turtle bot map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1781885725",
-#     ), 
-#     # AWS indoor map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1781885274",
-#     ),
-#     # Turtle bot map unsee area
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1783013274",
-#     ),
-#     # AWS indoor map different path, same area
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1783014916",
-#     ),
-#     # Cafe map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1783013816",
-#     ),
-#     # AWS bookstore map   
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1782917349",
-#     ),
-# ]
+PLAYBACK_DATA_LIST = [
+    # Turtle bot map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885725",
+    ), 
+    # AWS indoor map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885274",
+    ),
+    # Turtle bot map unsee area
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783013274",
+    ),
+    # AWS indoor map different path, same area
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783014916",
+    ),
+    # Cafe map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783013816",
+    ),
+    # AWS bookstore map   
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1782917349",
+    ),
+]
 
 
 
@@ -1900,8 +1922,8 @@ def _grid_axes() -> dict:
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [20, 30],                    # number of particles in the RBPF
-        "neff_thres_ratio": [0.3, 0.5, 0.7],             # neff threshold as ratio of n_particles
+        "n_particles": [30],                    # number of particles in the RBPF
+        "neff_thres_ratio": [0.3],             # neff threshold as ratio of n_particles
 
         # Measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
@@ -1937,7 +1959,7 @@ def _grid_axes() -> dict:
         ],
         
         # Motion model params
-        "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
+        "sigma_xy_motion": [0.12],                  # motion model uncertainty in x and y direction [m]
         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
@@ -1957,22 +1979,29 @@ def _grid_axes() -> dict:
         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
 
         "scale_limit_cov": [
+            # {
+            #     "cov_std_scale": 0.9,
+            #     "cov_max_std_xy": 1.0,
+            #     "cov_max_std_theta": np.deg2rad(10),
+            #     "min_std_xy": 0.0,
+            #     "min_std_theta": np.deg2rad(0.0),
+            # },
+            # {
+            #     "cov_std_scale": 0.8,
+            #     "cov_max_std_xy": 1.0,
+            #     "cov_max_std_theta": np.deg2rad(10),
+            #     "min_std_xy": 0.0,
+            #     "min_std_theta": np.deg2rad(0.0),
+            # },
+            # {
+            #     "cov_std_scale": 0.7,
+            #     "cov_max_std_xy": 1.0,
+            #     "cov_max_std_theta": np.deg2rad(10),
+            #     "min_std_xy": 0.0,
+            #     "min_std_theta": np.deg2rad(0.0),
+            # },
             {
-                "cov_std_scale": 0.9,
-                "cov_max_std_xy": 1.0,
-                "cov_max_std_theta": np.deg2rad(10),
-                "min_std_xy": 0.0,
-                "min_std_theta": np.deg2rad(0.0),
-            },
-            {
-                "cov_std_scale": 0.8,
-                "cov_max_std_xy": 1.0,
-                "cov_max_std_theta": np.deg2rad(10),
-                "min_std_xy": 0.0,
-                "min_std_theta": np.deg2rad(0.0),
-            },
-            {
-                "cov_std_scale": 0.7,
+                "cov_std_scale": 0.5,
                 "cov_max_std_xy": 1.0,
                 "cov_max_std_theta": np.deg2rad(10),
                 "min_std_xy": 0.0,
