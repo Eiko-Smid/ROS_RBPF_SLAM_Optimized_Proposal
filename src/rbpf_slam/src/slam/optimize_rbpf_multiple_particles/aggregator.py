@@ -148,6 +148,17 @@ class RankedRunConverter:
                 "infinite_mean_err": cls._read_from_summary(run, "infinite_mean_err", 0),
                 "best_transf_too_large": cls._read_from_summary(run, "best_transf_too_large", 0),
                 "best_mean_err_too_large": cls._read_from_summary(run, "best_mean_err_too_large", 0),
+                
+                # Particle information
+                # Neff
+                "mean_neff": cls._read_from_summary(run, "mean_neff"),
+                "min_neff": cls._read_from_summary(run, "min_neff"),
+                "mean_neff_ratio": cls._read_from_summary(run, "mean_neff_ratio"),
+                "min_neff_ratio": cls._read_from_summary(run, "min_neff_ratio"),
+            
+                # Resampling
+                "resampling_count": cls._read_from_summary(run, "resampling_count"),
+                "resampling_rate": cls._read_from_summary(run, "resampling_rate"),                
 
                 # Pose errs
                 # trans errs
@@ -399,6 +410,12 @@ class ResultAggregator:
             "best_transf_too_large",
             "best_mean_err_too_large",
 
+            # particle information
+            "mean_neff_ratio",
+            "min_neff_ratio",
+            "resampling_count",
+            "resampling_rate",
+
             # Translation errors
             "mean_trans_err_raw_odom",
             "mean_trans_err_weighted_mean",
@@ -467,6 +484,13 @@ class ResultAggregator:
                 "aggregate_by_dataset_and_param missing required columns: " + ", ".join(missing)
             )
         
+        def _safe_div(numerator_col: str, denominator_col: str) -> pd.Series:
+            numerator = pd.to_numeric(agg_dataset_param_df[numerator_col], errors="coerce")
+            denominator = pd.to_numeric(agg_dataset_param_df[denominator_col], errors="coerce")
+            result = pd.Series(np.nan, index=agg_dataset_param_df.index, dtype=float)
+            valid = denominator.gt(0) & numerator.ge(0)
+            result.loc[valid] = numerator.loc[valid] / denominator.loc[valid]
+            return result
         
         # 2) Build aggregation specification in the desired output order
         # _____________________________________________________________________________________
@@ -506,6 +530,33 @@ class ResultAggregator:
         for col in scan_match_count_cols:
             agg_spec[f"total_{col}"] = (col, "sum")
 
+
+        # Particle information.
+        # Neff
+        agg_spec["mean_neff_ratio"] = (
+            "mean_neff_ratio",
+            "mean",
+        )
+
+        agg_spec["mean_min_neff_ratio"] = (
+            "min_neff_ratio",
+            "mean",
+        )
+
+        agg_spec["worst_min_neff_ratio"] = (
+            "min_neff_ratio",
+            "min",
+        )
+
+        agg_spec["std_mean_neff_ratio"] = (
+            "mean_neff_ratio",
+            "std",
+        )
+
+        # Resampling
+        agg_spec["total_resampling_count"] = ("resampling_count", "sum")
+        
+    
         # Pose error trajectories.
         pose_sources = [
             "raw_odom",
@@ -681,14 +732,7 @@ class ResultAggregator:
         
         # 4) Compute pooled rates where possible
         # _____________________________________________________________________________________
-
-        def _safe_div(numerator_col: str, denominator_col: str) -> pd.Series:
-            numerator = pd.to_numeric(agg_dataset_param_df[numerator_col], errors="coerce")
-            denominator = pd.to_numeric(agg_dataset_param_df[denominator_col], errors="coerce")
-            result = pd.Series(np.nan, index=agg_dataset_param_df.index, dtype=float)
-            valid = denominator.gt(0) & numerator.ge(0)
-            result.loc[valid] = numerator.loc[valid] / denominator.loc[valid]
-            return result
+        
 
         # Best option: pooled count / pooled number of steps.
         agg_dataset_param_df["scan_match_failed_rate"] = _safe_div(
@@ -697,6 +741,10 @@ class ResultAggregator:
         )
         agg_dataset_param_df["scan_match_fallback_failed_rate"] = _safe_div(
             "total_scan_match_fallback_failed_count",
+            "total_n_steps",
+        )
+        agg_dataset_param_df["resampling_rate"] = _safe_div(
+            "total_resampling_count",
             "total_n_steps",
         )
 
@@ -710,6 +758,11 @@ class ResultAggregator:
             df=agg_dataset_param_df,
             col="scan_match_fallback_failed_rate",
             col_after="scan_match_failed_rate",
+        )
+        agg_dataset_param_df = self._place_col_after_col(
+            df=agg_dataset_param_df,
+            col="resampling_rate",
+            col_after="total_resampling_count",
         )
 
         
@@ -772,6 +825,14 @@ class ResultAggregator:
             "total_infinite_mean_err",
             "total_best_transf_too_large",
             "total_best_mean_err_too_large",
+
+            # Particle information
+            "mean_neff_ratio",
+            "mean_min_neff_ratio",
+            "worst_min_neff_ratio",
+            "std_mean_neff_ratio",
+            "total_resampling_count",
+            "resampling_rate",
 
             # Translational pose errors
             "mean_trans_err_raw_odom",
@@ -921,6 +982,34 @@ class ResultAggregator:
         ]
         for col in scan_match_count_cols:
             agg_spec[col] = (col, "sum")
+
+        # Particle information
+        # Neff
+        agg_spec["mean_neff_ratio"] = (
+            "mean_neff_ratio",
+            "mean",
+        )
+
+        agg_spec["mean_min_neff_ratio"] = (
+            "mean_min_neff_ratio",
+            "mean",
+        )
+
+        agg_spec["worst_min_neff_ratio"] = (
+            "worst_min_neff_ratio",
+            "min",
+        )
+
+        agg_spec["std_mean_neff_ratio"] = (
+            "mean_neff_ratio",
+            "std",
+        )
+
+        # Resampling
+        # Counts are summed as diagnostics; rates are aggregated equally over datasets/maps.
+        agg_spec["total_resampling_count"] = ("total_resampling_count", "sum")
+        agg_spec["mean_resampling_rate"] = ("resampling_rate", "mean")
+        agg_spec["worst_resampling_rate"] = ("resampling_rate", "max")
 
         # Pose error trajectories
         pose_sources = [

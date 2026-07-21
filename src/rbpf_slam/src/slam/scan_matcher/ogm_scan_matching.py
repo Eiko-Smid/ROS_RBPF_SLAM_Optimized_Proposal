@@ -1170,10 +1170,64 @@ class OGM:
         )
 
 
+    def init_map_from_map_with_origin(
+        self,
+        log_odds_map: np.ndarray,
+        grid_resolution: float,
+        origin_x: float,
+        origin_y: float,
+    ):
+        self.log_odds_map = np.array(log_odds_map, copy=True)
+        self.grid_resolution_m = float(grid_resolution)
+
+        self.number_of_cells_y, self.number_of_cells_x = self.log_odds_map.shape
+
+        self.map_width_m = self.number_of_cells_x * self.grid_resolution_m
+        self.map_height_m = self.number_of_cells_y * self.grid_resolution_m
+
+        self.shift_x = -float(origin_x)
+        self.shift_y = -float(origin_y)
+
+        self.left_map_border_m = origin_x
+        self.bottom_map_border_m = origin_y
+        self.right_map_border_m = origin_x + self.map_width_m
+        self.top_map_border_m = origin_y + self.map_height_m
+
+        self.update_log_odds_message()
+
+        rospy.loginfo("The map was successfully initialized from the given map.")
+        rospy.loginfo(
+            f"Map width= {self.map_width_m}, Map height= {self.map_height_m},"
+            f" Number of cells in x direction= {self.number_of_cells_x},"
+            f" Number of cells in y direction= {self.number_of_cells_y}"
+            f" Origin x= {origin_x}, Origin y= {origin_y}"
+        )
+
+
     def return_log_odds_map(self) -> np.ndarray:
         '''Returns the grid map in log odds form.'''
         return self.log_odds_map
 
+
+    def return_log_odds_map_meta(self):
+        '''
+        Returns the log odds map metadata as a dictionary.
+        '''
+        log_odds_map_meta= {
+            "map_width_m": self.map_width_m,
+            "map_height_m": self.map_height_m,
+            "grid_resolution_m": self.grid_resolution_m,
+            "number_of_cells_x": self.number_of_cells_x,
+            "number_of_cells_y": self.number_of_cells_y,
+            "left_map_border_m": self.left_map_border_m,
+            "top_map_border_m": self.top_map_border_m,
+            "right_map_border_m": self.right_map_border_m,
+            "bottom_map_border_m": self.bottom_map_border_m,
+            "shift_x": self.shift_x,
+            "shift_y": self.shift_y
+        }
+        return log_odds_map_meta
+    
     
     def return_log_odds_map_object(self) -> LogOddsMap:
         '''
@@ -1187,6 +1241,21 @@ class OGM:
 
     
     def extend_map(self, direction: str, distance: float) -> Tuple[int, bool]:
+        '''
+        Extends the map in the specified direction by the given distance.
+
+        Parameters
+        ----------
+        direction: str
+            The direction in which to extend the map. Can be 'l' (left), 'r' (right), 'b' (bottom), or 't' (top).
+        distance: float
+            The distance by which to extend the map in meters.
+        
+        Returns
+        -------
+        Tuple[int, bool]
+            A tuple containing the number of cells the map was extended by and a boolean indicating if the extension was successful.        
+        '''
         # Calculate number of cells to extend
         number_of_cells= ceil(distance / self.grid_resolution_m)     
         was_extension_successfull= True   
@@ -1255,6 +1324,9 @@ class OGM:
 
 
     def map_extension_if_necessary(self, pose: Tuple[float, float, float]) -> bool:
+        '''
+        Checks if the map needs to be extended based on the current robot pose.
+        '''
         x, y, theta= pose        
         extension_needed= False
         # Check if map needed to be extended on the left side 
@@ -1285,6 +1357,10 @@ class OGM:
 
 
     def update_log_odds_message(self) -> None:
+        '''
+        Updates the log Odds map message with the current map data and metadata. This is needed to convert the array to
+        ROS message format at any time! 
+        '''
         self.log_odds_map_msg.info.width= self.number_of_cells_x
         self.log_odds_map_msg.info.height= self.number_of_cells_y
         # origin_x, origin_y= self.transform_grid_cell_to_point((0, 0))

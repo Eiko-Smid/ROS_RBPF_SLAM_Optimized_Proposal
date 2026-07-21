@@ -79,6 +79,8 @@ class StepResult:
     # Closest particle trajectory evaluation
     trans_errs_before_resampling: Optional[np.ndarray] = None
     rot_errs_before_resampling: Optional[np.ndarray] = None
+
+    closest_particle_pose_before_resampling: Optional[np.ndarray] = None
     trans_err_closest_p_before_resampling: Optional[float] = None
     rot_err_closest_p_before_resampling: Optional[float] = None
     idx_closest_p_before_resampling: Optional[int] = None
@@ -88,6 +90,7 @@ class StepResult:
     gap_trans_best_to_min_before_resamp: Optional[float] = None
     gap_rot_best_to_min_before_resamp: Optional[float] = None
 
+    closest_particle_pose_after_resampling: Optional[np.ndarray] = None
     trans_errs_after_resampling: Optional[np.ndarray] = None
     rot_errs_after_resampling: Optional[np.ndarray] = None
     trans_err_closest_p_after_resampling: Optional[float] = None
@@ -771,6 +774,7 @@ class RBPFEValMultParticles:
 
         # Find closest particle before resampling
         step_res.idx_closest_p_before_resampling = np.argmin(trans_errors_before_resampling)
+        step_res.closest_particle_pose_before_resampling = step_res.particle_poses_before_resampling[step_res.idx_closest_p_before_resampling]
         step_res.trans_err_closest_p_before_resampling = trans_errors_before_resampling[step_res.idx_closest_p_before_resampling]
         step_res.rot_err_closest_p_before_resampling = rot_errs_before_resampling[step_res.idx_closest_p_before_resampling]
         step_res.gap_trans_best_p_to_closest_before_resamp = (
@@ -794,6 +798,7 @@ class RBPFEValMultParticles:
 
         # Find closest particle after resampling
         step_res.idx_closest_p_after_resampling = np.argmin(trans_errors_after_resampling)
+        step_res.closest_particle_pose_after_resampling = step_res.particle_poses[step_res.idx_closest_p_after_resampling]
         step_res.trans_err_closest_p_after_resampling = trans_errors_after_resampling[step_res.idx_closest_p_after_resampling]
         step_res.rot_err_closest_p_after_resampling = rot_errs_after_resampling[step_res.idx_closest_p_after_resampling]
         step_res.trans_closest_p_after_before_resamp = (
@@ -848,7 +853,7 @@ class RBPFEValMultParticles:
         particle_idx: int,
         particle_inherit_indices: List[Optional[np.ndarray]],
         particle_poses: List[np.ndarray],
-    ) -> Tuple[np.ndarray]:
+    ) -> List[np.ndarray]:
         """
         Restores the trajectory of the given particle starting at the end of the given poses list and propagating back to the 
         first poses.
@@ -1998,6 +2003,9 @@ class RBPFEValMultParticles:
 
             # Final MAP particle ancestral trajectory
             # ________________________________________________________________________________________
+            "map_traj": traj_particle_map,
+            "trans_errs_map_traj": trans_errs_map_traj,
+            "rot_errs_map_traj": rot_errs_map_traj,
             "mean_trans_err_map_traj": (
                 float(np.mean(trans_errs_map_traj))
                 if has_map_trajectory_errors else None
@@ -2198,72 +2206,6 @@ def test():
     arr_flaot = np.asarray(arr, dtype=float)
     print(f"Arr before conversion to float: {arr}")
     print(f"Arr after conversion to float: {arr_flaot}")
-
-
-
-def test_restore_trajectory():
-    # Define test data
-    # Particle weights 
-    p_weights = np.array([
-        [3.0, 1.0, 2.0],
-        [3.0, 1.0, 2.0],
-        [3.0, 1.0, 2.0],
-        [2.0, 3.0, 1.0],
-        [2.0, 3.0, 1.0],
-        [2.0, 3.0, 1.0],
-    ])
-
-    particle_inherit_indices = [
-        None, 
-        None, 
-        np.array([0, 0, 2]),
-        None, 
-        None,
-        np.array([0, 1, 1]),
-    ]
-
-    trans_errs_before_resampling_list = [
-        np.array([0.1, 0.3, 0.2]),
-        np.array([0.1, 0.3, 0.2]),
-        np.array([0.1, 0.3, 0.2]),
-        np.array([0.2, 0.1, 0.3]),
-        np.array([0.2, 0.1, 0.3]),
-        np.array([0.2, 0.1, 0.3]),
-    ]
-
-    rot_errs_before_resampling_list = [
-        np.array([0.1, 0.3, 0.2]),
-        np.array([0.1, 0.3, 0.2]),
-        np.array([0.1, 0.3, 0.2]),
-        np.array([0.2, 0.1, 0.3]),
-        np.array([0.2, 0.1, 0.3]),
-        np.array([0.2, 0.1, 0.3]),
-    ]
-
-    # Estimate p with highest weight at the end
-    best_p_idx = np.argmax(p_weights[-1])
-    print(f"Best particle idx in last iteration is: {best_p_idx}")
-
-    # Restore map trajectory errors
-    trans_errs_traj, rot_errs_traj = RBPFEValMultParticles._restore_map_trajectory_errors(
-        best_particle_idx=best_p_idx,
-        particle_inherit_indices=particle_inherit_indices,
-        trans_errs_before_resampling_list=trans_errs_before_resampling_list,
-        rot_errs_before_resampling_list=rot_errs_before_resampling_list,
-    )
-
-
-    print(f"Translational errors of best particle trajectory:\n{trans_errs_traj}")
-    print(f"Rotational errors of best particle trajectory:\n{rot_errs_traj}")
-    
-
-def test_summarize_run():
-    step_results = None
-    evaluator = RBPFEValMultParticles()
-    summary = evaluator.summarize_run(step_results)
-    print("Summary of the run:")
-
-
 
 
 

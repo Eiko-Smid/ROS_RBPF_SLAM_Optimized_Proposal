@@ -45,7 +45,6 @@ class RankedRun:
 
 
 
-
 def _init_rbpf_worker(playback_data: PlaybackData) -> None:
     """
     Store playback data once per worker process.
