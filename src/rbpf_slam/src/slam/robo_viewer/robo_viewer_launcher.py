@@ -5,7 +5,7 @@
 # debugpy.wait_for_client()
 
 import os
-from typing import Tuple, Iterable
+from typing import Dict, List, Tuple
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -34,7 +34,7 @@ class RoboViewerLauncher:
 
     def __init__(
         self,
-        trajectory_columns: Tuple[str, str, str],
+        trajectory_columns: List[Tuple[str, Tuple[str, ...]]],
         map_filename: str = "log_odds_map.npy",
         metadata_filename: str = "log_odds_map_metadata.json",
         start_directory: str = "",
@@ -45,15 +45,22 @@ class RoboViewerLauncher:
         Parameters
         ----------
         trajectory_columns:
-            Names of the CSV columns containing x, y and theta.
+            List containing each trajectory name and its CSV columns.
+            The first three columns contain x, y and theta. Additional
+            trajectory data, such as the best-particle weight, is retained.
 
             Example:
 
-                (
-                    "map_traj_x",
-                    "map_traj_y",
-                    "map_traj_theta",
-                )
+                [
+                    (
+                        "map_traj",
+                        (
+                            "map_traj_x",
+                            "map_traj_y",
+                            "map_traj_theta",
+                        ),
+                    ),
+                ]
 
         map_filename:
             Filename of the stored NumPy log-odds map.
@@ -253,7 +260,9 @@ class RoboViewerLauncher:
         Returns
         -------
         trajectory:
-            NumPy array with shape (N, 3), containing x, y and theta.
+            NumPy array with shape (N, M), where the first three columns
+            contain x, y and theta and optional remaining columns contain
+            additional trajectory data.
         '''
         # Extract playback id, hash and seed from filename
         map_directory = self.map_directory.get()
@@ -319,9 +328,10 @@ class RoboViewerLauncher:
             list(des_cols),
         ].to_numpy(dtype=np.float64)
 
-        if trajectory.ndim != 2 or trajectory.shape[1] != 3:
+        if trajectory.ndim != 2 or trajectory.shape[1] < 3:
             raise ValueError(
-                "Loaded trajectory must have shape (N, 3)."
+                "Loaded trajectory must have at least three columns: "
+                "[x, y, theta]."
             )
 
         if trajectory.shape[0] == 0:
@@ -343,6 +353,18 @@ class RoboViewerLauncher:
         return trajectory
 
 
+    def _load_trajectories(self) -> Dict[str, np.ndarray]:
+        '''Load all configured trajectories from the selected CSV file.'''
+        trajectories = {}
+
+        for trajectory_name, des_cols in self.trajectory_columns:
+            trajectories[trajectory_name] = self._load_trajectory(
+                des_cols=des_cols,
+            )
+
+        return trajectories
+
+
     def _open_robo_viewer(self) -> None:
         '''
         Load the selected files and start RoboViewer.
@@ -351,7 +373,7 @@ class RoboViewerLauncher:
         '''
         try:
             ogm, map_metadata = self._load_map()
-            trajectory = self._load_trajectory(des_cols=self.trajectory_columns)
+            trajectories = self._load_trajectories()
 
             origin = map_metadata["origin"]
 
@@ -371,9 +393,11 @@ class RoboViewerLauncher:
 
         viewer = RoboViewer(
             ogm=ogm,
-            trajectory=trajectory,
+            trajectories=trajectories,
             resolution=resolution,
             origin_xy=(origin_x, origin_y),
+            # occ_thres=5.0,
+            # free_thres=-5.0,
             heading_vector_length=1.0,
         )
 
@@ -394,11 +418,49 @@ def main() -> None:
     '''
     start_directory = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
     
-    trajectory_columns = (
-        "map_traj_x",
-        "map_traj_y",
-        "map_traj_theta",
-    )
+    trajectory_columns = [
+        (
+            "true_pose_traj",
+            (
+                "true_pose_x",
+                "true_pose_y",
+                "true_pose_theta",
+            ),
+        ),
+        (
+            "raw_odom_traj",
+            (
+                "raw_odom_pose_x",
+                "raw_odom_pose_y",
+                "raw_odom_pose_theta",
+            ),
+        ),
+        (
+            "weighted_mean_traj",
+            (
+                "weighted_mean_pose_x",
+                "weighted_mean_pose_y",
+                "weighted_mean_pose_theta",
+            ),
+        ),
+        (
+            "best_particle_traj",
+            (
+                "best_particle_pose_x",
+                "best_particle_pose_y",
+                "best_particle_pose_theta",
+                "best_particle_weight",
+            ),
+        ),
+        (
+            "map_traj",
+            (
+                "map_traj_x",
+                "map_traj_y",
+                "map_traj_theta",
+            ),
+        ),
+    ]
 
 
     robot_view_launcher = RoboViewerLauncher(

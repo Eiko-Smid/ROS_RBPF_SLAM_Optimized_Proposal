@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Interactive test viewer for a fixed occupancy grid map and a growing
-2D robot trajectory.
+Interactive test viewer for a fixed occupancy grid map and growing
+2D robot trajectories.
 
-The currently active pose is displayed together with a heading arrow.
+The currently active poses are displayed together with heading arrows.
 
 Compatible with Python 3.8.
 """
 
 import os
-from typing import Tuple
+from functools import partial
+from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -79,7 +80,7 @@ def create_test_trajectory() -> np.ndarray:
 
 
 class RoboViewer:
-    """Interactive viewer for one fixed map and one trajectory."""
+    """Interactive viewer for one fixed map and multiple trajectories."""
     BLACK = 0
     GRAY = 1
     WHITE = 2
@@ -87,10 +88,10 @@ class RoboViewer:
     def __init__(
         self,
         ogm: np.ndarray,
-        trajectory: np.ndarray,
+        trajectories: Dict[str, np.ndarray],
         resolution: float = 0.5,
         origin_xy: Tuple[float, float] = (0.0, 0.0),
-        occ_thresh: float = 1.4,
+        occ_thres: float = 1.4,
         free_thres: float = -1.4,
         heading_vector_length: float = 1.0,
         trajectory_marker_size: float = 6.0,
@@ -104,13 +105,30 @@ class RoboViewer:
         if ogm.ndim != 2:
             raise ValueError("occupancy_grid must be a 2D array.")
 
-        if trajectory.ndim != 2 or trajectory.shape[1] != 3:
-            raise ValueError(
-                "trajectory must have shape (N, 3): [x, y, theta]."
-            )
+        if not trajectories:
+            raise ValueError("trajectories must contain at least one trajectory.")
 
-        if trajectory.shape[0] < 1:
-            raise ValueError("trajectory must contain at least one pose.")
+        trajectory_lengths = set()
+
+        for trajectory_name, trajectory in trajectories.items():
+            if trajectory.ndim != 2 or trajectory.shape[1] < 3:
+                raise ValueError(
+                    "Trajectory '{}' must have at least three columns: "
+                    "[x, y, theta].".format(trajectory_name)
+                )
+
+            if trajectory.shape[0] < 1:
+                raise ValueError(
+                    "Trajectory '{}' must contain at least one pose."
+                    .format(trajectory_name)
+                )
+
+            trajectory_lengths.add(trajectory.shape[0])
+
+        if len(trajectory_lengths) != 1:
+            raise ValueError(
+                "All trajectories must contain the same number of poses."
+            )
 
         if resolution <= 0.0:
             raise ValueError("resolution must be positive.")
@@ -137,11 +155,11 @@ class RoboViewer:
         # Store inputs
         # map and info
         self.ogm = ogm
-        self.trajectory = trajectory
+        self.trajectories = trajectories
         self.resolution = float(resolution)
         self.origin_x = float(origin_xy[0])
         self.origin_y = float(origin_xy[1])
-        self.occ_thres = occ_thresh
+        self.occ_thres = occ_thres
         self.free_thres = free_thres
 
         # Visual indicators
@@ -173,12 +191,12 @@ class RoboViewer:
             self.base_heading_vector_length
         )
         
-        self.n_steps = trajectory.shape[0]
+        self.n_steps = next(iter(trajectory_lengths))
         self.current_step = 1
 
         # Define figure and axes
         self.figure, self.ax = plt.subplots(figsize=(10, 7))
-        self.figure.subplots_adjust(bottom=0.24, right=0.82)
+        self.figure.subplots_adjust(bottom=0.24, right=0.79)
 
         # Process and create visual elements
         self._create_map()
@@ -233,44 +251,60 @@ class RoboViewer:
         self.ax.set_aspect("equal", adjustable="box")
         self.ax.set_xlabel("x position [m]")
         self.ax.set_ylabel("y position [m]")
-        self.ax.grid(False)
+        self.ax.grid(True)
 
 
     def _create_trajectory_artists(self) -> None:
-        """Create the trajectory, current-pose marker and heading arrow."""
-        self.trajectory_line, = self.ax.plot(
-            [],
-            [],
-            linestyle=":",
-            marker="o",
-            linewidth=self.base_trajectory_line_width,
-            markersize=self.base_trajectory_marker_size,
-            label="Trajectory",
-            zorder=3,
-        )
+        """Create trajectory, current-pose and heading artists."""
+        self.trajectory_lines = {}
+        self.current_pose_markers = {}
+        self.heading_arrows = {}
 
-        self.current_pose_marker, = self.ax.plot(
-            [],
-            [],
-            linestyle="None",
-            marker="o",
-            markersize=self.base_current_pose_marker_size,
-            label="Current pose",
-            zorder=5,
-        )
+        for trajectory_name in self.trajectories:
+            trajectory_line, = self.ax.plot(
+                [],
+                [],
+                linestyle=":",
+                marker="o",
+                linewidth=self.base_trajectory_line_width,
+                markersize=self.base_trajectory_marker_size,
+                label=trajectory_name,
+                zorder=3,
+            )
 
-        self.heading_arrow = FancyArrowPatch(
-            posA=(0.0, 0.0),
-            posB=(1.0, 0.0),
-            arrowstyle="-|>",
-            mutation_scale=self.base_heading_head_size,
-            linewidth=self.base_heading_line_width,
-            label="Current heading",
-            zorder=6,
-        )
+            color = trajectory_line.get_color()
 
-        self.ax.add_patch(self.heading_arrow)
-        self.ax.legend(loc="upper left")
+            current_pose_marker, = self.ax.plot(
+                [],
+                [],
+                linestyle="None",
+                marker="o",
+                markersize=self.base_current_pose_marker_size,
+                color=color,
+                zorder=5,
+            )
+
+            heading_arrow = FancyArrowPatch(
+                posA=(0.0, 0.0),
+                posB=(1.0, 0.0),
+                arrowstyle="-|>",
+                mutation_scale=self.base_heading_head_size,
+                linewidth=self.base_heading_line_width,
+                color=color,
+                zorder=6,
+            )
+
+            self.ax.add_patch(heading_arrow)
+
+            self.trajectory_lines[trajectory_name] = trajectory_line
+            self.current_pose_markers[trajectory_name] = current_pose_marker
+            self.heading_arrows[trajectory_name] = heading_arrow
+
+        self.ax.legend(
+            loc="upper left",
+            bbox_to_anchor=(1.02, 0.42),
+            borderaxespad=0.0,
+        )
 
 
     def _create_slider(self) -> None:
@@ -323,6 +357,27 @@ class RoboViewer:
         self.previous_button.on_clicked(self._show_previous_step)
         self.next_button.on_clicked(self._show_next_step)
 
+        self.trajectory_toggle_buttons = {}
+
+        for index, trajectory_name in enumerate(self.trajectories):
+            toggle_ax = self.figure.add_axes(
+                [0.81, 0.82 - index * 0.07, 0.18, 0.055]
+            )
+            toggle_button = Button(
+                toggle_ax,
+                "{}: ON".format(trajectory_name),
+            )
+            toggle_button.on_clicked(
+                partial(
+                    self._toggle_trajectory,
+                    trajectory_name=trajectory_name,
+                )
+            )
+
+            self.trajectory_toggle_buttons[
+                trajectory_name
+            ] = toggle_button
+
 
     def _connect_keyboard_controls(self) -> None:
         self.figure.canvas.mpl_connect(
@@ -340,31 +395,34 @@ class RoboViewer:
         scale_value: float,
     ) -> None:
         """
-        Scale trajectory dots, lines, current-pose marker and heading arrow.
+        Scale trajectory dots, lines, current-pose markers and heading arrows.
         """
         scale = float(scale_value)
         self.visual_scale = scale
 
         # Trajectory dots and connecting line.
-        self.trajectory_line.set_markersize(
-            self.base_trajectory_marker_size * scale
-        )
-        self.trajectory_line.set_linewidth(
-            self.base_trajectory_line_width * scale
-        )
+        for trajectory_line in self.trajectory_lines.values():
+            trajectory_line.set_markersize(
+                self.base_trajectory_marker_size * scale
+            )
+            trajectory_line.set_linewidth(
+                self.base_trajectory_line_width * scale
+            )
 
-        # Current active pose.
-        self.current_pose_marker.set_markersize(
-            self.base_current_pose_marker_size * scale
-        )
+        # Current active poses.
+        for current_pose_marker in self.current_pose_markers.values():
+            current_pose_marker.set_markersize(
+                self.base_current_pose_marker_size * scale
+            )
 
         # Heading-vector appearance.
-        self.heading_arrow.set_linewidth(
-            self.base_heading_line_width * scale
-        )
-        self.heading_arrow.set_mutation_scale(
-            self.base_heading_head_size * scale
-        )
+        for heading_arrow in self.heading_arrows.values():
+            heading_arrow.set_linewidth(
+                self.base_heading_line_width * scale
+            )
+            heading_arrow.set_mutation_scale(
+                self.base_heading_head_size * scale
+            )
 
         # Heading-vector physical length.
         self.heading_vector_length = (
@@ -373,6 +431,30 @@ class RoboViewer:
 
         # Recompute the heading-vector endpoint for the active pose.
         self.update_display(self.current_step)
+
+
+    def _toggle_trajectory(
+        self,
+        _event,
+        trajectory_name: str,
+    ) -> None:
+        '''Show or hide one trajectory and its active-pose artists.'''
+        is_visible = not self.trajectory_lines[
+            trajectory_name
+        ].get_visible()
+
+        self.trajectory_lines[trajectory_name].set_visible(is_visible)
+        self.current_pose_markers[trajectory_name].set_visible(is_visible)
+        self.heading_arrows[trajectory_name].set_visible(is_visible)
+
+        state = "ON" if is_visible else "OFF"
+        self.trajectory_toggle_buttons[
+            trajectory_name
+        ].label.set_text(
+            "{}: {}".format(trajectory_name, state)
+        )
+
+        self.figure.canvas.draw_idle()
 
 
     def _show_previous_step(self, _event) -> None:
@@ -400,49 +482,61 @@ class RoboViewer:
         """
         Display all poses from step one through the selected step.
 
-        The heading arrow is shown only for the active/current pose.
+        Heading arrows are shown only for the active/current poses.
         """
         step_number = int(np.clip(step_number, 1, self.n_steps))
         self.current_step = step_number
 
-        visible_poses = self.trajectory[:step_number]
-        current_pose = visible_poses[-1]
+        current_thetas = {}
 
-        self.trajectory_line.set_data(
-            visible_poses[:, 0],
-            visible_poses[:, 1],
-        )
+        for trajectory_name, trajectory in self.trajectories.items():
+            visible_poses = trajectory[:step_number, :3]
+            current_pose = visible_poses[-1]
 
-        current_x = float(current_pose[0])
-        current_y = float(current_pose[1])
-        current_theta = float(current_pose[2])
+            self.trajectory_lines[trajectory_name].set_data(
+                visible_poses[:, 0],
+                visible_poses[:, 1],
+            )
 
-        self.current_pose_marker.set_data(
-            [current_x],
-            [current_y],
-        )
+            current_x = float(current_pose[0])
+            current_y = float(current_pose[1])
+            current_theta = float(current_pose[2])
+            current_thetas[trajectory_name] = current_theta
 
-        # Convert pose heading theta into a 2D vector.
-        heading_end_x = (
-            current_x
-            + self.heading_vector_length * np.cos(current_theta)
-        )
-        heading_end_y = (
-            current_y
-            + self.heading_vector_length * np.sin(current_theta)
-        )
+            self.current_pose_markers[trajectory_name].set_data(
+                [current_x],
+                [current_y],
+            )
 
-        self.heading_arrow.set_positions(
-            (current_x, current_y),
-            (heading_end_x, heading_end_y),
+            # Convert pose heading theta into a 2D vector.
+            heading_end_x = (
+                current_x
+                + self.heading_vector_length * np.cos(current_theta)
+            )
+            heading_end_y = (
+                current_y
+                + self.heading_vector_length * np.sin(current_theta)
+            )
+
+            self.heading_arrows[trajectory_name].set_positions(
+                (current_x, current_y),
+                (heading_end_x, heading_end_y),
+            )
+
+        title_trajectory = (
+            "map_traj"
+            if "map_traj" in current_thetas
+            else next(iter(current_thetas))
         )
+        title_theta = current_thetas[title_trajectory]
 
         self.ax.set_title(
-            "Constant final occupancy grid with trajectory "
-            "through step {}/{} | theta = {:.3f} deg".format(
+            "Constant final occupancy grid with trajectories "
+            "through step {}/{} | {} theta = {:.3f} deg".format(
                 step_number,
                 self.n_steps,
-                np.rad2deg(current_theta),
+                title_trajectory,
+                np.rad2deg(title_theta),
             )
         )
 
@@ -460,7 +554,7 @@ def test_robo_viewer_test_data():
 
     viewer = RoboViewer(
         ogm=occupancy_grid,
-        trajectory=trajectory,
+        trajectories={"test_trajectory": trajectory},
         resolution=0.5,
         origin_xy=(0.0, 0.0),
         heading_vector_length=1.0,
@@ -499,7 +593,7 @@ def test_robo_viewer_actual_data():
 
     robo_viewer = RoboViewer(
         ogm=map,
-        trajectory=create_test_trajectory(),
+        trajectories={"test_trajectory": create_test_trajectory()},
         resolution=gird_res,
         origin_xy=(origin_x, origin_y),
         heading_vector_length=1.0

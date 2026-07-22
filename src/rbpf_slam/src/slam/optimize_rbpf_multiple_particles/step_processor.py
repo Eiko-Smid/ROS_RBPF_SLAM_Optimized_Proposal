@@ -15,6 +15,11 @@ THETA = 2
 
 
 class StepProcessor:
+    '''
+    Processes the step results of multiple ranked runs and returns a pandas DataFrame with all the relevant information.
+    Ensure correct handling of poses and angles, and validate the map trajectory and errors. Depends on the summary of 
+    each run and on the step results. 
+    '''
 
     @staticmethod
     def _read_from_summary(run: RankedRun, key: str, default=None):
@@ -108,6 +113,13 @@ class StepProcessor:
         map_traj: Union[np.ndarray, Sequence[Sequence[float]], None],
         step_results: Sequence[StepResult]
     ):
+        '''
+        Returns true if the given trajectory is valid, else false. 
+        A trajectory is valid if:
+        - It is not None
+        - It is a 2D array with shape (N, 3)
+        - The number of steps in step_results matches the number of rows in the trajectory
+        '''
         map_traj = np.asarray(map_traj) if map_traj is not None else None
         
         map_traj_is_valid = (
