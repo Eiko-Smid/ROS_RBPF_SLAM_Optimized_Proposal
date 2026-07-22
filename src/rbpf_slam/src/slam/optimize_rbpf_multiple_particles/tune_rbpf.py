@@ -127,20 +127,20 @@ from .step_processor import StepProcessor
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-SUB_DIR = "proposal_optm_1_13/"
+SUB_DIR = "proposal_optm_1_14/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
+RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
 # Test storage
-# SUB_DIR = "proposal_optm_test_4_map_storage/"
+# SUB_DIR = "proposal_optm_test_5_part_storage/"
 # OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 # STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 # PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-# MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
+# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -1488,7 +1488,7 @@ def rbpf_tuning_pipeline_multiprocessing():
             use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
             max_workers=NUMBER_OF_WORKERS,
             keep_step_results=KEEP_STEP_RESULTS,
-            map_storage_dir=MAP_STORAGE_DIR if STORE_MAP_DATA else None,
+            run_storage_dir=RUN_STORAGE_DIR if STORE_MAP_DATA else None,
             store_map_data=STORE_MAP_DATA,
         )
 

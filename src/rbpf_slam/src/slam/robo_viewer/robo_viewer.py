@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Interactive test viewer for a fixed occupancy grid map and growing
-2D robot trajectories.
+Interactive test viewer for a fixed occupancy grid map, growing 2D robot
+trajectories and the particle poses at the active step.
 
 The currently active poses are displayed together with heading arrows.
 
@@ -80,7 +80,7 @@ def create_test_trajectory() -> np.ndarray:
 
 
 class RoboViewer:
-    """Interactive viewer for one fixed map and multiple trajectories."""
+    """Interactive viewer for a map, trajectories and particle poses."""
     BLACK = 0
     GRAY = 1
     WHITE = 2
@@ -89,6 +89,7 @@ class RoboViewer:
         self,
         ogm: np.ndarray,
         trajectories: Dict[str, np.ndarray],
+        particle_poses: np.ndarray,
         resolution: float = 0.5,
         origin_xy: Tuple[float, float] = (0.0, 0.0),
         occ_thres: float = 1.4,
@@ -130,6 +131,30 @@ class RoboViewer:
                 "All trajectories must contain the same number of poses."
             )
 
+        n_steps = next(iter(trajectory_lengths))
+
+        if particle_poses.ndim != 3 or particle_poses.shape[2] != 3:
+            raise ValueError(
+                "particle_poses must have shape "
+                "(steps, particles, 3): [x, y, theta]."
+            )
+
+        if particle_poses.shape[0] != n_steps:
+            raise ValueError(
+                "Particle poses and trajectories must contain the same "
+                "number of steps."
+            )
+
+        if particle_poses.shape[1] < 1:
+            raise ValueError(
+                "particle_poses must contain at least one particle per step."
+            )
+
+        if not np.all(np.isfinite(particle_poses)):
+            raise ValueError(
+                "particle_poses must contain only finite values."
+            )
+
         if resolution <= 0.0:
             raise ValueError("resolution must be positive.")
         
@@ -156,6 +181,7 @@ class RoboViewer:
         # map and info
         self.ogm = ogm
         self.trajectories = trajectories
+        self.particle_poses = particle_poses
         self.resolution = float(resolution)
         self.origin_x = float(origin_xy[0])
         self.origin_y = float(origin_xy[1])
@@ -183,6 +209,10 @@ class RoboViewer:
         self.base_heading_vector_length = float(
             heading_vector_length
         )
+        self.base_particle_heading_vector_length = (
+            0.5 * self.base_heading_vector_length
+        )
+        self.base_particle_arrow_width = 0.004
 
         # Init visual scale
         self.visual_scale = 1.0
@@ -190,8 +220,12 @@ class RoboViewer:
         self.heading_vector_length = (
             self.base_heading_vector_length
         )
+        self.particle_heading_vector_length = (
+            self.base_particle_heading_vector_length
+        )
+        self.particle_arrow_width = self.base_particle_arrow_width
         
-        self.n_steps = next(iter(trajectory_lengths))
+        self.n_steps = n_steps
         self.current_step = 1
 
         # Define figure and axes
@@ -201,6 +235,7 @@ class RoboViewer:
         # Process and create visual elements
         self._create_map()
         self._create_trajectory_artists()
+        self._create_particle_artist()
         self._create_slider()
         self._create_visual_scale_slider()
         self._create_buttons()
@@ -300,9 +335,29 @@ class RoboViewer:
             self.current_pose_markers[trajectory_name] = current_pose_marker
             self.heading_arrows[trajectory_name] = heading_arrow
 
+    def _create_particle_artist(self) -> None:
+        '''Create the particle-pose arrows for one active step.'''
+        initial_particle_poses = self.particle_poses[0]
+        initial_thetas = initial_particle_poses[:, 2]
+
+        self.particle_artist = self.ax.quiver(
+            initial_particle_poses[:, 0],
+            initial_particle_poses[:, 1],
+            self.particle_heading_vector_length * np.cos(initial_thetas),
+            self.particle_heading_vector_length * np.sin(initial_thetas),
+            angles="xy",
+            scale_units="xy",
+            scale=1.0,
+            width=self.particle_arrow_width,
+            color="cyan",
+            alpha=0.8,
+            label="particles",
+            zorder=7,
+        )
+
         self.ax.legend(
             loc="upper left",
-            bbox_to_anchor=(1.02, 0.42),
+            bbox_to_anchor=(1.02, 0.29),
             borderaxespad=0.0,
         )
 
@@ -324,7 +379,7 @@ class RoboViewer:
 
     def _create_visual_scale_slider(self) -> None:
         """
-        Create a slider that scales all trajectory visualization elements.
+        Create a slider that scales trajectory and particle visualization.
 
         A value of 1.0 represents the sizes given to the constructor.
         """
@@ -334,7 +389,7 @@ class RoboViewer:
 
         self.visual_scale_slider = Slider(
             ax=scale_slider_ax,
-            label="Trajectory scale",
+            label="Pose scale",
             valmin=0.25,
             valmax=3.0,
             valinit=1.0,
@@ -378,6 +433,15 @@ class RoboViewer:
                 trajectory_name
             ] = toggle_button
 
+        particle_toggle_ax = self.figure.add_axes(
+            [0.81, 0.82 - len(self.trajectories) * 0.07, 0.18, 0.055]
+        )
+        self.particle_toggle_button = Button(
+            particle_toggle_ax,
+            "particles: ON",
+        )
+        self.particle_toggle_button.on_clicked(self._toggle_particles)
+
 
     def _connect_keyboard_controls(self) -> None:
         self.figure.canvas.mpl_connect(
@@ -395,7 +459,7 @@ class RoboViewer:
         scale_value: float,
     ) -> None:
         """
-        Scale trajectory dots, lines, current-pose markers and heading arrows.
+        Scale trajectory and particle pose visualization elements.
         """
         scale = float(scale_value)
         self.visual_scale = scale
@@ -429,7 +493,16 @@ class RoboViewer:
             self.base_heading_vector_length * scale
         )
 
-        # Recompute the heading-vector endpoint for the active pose.
+        # Particle-arrow appearance and physical length.
+        self.particle_heading_vector_length = (
+            self.base_particle_heading_vector_length * scale
+        )
+        self.particle_arrow_width = (
+            self.base_particle_arrow_width * scale
+        )
+        self.particle_artist.width = self.particle_arrow_width
+
+        # Recompute all heading vectors for the active step.
         self.update_display(self.current_step)
 
 
@@ -452,6 +525,19 @@ class RoboViewer:
             trajectory_name
         ].label.set_text(
             "{}: {}".format(trajectory_name, state)
+        )
+
+        self.figure.canvas.draw_idle()
+
+
+    def _toggle_particles(self, _event) -> None:
+        '''Show or hide the particle poses at the active step.'''
+        is_visible = not self.particle_artist.get_visible()
+        self.particle_artist.set_visible(is_visible)
+
+        state = "ON" if is_visible else "OFF"
+        self.particle_toggle_button.label.set_text(
+            "particles: {}".format(state)
         )
 
         self.figure.canvas.draw_idle()
@@ -523,6 +609,15 @@ class RoboViewer:
                 (heading_end_x, heading_end_y),
             )
 
+        current_particle_poses = self.particle_poses[step_number - 1]
+        particle_thetas = current_particle_poses[:, 2]
+
+        self.particle_artist.set_offsets(current_particle_poses[:, :2])
+        self.particle_artist.set_UVC(
+            self.particle_heading_vector_length * np.cos(particle_thetas),
+            self.particle_heading_vector_length * np.sin(particle_thetas),
+        )
+
         title_trajectory = (
             "map_traj"
             if "map_traj" in current_thetas
@@ -551,10 +646,16 @@ class RoboViewer:
 def test_robo_viewer_test_data():
     occupancy_grid = create_test_map()
     trajectory = create_test_trajectory()
+    particle_poses = np.repeat(
+        trajectory[:, np.newaxis, :],
+        repeats=5,
+        axis=1,
+    )
 
     viewer = RoboViewer(
         ogm=occupancy_grid,
         trajectories={"test_trajectory": trajectory},
+        particle_poses=particle_poses,
         resolution=0.5,
         origin_xy=(0.0, 0.0),
         heading_vector_length=1.0,
@@ -567,11 +668,11 @@ def test_robo_viewer_actual_data():
     storage_dir = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
     # sub_dir = "proposal_optm_test_3_map_storage/"
     sub_dir = "proposal_optm_1_13"
-    map_sub = "maps/"
+    run_sub = "runs/"
     map_suffix = "cafe_1783013816_7f47dcf1cbd1_22" 
     map_filename = "log_odds_map.npy"
     map_meta_filename = "log_odds_map_metadata.json"
-    map_dir = os.path.join(storage_dir, sub_dir, map_sub, map_suffix)
+    map_dir = os.path.join(storage_dir, sub_dir, run_sub, map_suffix)
 
 
     # Init map data handler 
@@ -594,6 +695,11 @@ def test_robo_viewer_actual_data():
     robo_viewer = RoboViewer(
         ogm=map,
         trajectories={"test_trajectory": create_test_trajectory()},
+        particle_poses=np.repeat(
+            create_test_trajectory()[:, np.newaxis, :],
+            repeats=5,
+            axis=1,
+        ),
         resolution=gird_res,
         origin_xy=(origin_x, origin_y),
         heading_vector_length=1.0

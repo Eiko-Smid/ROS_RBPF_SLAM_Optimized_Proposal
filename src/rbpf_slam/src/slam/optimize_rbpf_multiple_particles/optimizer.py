@@ -20,6 +20,7 @@ from .playback_defs import ExperimentParams, PlaybackData, StepData
 from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
 from ..infrastructure.playback_converter import PlaybackConverter
 from ..infrastructure.map_data_handler import MapDataHandler
+from ..infrastructure.particle_data_handler import ParticleDataHandler
 
 
 from ..rbpf.rbpf import (
@@ -30,7 +31,7 @@ from ..rbpf.rbpf import (
 _WORKER_PLAYBACK_DATA = None
 _WORKER_RUNNER = None
 _WORKER_SCORER = None
-_WORKER_MAP_STORAGE_DIR = None
+_WORKER_RUN_STORAGE_DIR = None
 _WORKER_STORE_MAP_DATA = False
 
 
@@ -50,7 +51,7 @@ class RankedRun:
 
 def _init_rbpf_worker(
     playback_data: PlaybackData,
-    map_storage_dir: Optional[str] = None,
+    run_storage_dir: Optional[str] = None,
     store_map_data: bool = False,
 ) -> None:
     """
@@ -61,7 +62,7 @@ def _init_rbpf_worker(
     global _WORKER_PLAYBACK_DATA
     global _WORKER_RUNNER
     global _WORKER_SCORER
-    global _WORKER_MAP_STORAGE_DIR
+    global _WORKER_RUN_STORAGE_DIR
     global _WORKER_STORE_MAP_DATA
 
     # Define playback storage for worker
@@ -75,7 +76,7 @@ def _init_rbpf_worker(
     )
 
     _WORKER_SCORER = RunScorer()
-    _WORKER_MAP_STORAGE_DIR = map_storage_dir
+    _WORKER_RUN_STORAGE_DIR = run_storage_dir
     _WORKER_STORE_MAP_DATA = bool(store_map_data)
 
     print(f"Worker PID: {os.getpid()}", flush=True)
@@ -90,7 +91,7 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     """
     # Reference the global playback data storage
     global _WORKER_PLAYBACK_DATA
-    global _WORKER_MAP_STORAGE_DIR
+    global _WORKER_RUN_STORAGE_DIR
     global _WORKER_STORE_MAP_DATA
 
     # Check if worker vars have been initialized
@@ -103,9 +104,9 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     if _WORKER_SCORER is None:
         raise RuntimeError("Worker scorer has not been initialized.")
 
-    if _WORKER_STORE_MAP_DATA and not _WORKER_MAP_STORAGE_DIR:
+    if _WORKER_STORE_MAP_DATA and not _WORKER_RUN_STORAGE_DIR:
         raise RuntimeError(
-            "STORE_MAP_DATA is enabled, but worker map storage directory is not configured."
+            "STORE_MAP_DATA is enabled, but worker run storage directory is not configured."
         )
 
     # Extract data to execute the job
@@ -146,28 +147,41 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     print(f"Summary score for parameter set {param_hash} with seed {run_seed}: {score:.6f}")
     # print(f"Number of metrics in summary is: {len(run_result.summary.keys())}")
 
-    # Store map and metadata
+    # Store run data
     best_p_map = run_result.best_part_map
     best_p_map_meta = run_result.best_part_map_meta
 
-    if _WORKER_STORE_MAP_DATA and best_p_map is not None and best_p_map_meta is not None:
+    if _WORKER_STORE_MAP_DATA:
         # Define output dir
         seed_part = str(run_seed) if run_seed is not None else "none"
         ds_id_part = str(dataset_id) if dataset_id is not None else "unknown_dataset"
         map_part = str(map_name) if map_name is not None else "unknown_map"
-        map_dir = _WORKER_MAP_STORAGE_DIR + map_part + "_" + ds_id_part + "_" + str(param_hash) + "_" + seed_part
-
-        MapDataHandler.save(
-            output_dir=map_dir,
-            log_odds_map=best_p_map,
-            resolution=best_p_map_meta.get("grid_resolution_m"),
-            shift_x=best_p_map_meta.get("shift_x"),
-            shift_y=best_p_map_meta.get("shift_y"),
-            occupied_threshold=params.measurement_model_params.occ_thresh,
-            free_threshold=params.measurement_model_params.free_thresh,
-            min_log_odds=params.occupancy_params.min_log_odds,
-            max_log_odds=params.occupancy_params.max_log_odds,            
+        run_dir = os.path.join(
+            _WORKER_RUN_STORAGE_DIR,
+            map_part + "_" + ds_id_part + "_" + str(param_hash) + "_" + seed_part,
         )
+
+        particle_poses_before_resampling = [
+            step_result.particle_poses_before_resampling
+            for step_result in run_result.step_results
+        ]
+        ParticleDataHandler.save(
+            output_dir=run_dir,
+            particle_poses=particle_poses_before_resampling,
+        )
+
+        if best_p_map is not None and best_p_map_meta is not None:
+            MapDataHandler.save(
+                output_dir=run_dir,
+                log_odds_map=best_p_map,
+                resolution=best_p_map_meta.get("grid_resolution_m"),
+                shift_x=best_p_map_meta.get("shift_x"),
+                shift_y=best_p_map_meta.get("shift_y"),
+                occupied_threshold=params.measurement_model_params.occ_thresh,
+                free_threshold=params.measurement_model_params.free_thresh,
+                min_log_odds=params.occupancy_params.min_log_odds,
+                max_log_odds=params.occupancy_params.max_log_odds,
+            )
 
 
     return RankedRun(
@@ -610,7 +624,7 @@ class RBPFOptimizer:
         use_seed_list_for_measurement_noise: bool = True,
         max_workers: Optional[int] = None,
         keep_step_results: bool = False,
-        map_storage_dir: Optional[str] = None,
+        run_storage_dir: Optional[str] = None,
         store_map_data: bool = False,
     ) -> List[RankedRun]:
         # Convert params and seeds
@@ -672,7 +686,7 @@ class RBPFOptimizer:
             # so we only need to send it once at the beginning of each worker process.
             "initializer": _init_rbpf_worker,
             # This is the argument for the init function. Define multiple ones here if u wanne extend init function
-            "initargs": (playback_data, map_storage_dir, store_map_data),
+            "initargs": (playback_data, run_storage_dir, store_map_data),
         }
 
         if mp_context is not None:

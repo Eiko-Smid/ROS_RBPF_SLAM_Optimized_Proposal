@@ -15,6 +15,7 @@ import pandas as pd
 
 from .robo_viewer import RoboViewer
 from ..infrastructure.map_data_handler import MapDataHandler
+from ..infrastructure.particle_data_handler import ParticleDataHandler
 
 
 class RoboViewerLauncher:
@@ -26,6 +27,7 @@ class RoboViewerLauncher:
         1. A map directory containing:
             - log_odds_map.npy
             - log_odds_map_metadata.json
+            - particles.npy
 
         2. A CSV file containing the trajectory pose columns.
 
@@ -37,6 +39,7 @@ class RoboViewerLauncher:
         trajectory_columns: List[Tuple[str, Tuple[str, ...]]],
         map_filename: str = "log_odds_map.npy",
         metadata_filename: str = "log_odds_map_metadata.json",
+        particle_filename: str = "particles.npy",
         start_directory: str = "",
     ) -> None:
         '''
@@ -67,19 +70,24 @@ class RoboViewerLauncher:
 
         metadata_filename:
             Filename of the stored map metadata.
+
+        particle_filename:
+            Filename of the stored particle poses.
         '''
         self.trajectory_columns = trajectory_columns
         self.map_filename = map_filename
         self.metadata_filename = metadata_filename
+        self.particle_filename = particle_filename
         self.start_directory = start_directory
 
         self.map_data_handler = MapDataHandler()
+        self.particle_data_handler = ParticleDataHandler()
 
         self.root = tk.Tk()
         self.root.title("RoboViewer Loader")
         self.root.geometry("750x190")
 
-        self.map_directory = tk.StringVar()
+        self.run_directory = tk.StringVar()
         self.trajectory_csv_path = tk.StringVar()
 
         self._create_gui()
@@ -91,12 +99,12 @@ class RoboViewerLauncher:
         '''
         self.root.columnconfigure(1, weight=1)
 
-        # Map directory selection.
-        map_label = tk.Label(
+        # Run directory selection.
+        run_label = tk.Label(
             self.root,
-            text="Map directory:",
+            text="Run directory:",
         )
-        map_label.grid(
+        run_label.grid(
             row=0,
             column=0,
             padx=10,
@@ -104,11 +112,11 @@ class RoboViewerLauncher:
             sticky="w",
         )
 
-        map_entry = tk.Entry(
+        run_entry = tk.Entry(
             self.root,
-            textvariable=self.map_directory,
+            textvariable=self.run_directory,
         )
-        map_entry.grid(
+        run_entry.grid(
             row=0,
             column=1,
             padx=10,
@@ -116,12 +124,12 @@ class RoboViewerLauncher:
             sticky="ew",
         )
 
-        map_button = tk.Button(
+        run_button = tk.Button(
             self.root,
             text="Browse",
-            command=self._select_map_directory,
+            command=self._select_run_directory,
         )
-        map_button.grid(
+        run_button.grid(
             row=0,
             column=2,
             padx=10,
@@ -180,17 +188,17 @@ class RoboViewerLauncher:
         )
 
 
-    def _select_map_directory(self) -> None:
+    def _select_run_directory(self) -> None:
         '''
-        Open a GUI dialog for selecting the stored map directory.
+        Open a GUI dialog for selecting the stored run directory.
         '''
         selected_directory = filedialog.askdirectory(
-            title="Select map directory",
+            title="Select run directory",
             initialdir=self.start_directory,
         )
 
         if selected_directory:
-            self.map_directory.set(selected_directory)
+            self.run_directory.set(selected_directory)
 
 
     def _select_trajectory_csv(self) -> None:
@@ -222,28 +230,41 @@ class RoboViewerLauncher:
         metadata:
             Dictionary containing the map metadata.
         '''
-        map_directory = self.map_directory.get()
+        run_directory = self.run_directory.get()
 
-        if not map_directory:
-            raise ValueError("No map directory was selected.")
+        if not run_directory:
+            raise ValueError("No run directory was selected.")
 
         return self.map_data_handler.load(
-            input_dir=map_directory,
+            input_dir=run_directory,
             map_filename=self.map_filename,
             metadata_filename=self.metadata_filename,
         )
+
+
+    def _load_particles(self) -> np.ndarray:
+        '''Load all particle poses from the selected run directory.'''
+        run_directory = self.run_directory.get()
+
+        if not run_directory:
+            raise ValueError("No run directory was selected.")
+
+        return self.particle_data_handler.load(
+            input_dir=run_directory,
+            particle_filename=self.particle_filename,
+        )
     
 
-    def __extract_map_dir_info_for_trajectory_loading(self, map_directory: str):
+    def __extract_map_dir_info_for_trajectory_loading(self, run_directory: str):
         dir_name = os.path.basename(
-            os.path.normpath(map_directory)
+            os.path.normpath(run_directory)
         )
 
         parts = dir_name.rsplit("_", 3)
 
         if len(parts) != 4:
             raise ValueError(
-                "Invalid map-directory name: '{}'. Expected "
+                "Invalid run-directory name: '{}'. Expected "
                 "<map_name>_<dataset_id>_<parameter_hash>_<seed>."
                 .format(dir_name)
             )
@@ -265,13 +286,13 @@ class RoboViewerLauncher:
             additional trajectory data.
         '''
         # Extract playback id, hash and seed from filename
-        map_directory = self.map_directory.get()
+        run_directory = self.run_directory.get()
 
-        if not map_directory:
-            raise ValueError("No map directory selected.")
+        if not run_directory:
+            raise ValueError("No run directory selected.")
         
         dataset_id, param_hash, seed = self.__extract_map_dir_info_for_trajectory_loading(
-            map_directory=map_directory
+            run_directory=run_directory
         )
         
         filepath = self.trajectory_csv_path.get()
@@ -373,6 +394,7 @@ class RoboViewerLauncher:
         '''
         try:
             ogm, map_metadata = self._load_map()
+            particle_poses = self._load_particles()
             trajectories = self._load_trajectories()
 
             origin = map_metadata["origin"]
@@ -394,6 +416,7 @@ class RoboViewerLauncher:
         viewer = RoboViewer(
             ogm=ogm,
             trajectories=trajectories,
+            particle_poses=particle_poses,
             resolution=resolution,
             origin_xy=(origin_x, origin_y),
             # occ_thres=5.0,
