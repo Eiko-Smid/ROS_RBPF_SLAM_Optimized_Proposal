@@ -128,13 +128,15 @@ STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/op
 # STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 # PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+# MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
 
 # Test storage
-SUB_DIR = "proposal_optm_test_3_steps_added/"
+SUB_DIR = "proposal_optm_test_3_map_storage/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -144,6 +146,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = True
+STORE_MAP_DATA = True
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
@@ -1482,11 +1485,17 @@ def rbpf_tuning_pipeline_multiprocessing():
             use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
             max_workers=NUMBER_OF_WORKERS,
             keep_step_results=KEEP_STEP_RESULTS,
+            map_storage_dir=MAP_STORAGE_DIR if STORE_MAP_DATA else None,
+            store_map_data=STORE_MAP_DATA,
         )
 
         # Store ranked runs
         ranked_run_list.extend(ranked_runs)
         optm_durations.append(optm_duration)
+
+
+    # Sort runs by score from lowest to highest
+    ranked_run_list.sort(key=lambda ranked_run: ranked_run.score)
     
     # Clean optmization duration
     cleaned_optm_duratios = None
@@ -1500,8 +1509,7 @@ def rbpf_tuning_pipeline_multiprocessing():
         step_trace_df = step_processor.process_ranked_runs(
             ranked_runs=ranked_run_list,
             pose_appendix=POSE_APPENDIX,
-        )
-    
+        )    
 
     # Aggregate results
     # TODO: Adapt aggregate results to new tuning pipeline fo rbpf with multiple particles

@@ -141,8 +141,8 @@ def update_one_map(ogm: OGM, steps):
 
 def compare_maps(ogm_classic: OGM, ogm_numba: OGM):
     # Extract map data
-    ogm_classic_map = ogm_classic.return_log_odds_map()
-    ogm_numba_map = ogm_numba.return_log_odds_map()
+    ogm_classic_map = ogm_classic.get_log_odds_map()
+    ogm_numba_map = ogm_numba.get_log_odds_map()
 
     # Compare maps
     # Implement your comparison logic here

@@ -258,3 +258,13 @@ class StepResultWriter:
 
         # Remove duplicates while retaining order.
         return list(dict.fromkeys(resolved_columns))
+    
+
+
+def main():
+    log_odds_increasing =  np.log(0.85 / 0.15)
+    print(f"Log odds for increasing occupancy: {log_odds_increasing:.6f}")
+
+
+if __name__ == "__main__":
+    main()

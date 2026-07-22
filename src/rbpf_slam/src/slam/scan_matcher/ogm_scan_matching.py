@@ -1204,12 +1204,12 @@ class OGM:
         )
 
 
-    def return_log_odds_map(self) -> np.ndarray:
+    def get_log_odds_map(self) -> np.ndarray:
         '''Returns the grid map in log odds form.'''
         return self.log_odds_map
 
 
-    def return_log_odds_map_meta(self):
+    def get_map_meta(self):
         '''
         Returns the log odds map metadata as a dictionary.
         '''
@@ -1229,7 +1229,7 @@ class OGM:
         return log_odds_map_meta
     
     
-    def return_log_odds_map_object(self) -> LogOddsMap:
+    def get_log_odds_map_object(self) -> LogOddsMap:
         '''
         Returns a log odds map message object containing the map and the map metadata.
         '''

@@ -136,6 +136,10 @@ class StepProcessor:
     
     @staticmethod
     def process_ranked_runs(ranked_runs: Iterable[RankedRun], pose_appendix=("x", "y", "theta")):
+        '''
+        Get's the ranked runs and the pose appendix structure and returns a pandas DataFrame including all step results
+        ordered from best to worst run.  
+        '''
         # Store each step in one row
         rows = []
 

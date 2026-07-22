@@ -253,7 +253,7 @@ class OGMROSCommunication:
     def publish_occupancy_grid_message(self):
         '''Get's the logOdds map and do all necessary transformation's for publishing the Occupancy Message.'''
         # Publish current map from ogm algorithm
-        self.map_publisher.publish(self.ogm.return_log_odds_map_object())
+        self.map_publisher.publish(self.ogm.get_log_odds_map_object())
 
 
     # def publish_green_cells(self, horizontal, vertical, ogm: OGM):

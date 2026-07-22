@@ -19,6 +19,7 @@ from .playback_defs import ExperimentParams, PlaybackData, StepData
 # from .evaluator import RBPFEvaluator
 from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
 from ..infrastructure.playback_converter import PlaybackConverter
+from ..infrastructure.map_data_handler import MapDataHandler
 
 
 from ..rbpf.rbpf import (
@@ -29,6 +30,8 @@ from ..rbpf.rbpf import (
 _WORKER_PLAYBACK_DATA = None
 _WORKER_RUNNER = None
 _WORKER_SCORER = None
+_WORKER_MAP_STORAGE_DIR = None
+_WORKER_STORE_MAP_DATA = False
 
 
 @dataclass
@@ -45,7 +48,11 @@ class RankedRun:
 
 
 
-def _init_rbpf_worker(playback_data: PlaybackData) -> None:
+def _init_rbpf_worker(
+    playback_data: PlaybackData,
+    map_storage_dir: Optional[str] = None,
+    store_map_data: bool = False,
+) -> None:
     """
     Store playback data once per worker process.
 
@@ -54,6 +61,8 @@ def _init_rbpf_worker(playback_data: PlaybackData) -> None:
     global _WORKER_PLAYBACK_DATA
     global _WORKER_RUNNER
     global _WORKER_SCORER
+    global _WORKER_MAP_STORAGE_DIR
+    global _WORKER_STORE_MAP_DATA
 
     # Define playback storage for worker
     _WORKER_PLAYBACK_DATA = playback_data
@@ -66,6 +75,8 @@ def _init_rbpf_worker(playback_data: PlaybackData) -> None:
     )
 
     _WORKER_SCORER = RunScorer()
+    _WORKER_MAP_STORAGE_DIR = map_storage_dir
+    _WORKER_STORE_MAP_DATA = bool(store_map_data)
 
     print(f"Worker PID: {os.getpid()}", flush=True)
 
@@ -79,6 +90,8 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     """
     # Reference the global playback data storage
     global _WORKER_PLAYBACK_DATA
+    global _WORKER_MAP_STORAGE_DIR
+    global _WORKER_STORE_MAP_DATA
 
     # Check if worker vars have been initialized
     if _WORKER_PLAYBACK_DATA is None:
@@ -89,6 +102,11 @@ def _run_rbpf_job(job: dict) -> RankedRun:
 
     if _WORKER_SCORER is None:
         raise RuntimeError("Worker scorer has not been initialized.")
+
+    if _WORKER_STORE_MAP_DATA and not _WORKER_MAP_STORAGE_DIR:
+        raise RuntimeError(
+            "STORE_MAP_DATA is enabled, but worker map storage directory is not configured."
+        )
 
     # Extract data to execute the job
     params: ExperimentParams = job["params"]
@@ -124,9 +142,40 @@ def _run_rbpf_job(job: dict) -> RankedRun:
 
     # TODO: Update scorer to new pipeline goals
     score = _WORKER_SCORER.score(run_result.summary)
-    print(f"\nNumber of metrics in scorer is: {_WORKER_SCORER.n_scorer_metrics}")
+    # print(f"\nNumber of metrics in scorer is: {_WORKER_SCORER.n_scorer_metrics}")
     print(f"Summary score for parameter set {param_hash} with seed {run_seed}: {score:.6f}")
-    print(f"Number of metrics in summary is: {len(run_result.summary.keys())}")
+    # print(f"Number of metrics in summary is: {len(run_result.summary.keys())}")
+
+    # Store map and metadata
+    best_p_map = run_result.best_part_map
+    best_p_map_meta = run_result.best_part_map_meta
+
+    if _WORKER_STORE_MAP_DATA and best_p_map is not None and best_p_map_meta is not None:
+        seed_part = str(run_seed) if run_seed is not None else "none"
+        ds_id_part = str(dataset_id) if dataset_id is not None else "unknown_dataset"
+        map_part = str(map_name) if map_name is not None else "unknown_map"
+        map_dir = _WORKER_MAP_STORAGE_DIR + map_part + "_" + ds_id_part + "_" + str(param_hash) + "_" + seed_part
+
+        # output_dir = os.path.join(
+        #     _WORKER_MAP_STORAGE_DIR,
+        #     ds_id_part,
+        #     map_part,
+        #     f"param_{param_hash}",
+        #     f"seed_{seed_part}",
+        # )
+
+        MapDataHandler.save(
+            output_dir=map_dir,
+            log_odds_map=best_p_map,
+            resolution=best_p_map_meta.get("grid_resolution_m"),
+            shift_x=best_p_map_meta.get("shift_x"),
+            shift_y=best_p_map_meta.get("shift_y"),
+            occupied_threshold=params.measurement_model_params.occ_thresh,
+            free_threshold=params.measurement_model_params.free_thresh,
+            min_log_odds=params.occupancy_params.min_log_odds,
+            max_log_odds=params.occupancy_params.max_log_odds,            
+        )
+
 
     return RankedRun(
         params=params,
@@ -568,6 +617,8 @@ class RBPFOptimizer:
         use_seed_list_for_measurement_noise: bool = True,
         max_workers: Optional[int] = None,
         keep_step_results: bool = False,
+        map_storage_dir: Optional[str] = None,
+        store_map_data: bool = False,
     ) -> List[RankedRun]:
         # Convert params and seeds
         params_list = list(param_grid)
@@ -628,7 +679,7 @@ class RBPFOptimizer:
             # so we only need to send it once at the beginning of each worker process.
             "initializer": _init_rbpf_worker,
             # This is the argument for the init function. Define multiple ones here if u wanne extend init function
-            "initargs": (playback_data,),
+            "initargs": (playback_data, map_storage_dir, store_map_data),
         }
 
         if mp_context is not None:

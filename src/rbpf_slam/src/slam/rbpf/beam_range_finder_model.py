@@ -894,7 +894,7 @@ class BeamRangeFinderModel(MeasurementModel):
             unexpected_known_free_count,
             skipped_beam_count,
         ) = raytracing_log_likelihood_numba(
-            log_odds_map=ogm.return_log_odds_map(),
+            log_odds_map=ogm.get_log_odds_map(),
             
             shift_x=ogm.shift_x,
             shift_y=ogm.shift_y,
@@ -972,7 +972,7 @@ class BeamRangeFinderModel(MeasurementModel):
     
         # Compute measurement likelihood for all given poses
         results = meas_model_likelihood_numba(
-            log_odds_map=ogm.return_log_odds_map(),
+            log_odds_map=ogm.get_log_odds_map(),
             
             shift_x=ogm.shift_x,
             shift_y=ogm.shift_y,

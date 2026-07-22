@@ -71,7 +71,7 @@ class ScanMatcher():
         '''
         Returns a log odds map message object containing the map and the map metadata.
         '''
-        return self.ogm.return_log_odds_map_object()
+        return self.ogm.get_log_odds_map_object()
 
 
     def get_trained_nn_tree(self):

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, Dict, List, Sequence, Union
+from typing import Optional, Tuple, Dict, List, Sequence, Union, Any
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -138,19 +138,36 @@ class StepResult:
     t_find_trans: Optional[float] = None
     
 
+
 @dataclass
 class RunResult:
     """
-    Stores all RBPF evaluation data for one parameter-set run.
+    Stores the results produced by one complete RBPF evaluation run.
+
+    Attributes
+    ----------
+    params: ExperimentParams
+        Parameter configuration used for the run.
+    step_results: List[StepResult]
+        Step-level evaluation results collected during the run.
+    summary: Dict[str, Any]
+        Run-level metrics computed from the step results.
+    best_part_map: Optional[np.ndarray]
+        Final occupancy-grid map of the highest-weighted particle.``None`` if no valid map was produced.
+    best_part_map_metadata: Dict[str, Any]
+        Metadata required to interpret and restore ``best_part_map``, such as resolution, origin, width,
+        and height.
+
     """
     params: ExperimentParams
     step_results: List[StepResult] = field(default_factory=list)
     summary: dict = field(default_factory=dict)
+    best_part_map: Optional[np.ndarray] = None
+    best_part_map_meta: Dict[str, Any] = field(default_factory=dict)
 
 
 
-class RBPFEValMultParticles:
-    
+class RBPFEValMultParticles:    
 
     @staticmethod
     def _finite_values(values: List[Optional[float]]) -> np.ndarray:

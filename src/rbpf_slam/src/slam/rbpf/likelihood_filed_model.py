@@ -273,7 +273,7 @@ class LikelihoodFiledModel(MeasurementModel):
         
         free_delta = grid_resolution * free_cell_ratio
 
-        log_odds_map = ogm.return_log_odds_map()
+        log_odds_map = ogm.get_log_odds_map()
         
         x, y, theta = pose
 

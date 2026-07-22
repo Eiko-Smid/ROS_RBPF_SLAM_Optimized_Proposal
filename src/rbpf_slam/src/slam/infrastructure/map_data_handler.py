@@ -5,7 +5,7 @@ from typing import Any, Dict, Tuple
 import numpy as np
 
 
-class FinalMapStorage:
+class MapDataHandler:
     """
     Stores and loads the final log-odds map of one tuning run.
 
@@ -106,8 +106,8 @@ class FinalMapStorage:
         free_threshold: float,
         min_log_odds: float,
         max_log_odds: float,
-        map_filename: str = "final_log_odds_map.npy",
-        metadata_filename: str = "final_log_odds_map_metadata.json",
+        map_filename: str = "log_odds_map.npy",
+        metadata_filename: str = "log_odds_map_metadata.json",
     ) -> None:
         """
         Save a final 2D log-odds map and its metadata.
@@ -247,4 +247,4 @@ class FinalMapStorage:
 
         return log_odds_map, metadata
 
-    
+
