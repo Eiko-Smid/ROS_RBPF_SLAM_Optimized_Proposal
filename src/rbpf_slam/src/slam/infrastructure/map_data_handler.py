@@ -60,8 +60,8 @@ class MapDataHandler:
 
         required_keys = {
             "resolution",
-            "width",
-            "height",
+            "width_cells",
+            "height_cells",
             "origin",
             "thresholds",
             "log_odds_limits",
@@ -76,8 +76,8 @@ class MapDataHandler:
             )
 
         expected_shape = (
-            int(metadata["height"]),
-            int(metadata["width"]),
+            int(metadata["height_cells"]),
+            int(metadata["width_cells"]),
         )
 
         if log_odds_map.shape != expected_shape:
@@ -154,15 +154,15 @@ class MapDataHandler:
         map_path = output_path / map_filename
         metadata_path = output_path / metadata_filename
 
-        height, width = map_array.shape
+        height_cells, width_cells = map_array.shape
 
         metadata = {
             "format_version": 1,
             "representation": "log_odds",
             "frame_id": "map",
             "resolution": float(resolution),
-            "width": int(width),
-            "height": int(height),
+            "width_cells": int(width_cells),
+            "height_cells": int(height_cells),
             "origin": {
                 "x": float(-shift_x),
                 "y": float(-shift_y),
@@ -246,5 +246,4 @@ class MapDataHandler:
         cls._validate_loaded_data(log_odds_map, metadata)
 
         return log_odds_map, metadata
-
 

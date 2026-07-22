@@ -83,7 +83,7 @@ def _init_rbpf_worker(
 
 def _run_rbpf_job(job: dict) -> RankedRun:
     """
-    Run one independent rbpf optimization job.
+    Run one independent rbpf job. 
 
     One job = one parameter set + one seed + one dataset.
     Each worker creates its own runner/scorer/RBPF/scan matcher.
@@ -151,18 +151,11 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     best_p_map_meta = run_result.best_part_map_meta
 
     if _WORKER_STORE_MAP_DATA and best_p_map is not None and best_p_map_meta is not None:
+        # Define output dir
         seed_part = str(run_seed) if run_seed is not None else "none"
         ds_id_part = str(dataset_id) if dataset_id is not None else "unknown_dataset"
         map_part = str(map_name) if map_name is not None else "unknown_map"
         map_dir = _WORKER_MAP_STORAGE_DIR + map_part + "_" + ds_id_part + "_" + str(param_hash) + "_" + seed_part
-
-        # output_dir = os.path.join(
-        #     _WORKER_MAP_STORAGE_DIR,
-        #     ds_id_part,
-        #     map_part,
-        #     f"param_{param_hash}",
-        #     f"seed_{seed_part}",
-        # )
 
         MapDataHandler.save(
             output_dir=map_dir,

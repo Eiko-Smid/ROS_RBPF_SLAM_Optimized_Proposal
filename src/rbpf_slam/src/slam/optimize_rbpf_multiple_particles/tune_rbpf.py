@@ -113,8 +113,12 @@ from .step_processor import StepProcessor
     1.12 Also validation run but this time without min/max limits for proposal downscaling
 
 
-    1.13 Same as 1.12 but with higher max trans jump
+    1.13 Same validation run as 1.12 but maps are getting stored
 
+
+    
+    1.1N Same as 1.12 but with higher max trans jump (TODO)
+        - Not done yet!
 
 '''
 
@@ -123,20 +127,20 @@ from .step_processor import StepProcessor
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-# SUB_DIR = "proposal_optm_1_12/"
-# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
-# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
-# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-# MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
-
-# Test storage
-SUB_DIR = "proposal_optm_test_3_map_storage/"
+SUB_DIR = "proposal_optm_1_13/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
 MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
+
+# Test storage
+# SUB_DIR = "proposal_optm_test_4_map_storage/"
+# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+# MAP_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'maps/'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -150,10 +154,10 @@ STORE_MAP_DATA = True
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-# SEED_LIST = [22, 23, 56]
-SEED_LIST = [22, 56]
+SEED_LIST = [22, 23, 56]
+# SEED_LIST = [22, 56]
 # SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
@@ -213,7 +217,6 @@ STEP_COLS_TO_USE = [
     "closest_particle_pose_after_resampling_y",
     "closest_particle_pose_after_resampling_theta",
 
-    # TODO: Add MAP Trajectory
     "map_traj_x",
     "map_traj_y",
     "map_traj_theta",
@@ -288,23 +291,23 @@ class PlaybackDataset:
 #     ),    
 # ]
 
-PLAYBACK_DATA_LIST = [
-    # Turtle bot map
-    # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-    #     playback_suffix="1781885725",
-    # ),
-    # AWS indoor map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1781885274",
-    ), 
-    # AWS bookstore map   
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1782917349",
-    )
-]
+# PLAYBACK_DATA_LIST = [
+#     # Turtle bot map
+#     # PlaybackDataset(
+#     #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#     #     playback_suffix="1781885725",
+#     # ),
+#     # AWS indoor map
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1781885274",
+#     ), 
+#     # AWS bookstore map   
+#     PlaybackDataset(
+#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_suffix="1782917349",
+#     )
+# ]
 
 # Evaluation data
 # PLAYBACK_DATA_LIST = [
@@ -332,38 +335,38 @@ PLAYBACK_DATA_LIST = [
 
 
 # All maps (Train + eval)
-# PLAYBACK_DATA_LIST = [
-#     # Turtle bot map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1781885725",
-#     ), 
-#     # AWS indoor map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1781885274",
-#     ),
-#     # Turtle bot map unsee area
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1783013274",
-#     ),
-#     # AWS indoor map different path, same area
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1783014916",
-#     ),
-#     # Cafe map
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1783013816",
-#     ),
-#     # AWS bookstore map   
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1782917349",
-#     ),
-# ]
+PLAYBACK_DATA_LIST = [
+    # Turtle bot map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885725",
+    ), 
+    # AWS indoor map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1781885274",
+    ),
+    # Turtle bot map unsee area
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783013274",
+    ),
+    # AWS indoor map different path, same area
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783014916",
+    ),
+    # Cafe map
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1783013816",
+    ),
+    # AWS bookstore map   
+    PlaybackDataset(
+        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_suffix="1782917349",
+    ),
+]
 
 
 

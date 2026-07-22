@@ -176,7 +176,7 @@ class StepProcessor:
                     "map_name": run.map_name,
                     "seed": run.seed,
                     "parameter_tag": run.parameter_tag,
-                    "param_hash": run.parameter_hash
+                    "parameter_hash": run.parameter_hash
                 }
 
                 # Add map trajectory to row if valid
