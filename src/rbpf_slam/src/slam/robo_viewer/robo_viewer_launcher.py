@@ -436,14 +436,15 @@ class RoboViewerLauncher:
         # Close the loader window before opening Matplotlib.
         self.root.destroy()
 
+        # Init an run robo viewer
         viewer = RoboViewer(
             ogm=ogm,
             trajectories=trajectories,
             particle_poses=particle_poses,
             resolution=resolution,
             origin_xy=(origin_x, origin_y),
-            # occ_thres=5.0,
-            # free_thres=-5.0,
+            occ_thres=5.0,
+            free_thres=-5.0,
             heading_vector_length=1.0,
         )
 

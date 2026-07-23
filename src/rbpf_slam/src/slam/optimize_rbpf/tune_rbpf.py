@@ -788,6 +788,7 @@ Synchronized playback data
 
     34.7 Evaluation with best parameter set over all maps and all seeds (proposal mu as p pose)
         - Same as 34.6 but withut proposal sampling
+        
 
 
 

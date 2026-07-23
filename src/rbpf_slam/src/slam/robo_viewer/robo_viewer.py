@@ -22,62 +22,6 @@ from matplotlib.widgets import Button, Slider
 from ..infrastructure.map_data_handler import MapDataHandler
 
 
-def create_test_map() -> np.ndarray:
-    """
-    Create a deterministic test occupancy grid.
-
-    Cell values:
-        0 = occupied
-        1 = unknown
-        2 = free
-    """
-    grid = np.ones((18, 24), dtype=np.uint8)
-
-    # Free room area.
-    grid[2:16, 2:22] = 2
-
-    # Outer walls.
-    grid[2, 2:22] = 0
-    grid[15, 2:22] = 0
-    grid[2:16, 2] = 0
-    grid[2:16, 21] = 0
-
-    # Internal walls and obstacles.
-    grid[5:13, 8] = 0
-    grid[5, 8:15] = 0
-    grid[10:15, 15] = 0
-    grid[8:11, 18:20] = 0
-
-    # Door-like gaps.
-    grid[9, 8] = 2
-    grid[5, 11] = 2
-    grid[12, 15] = 2
-
-    return grid
-
-
-def create_test_trajectory() -> np.ndarray:
-    """
-    Create ten poses with columns [x, y, theta].
-
-    theta is expressed in radians.
-    """
-    return np.array(
-        [
-            [1.5, 1.5, 0.00],
-            [2.5, 1.8, 0.15],
-            [3.5, 2.2, 0.25],
-            [4.5, 3.0, 0.45],
-            [5.5, 4.0, 0.65],
-            [6.5, 5.0, 0.75],
-            [7.5, 5.8, 0.45],
-            [8.5, 6.3, 0.20],
-            [9.5, 6.7, 0.05],
-            [10.5, 7.0, 0.00],
-        ],
-        dtype=np.float64,
-    )
-
 
 class RoboViewer:
     """Interactive viewer for a map, trajectories and particle poses."""
@@ -94,12 +38,18 @@ class RoboViewer:
         origin_xy: Tuple[float, float] = (0.0, 0.0),
         occ_thres: float = 1.4,
         free_thres: float = -1.4,
-        heading_vector_length: float = 1.0,
-        trajectory_marker_size: float = 6.0,
-        trajectory_line_width: float = 4.0,
-        current_pose_marker_size: float = 8.0,
-        heading_line_width: float = 3.0,
-        heading_head_size: float = 20.0,
+        # heading_vector_length: float = 1.0,
+        # trajectory_marker_size: float = 6.0,
+        # trajectory_line_width: float = 4.0,
+        # current_pose_marker_size: float = 8.0,
+        # heading_line_width: float = 3.0,
+        # heading_head_size: float = 20.0,
+        heading_vector_length: float = 0.5,
+        trajectory_marker_size: float = 3.0,
+        trajectory_line_width: float = 2.0,
+        current_pose_marker_size: float = 4.0,
+        heading_line_width: float = 1.5,
+        heading_head_size: float = 10.0,
     ) -> None:
         # Validate inputs
         # map info
@@ -231,8 +181,12 @@ class RoboViewer:
         self.current_step = 1
 
         # Define figure and axes
-        self.figure, self.ax = plt.subplots(figsize=(12, 8))
-        self.figure.subplots_adjust(bottom=0.24, right=0.79)
+        self.figure, self.ax = plt.subplots(figsize=(10, 7))
+        self.figure.subplots_adjust(
+            bottom=0.20,
+            right=0.80,
+            top=0.94,
+        )
 
         # Process and create visual elements
         self._create_map()
@@ -299,7 +253,9 @@ class RoboViewer:
             vmax=2,
         )
 
-        self.ax.set_aspect("equal", adjustable="box")
+        # Define image visualization properties
+        # self.ax.set_aspect("auto")
+        self.ax.set_aspect("equal", adjustable="box")        
         self.ax.set_xlabel("x position [m]")
         self.ax.set_ylabel("y position [m]")
         self.ax.grid(True)
@@ -379,10 +335,12 @@ class RoboViewer:
 
     def _create_legend(self) -> None:
         '''Create a legend for all available trajectory and particle artists.'''
-        self.ax.legend(
+        handles, labels = self.ax.get_legend_handles_labels()
+        self.legend = self.figure.legend(
+            handles,
+            labels,
             loc="upper left",
-            # bbox_to_anchor=(1.02, 0.29),
-            bbox_to_anchor=(1.02, 1.0),
+            bbox_to_anchor=(0.81, 0.93),
             borderaxespad=0.0,
         )
 
@@ -434,8 +392,8 @@ class RoboViewer:
 
 
     def _create_buttons(self) -> None:
-        previous_ax = self.figure.add_axes([0.70, 0.08, 0.10, 0.07])
-        next_ax = self.figure.add_axes([0.81, 0.08, 0.10, 0.07])
+        previous_ax = self.figure.add_axes([0.81, 0.08, 0.085, 0.07])
+        next_ax = self.figure.add_axes([0.905, 0.08, 0.085, 0.07])
 
         self.previous_button = Button(previous_ax, "Previous")
         self.next_button = Button(next_ax, "Next")
@@ -447,7 +405,7 @@ class RoboViewer:
 
         for index, trajectory_name in enumerate(self.trajectories):
             toggle_ax = self.figure.add_axes(
-                [0.81, 0.82 - index * 0.07, 0.18, 0.055]
+                [0.81, 0.64 - index * 0.07, 0.18, 0.055]
             )
             toggle_button = Button(
                 toggle_ax,
@@ -466,7 +424,7 @@ class RoboViewer:
 
         if self.particle_poses is not None:
             particle_toggle_ax = self.figure.add_axes(
-                [0.81, 0.82 - len(self.trajectories) * 0.07, 0.18, 0.055]
+                [0.81, 0.64 - len(self.trajectories) * 0.07, 0.18, 0.055]
             )
             self.particle_toggle_button = Button(
                 particle_toggle_ax,
@@ -673,10 +631,12 @@ class RoboViewer:
 
         self.ax.set_title(
             "Constant final occupancy grid with trajectories "
-            "through step {}/{} | {} theta = {:.3f} deg".format(
+            "through step {}/{} | {} x = {:.3f}, y = {:.3f}, theta = {:.3f} deg".format(
                 step_number,
                 self.n_steps,
                 title_trajectory,
+                current_x,
+                current_y,
                 np.rad2deg(title_theta),
             )
         )
@@ -687,77 +647,11 @@ class RoboViewer:
     def show(self) -> None:
         plt.show()
 
-
-
-def test_robo_viewer_test_data():
-    occupancy_grid = create_test_map()
-    trajectory = create_test_trajectory()
-    particle_poses = np.repeat(
-        trajectory[:, np.newaxis, :],
-        repeats=5,
-        axis=1,
-    )
-
-    viewer = RoboViewer(
-        ogm=occupancy_grid,
-        trajectories={"test_trajectory": trajectory},
-        particle_poses=particle_poses,
-        resolution=0.5,
-        origin_xy=(0.0, 0.0),
-        heading_vector_length=1.0,
-    )
-    viewer.show()
-
-
-def test_robo_viewer_actual_data():
-    # Def storage path to laod data from
-    storage_dir = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
-    # sub_dir = "proposal_optm_test_3_map_storage/"
-    sub_dir = "proposal_optm_1_13"
-    run_sub = "runs/"
-    map_suffix = "cafe_1783013816_7f47dcf1cbd1_22" 
-    map_filename = "log_odds_map.npy"
-    map_meta_filename = "log_odds_map_metadata.json"
-    map_dir = os.path.join(storage_dir, sub_dir, run_sub, map_suffix)
-
-
-    # Init map data handler 
-    map_data_handler = MapDataHandler()
-
-    # Load map data 
-    map, map_meta = map_data_handler.load(
-        input_dir=map_dir,
-        map_filename=map_filename,
-        metadata_filename=map_meta_filename,
-    )
-
-    # Init robo viewer
-    origin = map_meta.get("origin")
-    origin_x = origin.get("x")
-    origin_y = origin.get("y")
-    gird_res = map_meta.get("resolution")
-
-
-    robo_viewer = RoboViewer(
-        ogm=map,
-        trajectories={"test_trajectory": create_test_trajectory()},
-        particle_poses=np.repeat(
-            create_test_trajectory()[:, np.newaxis, :],
-            repeats=5,
-            axis=1,
-        ),
-        resolution=gird_res,
-        origin_xy=(origin_x, origin_y),
-        heading_vector_length=1.0
-    )
-
-    robo_viewer.show()
     
 
 
 def main():
-    # test_robo_viewer_test_data()
-    test_robo_viewer_actual_data()
+    pass    
 
 
 if __name__ == "__main__":
