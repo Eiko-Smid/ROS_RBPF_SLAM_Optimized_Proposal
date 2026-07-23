@@ -10,7 +10,7 @@ Compatible with Python 3.8.
 
 import os
 from functools import partial
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -89,7 +89,7 @@ class RoboViewer:
         self,
         ogm: np.ndarray,
         trajectories: Dict[str, np.ndarray],
-        particle_poses: np.ndarray,
+        particle_poses: Optional[np.ndarray] = None,
         resolution: float = 0.5,
         origin_xy: Tuple[float, float] = (0.0, 0.0),
         occ_thres: float = 1.4,
@@ -106,6 +106,7 @@ class RoboViewer:
         if ogm.ndim != 2:
             raise ValueError("occupancy_grid must be a 2D array.")
 
+        # Trajectories
         if not trajectories:
             raise ValueError("trajectories must contain at least one trajectory.")
 
@@ -133,27 +134,29 @@ class RoboViewer:
 
         n_steps = next(iter(trajectory_lengths))
 
-        if particle_poses.ndim != 3 or particle_poses.shape[2] != 3:
-            raise ValueError(
-                "particle_poses must have shape "
-                "(steps, particles, 3): [x, y, theta]."
-            )
+        # Particle poses
+        if particle_poses is not None:
+            if particle_poses.ndim != 3 or particle_poses.shape[2] != 3:
+                raise ValueError(
+                    "particle_poses must have shape "
+                    "(steps, particles, 3): [x, y, theta]."
+                )
 
-        if particle_poses.shape[0] != n_steps:
-            raise ValueError(
-                "Particle poses and trajectories must contain the same "
-                "number of steps."
-            )
+            if particle_poses.shape[0] != n_steps:
+                raise ValueError(
+                    "Particle poses and trajectories must contain the same "
+                    "number of steps."
+                )
 
-        if particle_poses.shape[1] < 1:
-            raise ValueError(
-                "particle_poses must contain at least one particle per step."
-            )
+            if particle_poses.shape[1] < 1:
+                raise ValueError(
+                    "particle_poses must contain at least one particle per step."
+                )
 
-        if not np.all(np.isfinite(particle_poses)):
-            raise ValueError(
-                "particle_poses must contain only finite values."
-            )
+            if not np.all(np.isfinite(particle_poses)):
+                raise ValueError(
+                    "particle_poses must contain only finite values."
+                )
 
         if resolution <= 0.0:
             raise ValueError("resolution must be positive.")
@@ -188,7 +191,7 @@ class RoboViewer:
         self.occ_thres = occ_thres
         self.free_thres = free_thres
 
-        # Visual indicators
+        # Init Visual indicators
         self.heading_vector_length = float(heading_vector_length)
         # Store base visualization sizes.
         self.base_trajectory_marker_size = float(
@@ -214,7 +217,6 @@ class RoboViewer:
         )
         self.base_particle_arrow_width = 0.004
 
-        # Init visual scale
         self.visual_scale = 1.0
 
         self.heading_vector_length = (
@@ -229,15 +231,19 @@ class RoboViewer:
         self.current_step = 1
 
         # Define figure and axes
-        self.figure, self.ax = plt.subplots(figsize=(10, 7))
+        self.figure, self.ax = plt.subplots(figsize=(12, 8))
         self.figure.subplots_adjust(bottom=0.24, right=0.79)
 
         # Process and create visual elements
         self._create_map()
         self._create_trajectory_artists()
-        self._create_particle_artist()
-        self._create_slider()
-        self._create_visual_scale_slider()
+
+        if self.particle_poses is not None:
+            self._create_particle_artist()
+
+        self._create_legend()
+        self._create_visual_step_slider()
+        self._create_visual_traj_scale_slider()
         self._create_buttons()
         self._connect_keyboard_controls()
 
@@ -245,6 +251,12 @@ class RoboViewer:
 
 
     def discretize_map(self):
+        '''
+        Discretize the occupancy grid map logOdds values to three discrete values:
+        0 = occupied 
+        1 = unknown
+        2 = free
+        '''
         ogm_disc = np.full(
             self.ogm.shape,
             self.GRAY,
@@ -257,7 +269,9 @@ class RoboViewer:
 
 
     def _create_map(self) -> None:
-        """Draw the occupancy grid once. It remains constant."""
+        '''
+        Draw the occupancy grid map once as a static map.
+        '''
         # Define extend
         n_rows, n_cols = self.ogm.shape
 
@@ -271,8 +285,10 @@ class RoboViewer:
         # Discretize the ogm
         ogm_disc = self.discretize_map()
 
+        # Define colormap
         map_colormap = ListedColormap(["black", "lightgray", "white"])
 
+        # Display discretized map
         self.ax.imshow(
             ogm_disc,
             origin="lower",
@@ -290,11 +306,14 @@ class RoboViewer:
 
 
     def _create_trajectory_artists(self) -> None:
-        """Create trajectory, current-pose and heading artists."""
+        '''
+        Create trajectory, current-pose and heading artists.
+        '''
         self.trajectory_lines = {}
         self.current_pose_markers = {}
         self.heading_arrows = {}
 
+        # Define the trajectory lines, current pose markers and heading arrows for each trajectory (currently all equal)
         for trajectory_name in self.trajectories:
             trajectory_line, = self.ax.plot(
                 [],
@@ -335,11 +354,13 @@ class RoboViewer:
             self.current_pose_markers[trajectory_name] = current_pose_marker
             self.heading_arrows[trajectory_name] = heading_arrow
 
+
     def _create_particle_artist(self) -> None:
         '''Create the particle-pose arrows for one active step.'''
         initial_particle_poses = self.particle_poses[0]
         initial_thetas = initial_particle_poses[:, 2]
 
+        # Create a quiver artist to display the particles as vectors
         self.particle_artist = self.ax.quiver(
             initial_particle_poses[:, 0],
             initial_particle_poses[:, 1],
@@ -355,14 +376,22 @@ class RoboViewer:
             zorder=7,
         )
 
+
+    def _create_legend(self) -> None:
+        '''Create a legend for all available trajectory and particle artists.'''
         self.ax.legend(
             loc="upper left",
-            bbox_to_anchor=(1.02, 0.29),
+            # bbox_to_anchor=(1.02, 0.29),
+            bbox_to_anchor=(1.02, 1.0),
             borderaxespad=0.0,
         )
 
 
-    def _create_slider(self) -> None:
+    def _create_visual_step_slider(self) -> None:
+        '''
+        Creates a visual slider to slide between the current active steps.
+        '''
+        # Ddefine slider position and size
         slider_ax = self.figure.add_axes([0.18, 0.10, 0.50, 0.04])
 
         self.step_slider = Slider(
@@ -374,10 +403,11 @@ class RoboViewer:
             valstep=1,
             valfmt="%0.0f",
         )
+        # Update the display when slider has been triggered 
         self.step_slider.on_changed(self._on_slider_changed)
 
 
-    def _create_visual_scale_slider(self) -> None:
+    def _create_visual_traj_scale_slider(self) -> None:
         """
         Create a slider that scales trajectory and particle visualization.
 
@@ -397,6 +427,7 @@ class RoboViewer:
             valfmt="%.2f",
         )
 
+        # Scale trajectory visuals whenever slider is triggered and update the display
         self.visual_scale_slider.on_changed(
             self._on_visual_scale_changed
         )
@@ -433,14 +464,15 @@ class RoboViewer:
                 trajectory_name
             ] = toggle_button
 
-        particle_toggle_ax = self.figure.add_axes(
-            [0.81, 0.82 - len(self.trajectories) * 0.07, 0.18, 0.055]
-        )
-        self.particle_toggle_button = Button(
-            particle_toggle_ax,
-            "particles: ON",
-        )
-        self.particle_toggle_button.on_clicked(self._toggle_particles)
+        if self.particle_poses is not None:
+            particle_toggle_ax = self.figure.add_axes(
+                [0.81, 0.82 - len(self.trajectories) * 0.07, 0.18, 0.055]
+            )
+            self.particle_toggle_button = Button(
+                particle_toggle_ax,
+                "particles: ON",
+            )
+            self.particle_toggle_button.on_clicked(self._toggle_particles)
 
 
     def _connect_keyboard_controls(self) -> None:
@@ -451,6 +483,9 @@ class RoboViewer:
 
 
     def _on_slider_changed(self, slider_value: float) -> None:
+        '''
+        Updates the display when the step slider is triggered -> Changes visible steps.
+        '''
         self.update_display(step_number=int(slider_value))
 
 
@@ -494,13 +529,14 @@ class RoboViewer:
         )
 
         # Particle-arrow appearance and physical length.
-        self.particle_heading_vector_length = (
-            self.base_particle_heading_vector_length * scale
-        )
-        self.particle_arrow_width = (
-            self.base_particle_arrow_width * scale
-        )
-        self.particle_artist.width = self.particle_arrow_width
+        if self.particle_poses is not None:
+            self.particle_heading_vector_length = (
+                self.base_particle_heading_vector_length * scale
+            )
+            self.particle_arrow_width = (
+                self.base_particle_arrow_width * scale
+            )
+            self.particle_artist.width = self.particle_arrow_width
 
         # Recompute all heading vectors for the active step.
         self.update_display(self.current_step)
@@ -532,15 +568,16 @@ class RoboViewer:
 
     def _toggle_particles(self, _event) -> None:
         '''Show or hide the particle poses at the active step.'''
-        is_visible = not self.particle_artist.get_visible()
-        self.particle_artist.set_visible(is_visible)
+        if self.particle_poses is not None:
+            is_visible = not self.particle_artist.get_visible()
+            self.particle_artist.set_visible(is_visible)
 
-        state = "ON" if is_visible else "OFF"
-        self.particle_toggle_button.label.set_text(
-            "particles: {}".format(state)
-        )
+            state = "ON" if is_visible else "OFF"
+            self.particle_toggle_button.label.set_text(
+                "particles: {}".format(state)
+            )
 
-        self.figure.canvas.draw_idle()
+            self.figure.canvas.draw_idle()
 
 
     def _show_previous_step(self, _event) -> None:
@@ -570,15 +607,20 @@ class RoboViewer:
 
         Heading arrows are shown only for the active/current poses.
         """
+        # Limit step number
         step_number = int(np.clip(step_number, 1, self.n_steps))
         self.current_step = step_number
 
         current_thetas = {}
 
+        # update visible trajectories
         for trajectory_name, trajectory in self.trajectories.items():
+            # Update visible poses based on current step
             visible_poses = trajectory[:step_number, :3]
+            # Choose current pose -> Update current pose marker and heading arrow
             current_pose = visible_poses[-1]
 
+            # Update trajectory line data for the visible poses
             self.trajectory_lines[trajectory_name].set_data(
                 visible_poses[:, 0],
                 visible_poses[:, 1],
@@ -589,6 +631,7 @@ class RoboViewer:
             current_theta = float(current_pose[2])
             current_thetas[trajectory_name] = current_theta
 
+            # Update current pose marker
             self.current_pose_markers[trajectory_name].set_data(
                 [current_x],
                 [current_y],
@@ -604,19 +647,22 @@ class RoboViewer:
                 + self.heading_vector_length * np.sin(current_theta)
             )
 
+            # Set heading vector pose
             self.heading_arrows[trajectory_name].set_positions(
                 (current_x, current_y),
                 (heading_end_x, heading_end_y),
             )
 
-        current_particle_poses = self.particle_poses[step_number - 1]
-        particle_thetas = current_particle_poses[:, 2]
+        # update visible particle poses
+        if self.particle_poses is not None:
+            current_particle_poses = self.particle_poses[step_number - 1]
+            particle_thetas = current_particle_poses[:, 2]
 
-        self.particle_artist.set_offsets(current_particle_poses[:, :2])
-        self.particle_artist.set_UVC(
-            self.particle_heading_vector_length * np.cos(particle_thetas),
-            self.particle_heading_vector_length * np.sin(particle_thetas),
-        )
+            self.particle_artist.set_offsets(current_particle_poses[:, :2])
+            self.particle_artist.set_UVC(
+                self.particle_heading_vector_length * np.cos(particle_thetas),
+                self.particle_heading_vector_length * np.sin(particle_thetas),
+            )
 
         title_trajectory = (
             "map_traj"

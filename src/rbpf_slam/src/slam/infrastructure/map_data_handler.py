@@ -192,8 +192,8 @@ class MapDataHandler:
     def load(
         cls,
         input_dir: str,
-        map_filename: str = "final_log_odds_map.npy",
-        metadata_filename: str = "final_log_odds_map_metadata.json",
+        map_filename: str = "log_odds_map.npy",
+        metadata_filename: str = "log_odds_map_metadata.json",
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         """
         Load a final 2D log-odds map and its metadata.

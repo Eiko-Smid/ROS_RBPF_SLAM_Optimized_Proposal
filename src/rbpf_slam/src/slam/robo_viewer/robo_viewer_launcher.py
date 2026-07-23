@@ -5,7 +5,7 @@
 # debugpy.wait_for_client()
 
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -40,7 +40,7 @@ class RoboViewerLauncher:
         map_filename: str = "log_odds_map.npy",
         metadata_filename: str = "log_odds_map_metadata.json",
         particle_filename: str = "particles.npy",
-        start_directory: str = "",
+        start_directory: Optional[str] = None,
     ) -> None:
         '''
         Initialize the loader GUI.
@@ -78,15 +78,18 @@ class RoboViewerLauncher:
         self.map_filename = map_filename
         self.metadata_filename = metadata_filename
         self.particle_filename = particle_filename
-        self.start_directory = start_directory
 
-        self.map_data_handler = MapDataHandler()
-        self.particle_data_handler = ParticleDataHandler()
+        # Set to current dir if none, else use given start directory.
+        if start_directory is None or os.path.isdir(start_directory) is False:
+            self.start_directory = os.getcwd()
+        else:   
+            self.start_directory = start_directory
 
+        # Define window and window size
         self.root = tk.Tk()
         self.root.title("RoboViewer Loader")
         self.root.geometry("750x190")
-
+        
         self.run_directory = tk.StringVar()
         self.trajectory_csv_path = tk.StringVar()
 
@@ -95,15 +98,16 @@ class RoboViewerLauncher:
 
     def _create_gui(self) -> None:
         '''
-        Create labels, path fields and buttons for the loader.
+        Create labels, path fields and buttons for the loader window.
         '''
         self.root.columnconfigure(1, weight=1)
 
-        # Run directory selection.
+        # Define run directory selection and text
         run_label = tk.Label(
             self.root,
             text="Run directory:",
         )
+        # Define text pos
         run_label.grid(
             row=0,
             column=0,
@@ -112,10 +116,12 @@ class RoboViewerLauncher:
             sticky="w",
         )
 
+        # Define text field for run dir
         run_entry = tk.Entry(
             self.root,
             textvariable=self.run_directory,
         )
+
         run_entry.grid(
             row=0,
             column=1,
@@ -124,6 +130,7 @@ class RoboViewerLauncher:
             sticky="ew",
         )
 
+        # Define button for selecting run dir (file search dialog)
         run_button = tk.Button(
             self.root,
             text="Browse",
@@ -136,11 +143,12 @@ class RoboViewerLauncher:
             pady=15,
         )
 
-        # Trajectory CSV selection.
+        # Define trajectory selection and text
         trajectory_label = tk.Label(
             self.root,
             text="Trajectory CSV:",
         )
+        # Define text pos
         trajectory_label.grid(
             row=1,
             column=0,
@@ -149,6 +157,7 @@ class RoboViewerLauncher:
             sticky="w",
         )
 
+        # Define text field for trajectory CSV
         trajectory_entry = tk.Entry(
             self.root,
             textvariable=self.trajectory_csv_path,
@@ -161,6 +170,7 @@ class RoboViewerLauncher:
             sticky="ew",
         )
 
+        # Define button for selecting trajectory CSV (file search dialog)
         trajectory_button = tk.Button(
             self.root,
             text="Browse",
@@ -190,7 +200,7 @@ class RoboViewerLauncher:
 
     def _select_run_directory(self) -> None:
         '''
-        Open a GUI dialog for selecting the stored run directory.
+        Open a GUI dialog for selecting the stored run directory. Start directory is self.start_directory.
         '''
         selected_directory = filedialog.askdirectory(
             title="Select run directory",
@@ -233,27 +243,40 @@ class RoboViewerLauncher:
         run_directory = self.run_directory.get()
 
         if not run_directory:
-            raise ValueError("No run directory was selected.")
+            raise ValueError("No run directory was selected. Please select run directory first!")
 
-        return self.map_data_handler.load(
+        return MapDataHandler.load(
             input_dir=run_directory,
             map_filename=self.map_filename,
             metadata_filename=self.metadata_filename,
         )
 
 
-    def _load_particles(self) -> np.ndarray:
+    def _load_particles(self) -> Optional[np.ndarray]:
         '''Load all particle poses from the selected run directory.'''
         run_directory = self.run_directory.get()
 
         if not run_directory:
-            raise ValueError("No run directory was selected.")
+            raise ValueError(
+                "No run directory was selected. "
+                "Please select run directory first!"
+            )
 
-        return self.particle_data_handler.load(
-            input_dir=run_directory,
-            particle_filename=self.particle_filename,
-        )
-    
+        try:
+            return ParticleDataHandler.load(
+                input_dir=run_directory,
+                particle_filename=self.particle_filename,
+            )
+        except FileNotFoundError:
+            messagebox.showwarning(
+                title="particles not available",
+                message=(
+                    "There is no particle file available in the chosen run "
+                    "directory. Viewer will start without particles!"
+                ),
+            )
+            return None
+
 
     def __extract_map_dir_info_for_trajectory_loading(self, run_directory: str):
         dir_name = os.path.basename(
@@ -439,8 +462,10 @@ def main() -> None:
 
     This function is called when running this file as a script.
     '''
+    # Define start directory for file seach in the TK gui created by the class RoboViewerLauncher
     start_directory = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
     
+    # Define dict containing the name of the trajectory to load/use and the corresponding columns names inside the step.csv
     trajectory_columns = [
         (
             "true_pose_traj",
@@ -485,7 +510,7 @@ def main() -> None:
         ),
     ]
 
-
+    # Init the robo view launcher -> launches the robo viewer
     robot_view_launcher = RoboViewerLauncher(
         trajectory_columns=trajectory_columns,
         start_directory=start_directory,
@@ -493,6 +518,6 @@ def main() -> None:
     robot_view_launcher.run()
 
 
-
 if __name__ == "__main__":
     main()
+    
