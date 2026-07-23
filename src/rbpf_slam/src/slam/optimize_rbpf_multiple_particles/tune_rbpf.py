@@ -127,20 +127,20 @@ from .step_processor import StepProcessor
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-SUB_DIR = "proposal_optm_1_14/"
-OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
-STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
-PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
-PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
-
-# Test storage
-# SUB_DIR = "proposal_optm_test_5_part_storage/"
+# SUB_DIR = "proposal_optm_1_14/"
 # OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 # STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 # PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 # PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
 # RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
+
+# Test storage
+SUB_DIR = "proposal_optm_test_3_part_storage/"
+OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -154,10 +154,10 @@ STORE_MAP_DATA = True
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
-SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22, 56]
+# SEED_LIST = [22, 23, 56]
+SEED_LIST = [22, 56]
 # SEED_LIST = [22]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
@@ -346,26 +346,26 @@ PLAYBACK_DATA_LIST = [
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
         playback_suffix="1781885274",
     ),
-    # Turtle bot map unsee area
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1783013274",
-    ),
-    # AWS indoor map different path, same area
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1783014916",
-    ),
-    # Cafe map
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1783013816",
-    ),
-    # AWS bookstore map   
-    PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-        playback_suffix="1782917349",
-    ),
+    # # Turtle bot map unsee area
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_suffix="1783013274",
+    # ),
+    # # AWS indoor map different path, same area
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_suffix="1783014916",
+    # ),
+    # # Cafe map
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_suffix="1783013816",
+    # ),
+    # # AWS bookstore map   
+    # PlaybackDataset(
+    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_suffix="1782917349",
+    # ),
 ]
 
 
@@ -693,12 +693,125 @@ def _compute_wheel_separation() -> float:
 #     }
 
 # Validate best candidates against all maps
+# def _grid_axes() -> dict:
+#     return {
+#         # General rbpf params
+#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
+#         "every_nth_beam_map": [2],                  # use every nth beam for map update
+#         "n_particles": [30],                    # number of particles in the RBPF
+#         "neff_thres_ratio": [0.3],             # neff threshold as ratio of n_particles
+
+#         # Measurement model params
+#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
+#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
+        
+#         # Beam range finder measurement model params
+#         "beam_occ_thresh": [1.4],
+#         "beam_free_thresh": [-1.4],
+#         "beam_unknown_thresh": [0.3],
+#         "beam_known_free_ratio_thresh": [0.7],
+
+#         "beam_model_param_sets": [
+#             {
+#                 "beam_w_hit": 0.50,
+#                 "beam_w_short": 0.30,
+#                 "beam_lambda_short": 0.20,
+#                 "beam_w_max": 0.10,
+#                 "beam_w_rand": 0.10,
+#             },
+#         ],
+
+#         "beam_extra_param_sets": [
+#                # Candidate B measurement region
+#             {
+#                 "beam_sigma_hit": 0.07,
+#                 "beam_alpha_meas": 0.075,
+#                 "beam_p_unknown": 0.10,
+#                 "beam_p_out_of_map": 0.15,
+#                 "beam_p_unexpected_known_free": 0.00,
+#                 "beam_p_pred_below_min": 0.02,
+#                 "beam_step": 2,
+#             },       
+#         ],
+        
+#         # Motion model params
+#         "sigma_xy_motion": [0.12],                  # motion model uncertainty in x and y direction [m]
+#         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
+#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
+#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
+        
+#         # Proposal params (bound sets).
+#         # Each dict is one fixed combination of:
+#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
+#         # so these three values are sampled together (no Cartesian product among them).
+#         "proposal_param_sets": [
+#             {
+#                 "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
+#                 "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
+#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
+#             }
+#         ],
+#         # Proposal covariance scale/limit params (bound sets).
+#         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
+
+#         "scale_limit_cov": [
+#             # {
+#             #     "cov_std_scale": 0.9,
+#             #     "cov_max_std_xy": 1.0,
+#             #     "cov_max_std_theta": np.deg2rad(10),
+#             #     "min_std_xy": 0.0,
+#             #     "min_std_theta": np.deg2rad(0.0),
+#             # },
+#             # {
+#             #     "cov_std_scale": 0.8,
+#             #     "cov_max_std_xy": 1.0,
+#             #     "cov_max_std_theta": np.deg2rad(10),
+#             #     "min_std_xy": 0.0,
+#             #     "min_std_theta": np.deg2rad(0.0),
+#             # },
+#             # {
+#             #     "cov_std_scale": 0.7,
+#             #     "cov_max_std_xy": 1.0,
+#             #     "cov_max_std_theta": np.deg2rad(10),
+#             #     "min_std_xy": 0.0,
+#             #     "min_std_theta": np.deg2rad(0.0),
+#             # },
+#             {
+#                 "cov_std_scale": 0.5,
+#                 "cov_max_std_xy": 1.0,
+#                 "cov_max_std_theta": np.deg2rad(10),
+#                 "min_std_xy": 0.0,
+#                 "min_std_theta": np.deg2rad(0.0),
+#             },
+#             {
+#                 "cov_std_scale": 0.6,
+#                 "cov_max_std_xy": 1.0,
+#                 "cov_max_std_theta": np.deg2rad(10),
+#                 "min_std_xy": 0.0,
+#                 "min_std_theta": np.deg2rad(0.0),
+#             },
+
+#         ],
+#         # TODO: Delete proposal values when no longer needed later on
+#         "proposal_alpha": [1.0],
+#         "proposal_beta": [1.0],
+
+#         # ScanMatcherParams (map extraction)
+#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+#         "min_free_ratio": [0.4],
+
+#         # ICP jump thresholds
+#         "max_translation_jump": [0.7],
+#         "max_rotation_jump_deg": [45.0],
+#     }
+
+
 def _grid_axes() -> dict:
     return {
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [30],                    # number of particles in the RBPF
+        "n_particles": [20],                    # number of particles in the RBPF
         "neff_thres_ratio": [0.3],             # neff threshold as ratio of n_particles
 
         # Measurement model params
@@ -755,27 +868,6 @@ def _grid_axes() -> dict:
         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
 
         "scale_limit_cov": [
-            # {
-            #     "cov_std_scale": 0.9,
-            #     "cov_max_std_xy": 1.0,
-            #     "cov_max_std_theta": np.deg2rad(10),
-            #     "min_std_xy": 0.0,
-            #     "min_std_theta": np.deg2rad(0.0),
-            # },
-            # {
-            #     "cov_std_scale": 0.8,
-            #     "cov_max_std_xy": 1.0,
-            #     "cov_max_std_theta": np.deg2rad(10),
-            #     "min_std_xy": 0.0,
-            #     "min_std_theta": np.deg2rad(0.0),
-            # },
-            # {
-            #     "cov_std_scale": 0.7,
-            #     "cov_max_std_xy": 1.0,
-            #     "cov_max_std_theta": np.deg2rad(10),
-            #     "min_std_xy": 0.0,
-            #     "min_std_theta": np.deg2rad(0.0),
-            # },
             {
                 "cov_std_scale": 0.5,
                 "cov_max_std_xy": 1.0,
@@ -1141,6 +1233,9 @@ def build_optimizer():
 
 
 def rbpf_tuning_pipeline():
+    '''
+    Normal sequential tuning pipeline that either runs the rbpf algorithm in single or multiprocessing variant.
+    '''
     # Define vars
     ranked_run_list = []
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
@@ -1281,150 +1376,12 @@ def rbpf_tuning_pipeline():
     print("\nTuning optimization completed.")
 
 
-
-def rbpf_tuning_pipeline_threading():
-    # Define vars
-    ranked_run_list = []
-    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_param_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
-    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
-    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
-
-    # Init
-    # Init playback loader and converter
-    playback_loader = PlaybackLoader()
-    playback_conv = PlaybackConverter()
-    
-    # Init optimizer
-    rbpf_optimizer = build_optimizer()
-    
-    # Build result writer
-    result_writer = ResultWriter()
-    ranked_run_conv = RankedRunConverter()
-    result_aggregator = ResultAggregator()
-
-    # Store compact parameter overview (grid axes + one representative ExperimentParams)
-    write_parameter_overview(
-        path=PARAMETER_OVERVIEW_PATH,
-        n_repeats=N_OPTIMIZATION_REPEATS,
-        override=OVERRIDE_EXISTING_RESULTS,
-    )
-
-    # Load dataset and run tuning pipline
-    # TODO: Put for loop into optimizer. Then do tqdm bar over all -> Full progress bar !
-    optm_durations = []
-    for playback_ds in PLAYBACK_DATA_LIST:
-        # Load data
-        print(f"\nLoading playback data:\nsuffix: {playback_ds.playback_suffix} \ndir: {playback_ds.playback_dir}")
-        raw_playback_data = playback_loader.load(
-            file_suffix=playback_ds.playback_suffix,
-            filedir=playback_ds.playback_dir,
-            n_steps=N_PLAYBACK_STEPS,
-            ensure_start_pose=True,
-            prompt_for_missing_start_pose=True,
-        )
-
-        start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
-        print(f"Using start pose for tuning: {start_pose}")
-    
-        # Convert playback data
-        playback_data = playback_conv.convert(
-            raw_playback_data,
-            measurement_stddev=None,
-            min_range=MIN_SENSOR_RANGE,
-            max_range=MAX_SENSOR_RANGE,
-        )
-
-        # Run optimizer
-        ranked_runs, optm_duration_s = rbpf_optimizer.optimize_threading(
-            playback_data=playback_data,
-            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
-            seeds=SEED_LIST,
-            dataset_id=playback_ds.playback_suffix,
-            map_name=raw_playback_data.metadata.get("map", "unknown_map"),
-            use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
-            keep_step_results=KEEP_STEP_RESULTS,
-        )
-
-        # Store ranked runs
-        ranked_run_list.extend(ranked_runs)
-        optm_durations.append(optm_duration_s)
-
-    # Aggregate results
-    # Convert ranked runs to pandas DataFrame for easier analysis 
-    ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
-
-    # Rank results by score
-    rank_scored_df = result_aggregator.rank_by_score(
-        ranked_run_df=ranked_run_df,
-        score_col="score",   
-        ascending=True,
-    )
-
-    # Groupe and rank by playback data and seed
-    agg_dataset_param_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
-
-    # Froupe and rank by paramters 
-    agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_param_df)
-
-    # Build ranked parameter overview with one row per parameter_hash.
-    ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
-        agg_param_df=agg_param_df,
-        ranked_runs=ranked_run_list,
-    )
-
-    # Save results
-    result_writer.write_dataframe_csv(
-        path=ranked_scored_path,
-        df=rank_scored_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
-
-    result_writer.write_dataframe_csv(
-        path=agg_dataset_param_path,
-        df=agg_dataset_param_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
-
-    result_writer.write_dataframe_csv(
-        path=agg_param_path,
-        df=agg_param_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
-
-    result_writer.write_dataframe_csv(
-        path=ranked_param_overview_path,
-        df=ranked_param_overview_df,
-        override=OVERRIDE_EXISTING_RESULTS,
-        float_decimals=CSV_FLOAT_DECIMALS,
-    )
-
-    # Save independent per-step diagnostic traces for each ranked run.
-    if KEEP_STEP_RESULTS:
-        result_writer.write_run_steps_csv(
-            output_path=STEP_TRACE_PATH,
-            ranked_runs=ranked_run_list,
-            override=OVERRIDE_EXISTING_RESULTS,
-            float_decimals=CSV_FLOAT_DECIMALS,
-        )
-
-    # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
-    # TODO: Add proposal weights again
-    # result_writer.write_proposal_weights_csv(
-    #     output_path=PROPOSAL_WEIGHTS_PATH,
-    #     ranked_runs=ranked_run_list,
-    #     override=OVERRIDE_EXISTING_RESULTS,
-    #     float_decimals=CSV_FLOAT_DECIMALS,
-    # )
-
-    print("\nTuning optimization completed.")
-
-
-
 def rbpf_tuning_pipeline_multiprocessing():
+    '''
+    Tuning pipeline that trains the rbpf algorithm in parallel batches. The called optimizer creates n workers
+    that process the parameter grid and corresponding seeds in parallel. The RBPF should notbe called in parallel
+    here too, otherwise the multiprocessing will not work properly.
+    '''
     # Define vars
     ranked_run_list = []
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
@@ -1590,9 +1547,6 @@ def main():
 
     # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
     # rbpf_tuning_pipeline()
-
-    # RBPF tuning pipeline with RBPF step parallelization (threading)
-    # rbpf_tuning_pipeline_threading()
 
     # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
     rbpf_tuning_pipeline_multiprocessing()

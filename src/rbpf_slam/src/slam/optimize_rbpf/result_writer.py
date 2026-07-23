@@ -57,17 +57,77 @@ class ResultWriter:
 		return path_obj.exists()
 
 
+	# @staticmethod
+	# def write_dataframe_csv(
+	# 	path: str,
+	# 	df: pd.DataFrame,
+	# 	override: bool = False,
+	# 	float_decimals: int = 6,
+	# 	cols_to_use: List[str] = None,
+	# 	cols_to_exclude: List[str] = None,
+	# 	label: str = "DataFrame",
+	# ) -> None:
+	# 	"""
+	# 	Write a DataFrame to CSV with optional column selection, float formatting,
+	# 	and overwrite protection.
+	# 	"""
+	# 	formatted_df = df.copy()
+
+	# 	file_exists = ResultWriter.create_path_and_check_if_file_exists(path=path)
+
+	# 	if file_exists and not override:
+	# 		print(f"\n{label} has not been saved because file already exists and override is set to False!")
+	# 		return
+
+	# 	# Exclude columns only when no explicit selection was requested.
+	# 	if cols_to_use is None and cols_to_exclude:
+	# 		formatted_df = formatted_df.drop(columns=cols_to_exclude, errors="ignore")
+
+	# 	# Keep requested columns in their configured order.
+	# 	if cols_to_use is not None:
+	# 		existing_cols = [col for col in cols_to_use if col in formatted_df.columns]
+	# 		formatted_df = formatted_df.loc[:, existing_cols]
+		
+	# 	# Format columns
+	# 	for col in formatted_df.columns:
+	# 		formatted_df[col] = formatted_df[col].map(
+	# 			lambda value: ResultWriter._format_csv_value(value, float_decimals=float_decimals)
+	# 		)
+
+	# 	formatted_df.to_csv(path, index=False)
+	# 	print(f"\n{label} has been saved to:\n{path}")
+
 	@staticmethod
 	def write_dataframe_csv(
 		path: str,
 		df: pd.DataFrame,
 		override: bool = False,
 		float_decimals: int = 6,
+		cols_to_use: List[str] = None,
 		cols_to_exclude: List[str] = None,
 		label: str = "DataFrame",
 	) -> None:
 		"""
-		Write a DataFrame to CSV with optional float formatting and overwrite protection.
+		Write a DataFrame to CSV with optional float formatting and overwrite protection. If cols_to_use is 
+		provided, only those columns will be written. If only cols_to_exclude is provided, those columns will
+		be excluded. If both are given then cols_to_exclude will be ignored. 
+
+		Parameters
+		----------
+		path : str
+			Path to the CSV file.
+		df : pd.DataFrame
+			DataFrame to write.
+		override : bool, optional
+			If True, overwrite existing file. Default is False.
+		float_decimals : int, optional
+			Number of decimal places for float formatting. Default is 6.
+		cols_to_use : List[str], optional
+			List of columns to include in the output. If None, all columns are included.
+		cols_to_exclude : List[str], optional
+			List of columns to exclude from the output. Ignored if cols_to_use is provided.
+		label : str, optional
+			Label for the DataFrame in print statements. Default is "DataFrame".
 		"""
 		formatted_df = df.copy()
 
@@ -78,10 +138,15 @@ class ResultWriter:
 			return
 
 		# Exclude columns from df
-		if cols_to_exclude:
+		if cols_to_use is None and cols_to_exclude:
 			formatted_df = formatted_df.drop(columns=cols_to_exclude, errors="ignore")
+
+		# Use only specific columns
+		if cols_to_use is not None:
+			existing_cols = [col for col in cols_to_use if col in df.columns]
+			formatted_df = formatted_df.loc[:, existing_cols]
 		
-		# Format columns
+		# Format columns of df. _format_csv_value can be adapted such that the columns adapt to it, too.
 		for col in formatted_df.columns:
 			formatted_df[col] = formatted_df[col].map(
 				lambda value: ResultWriter._format_csv_value(value, float_decimals=float_decimals)
@@ -89,6 +154,7 @@ class ResultWriter:
 
 		formatted_df.to_csv(path, index=False)
 		print(f"\n{label} has been saved to:\n{path}")
+
 
 
 	@staticmethod
@@ -115,9 +181,12 @@ class ResultWriter:
 			writer.writerow(
 				[
 					"rank",
+					"dataset_id",
+					"map_name",
+					"seed",
+					"parameter_hash",
 
 					# Parameters
-					"seed",
 					"tag",
 					"every_nth_beam_filter",
 					"every_nth_beam_map",
@@ -217,9 +286,12 @@ class ResultWriter:
 
 					row = [
 						rank,
+						run.dataset_id,
+						run.map_name,
+						run.seed,
+						run.parameter_hash,
 
 						# Parameters
-						run.seed,
 						run.params.tag,
 						run.params.every_nth_scan_filter,
 						run.params.every_nth_scan_map,

@@ -416,15 +416,21 @@ class RoboViewerLauncher:
         Errors are displayed inside a GUI message box.
         '''
         try:
+            # Load map, particles and trajectories
             ogm, map_metadata = self._load_map()
             particle_poses = self._load_particles()
             trajectories = self._load_trajectories()
 
+            # Extract map metadata to init the viewer
             origin = map_metadata["origin"]
 
             origin_x = float(origin["x"])
             origin_y = float(origin["y"])
             resolution = float(map_metadata["resolution"])
+
+            log_odds_limits = map_metadata["log_odds_limits"]
+            occ_thres = float(log_odds_limits["max"])
+            free_thres = float(log_odds_limits["min"])
 
         except Exception as error:
             messagebox.showerror(
@@ -443,8 +449,8 @@ class RoboViewerLauncher:
             particle_poses=particle_poses,
             resolution=resolution,
             origin_xy=(origin_x, origin_y),
-            occ_thres=5.0,
-            free_thres=-5.0,
+            occ_thres=occ_thres,
+            free_thres=free_thres,
             heading_vector_length=1.0,
         )
 

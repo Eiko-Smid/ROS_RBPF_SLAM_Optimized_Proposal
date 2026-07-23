@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass, field
 
-from typing import List, Optional, Tuple, Dict
+from typing import Any, List, Optional, Tuple, Dict
 
 import numpy as np
 from scipy.stats import spearmanr
@@ -192,6 +192,8 @@ class RunResult:
     params: ExperimentParams
     step_results: List[StepResult] = field(default_factory=list)
     summary: dict = field(default_factory=dict)
+    best_part_map: Optional[np.ndarray] = None
+    best_part_map_meta: Dict[str, Any] = field(default_factory=dict)
 
 
 class RBPFEvaluator:
