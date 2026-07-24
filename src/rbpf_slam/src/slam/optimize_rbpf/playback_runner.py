@@ -498,6 +498,10 @@ class PlaybackRunner:
 
                 run_result.step_results.append(step_result)
 
+        # Store the final highest-weighted particle map and its metadata.
+        run_result.best_part_map = info.get("best_particle_map", None)
+        run_result.best_part_map_meta = info.get("best_particle_map_meta", None)
+
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(
             step_results=run_result.step_results,

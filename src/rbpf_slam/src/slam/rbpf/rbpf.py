@@ -2350,6 +2350,7 @@ class RBPF:
             "best_particle_idx": best_idx,
             "best_particle_pose": best_particle_pose,
             "best_particle_map": self.particles[best_idx].scan_matcher.ogm.get_log_odds_map(),
+            "best_particle_map_meta": self.particles[best_idx].scan_matcher.ogm.get_map_meta(),
             "weighted_mean_pose": weighted_mean_pose,
             "particle_weight_min": particle_weight_min,
             "particle_weight_max": particle_weight_max,

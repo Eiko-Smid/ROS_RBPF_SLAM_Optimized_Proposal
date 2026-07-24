@@ -835,7 +835,7 @@ Synchronized playback data
 
 # Test
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/"
-SUB_DIR = "proposal_test_1/"
+SUB_DIR = "proposal_test_2_old_pipe/"
 OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
@@ -2818,6 +2818,8 @@ def rbpf_tuning_pipeline():
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),
             use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
             keep_step_results=KEEP_STEP_RESULTS,
+            run_storage_dir=RUN_STORAGE_DIR if STORE_MAP_DATA else None,
+            store_map_data=STORE_MAP_DATA,
         )
 
         # Store ranked runs
@@ -3077,10 +3079,10 @@ def main():
     warmup_numba_functions()
 
     # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
-    # rbpf_tuning_pipeline()
+    rbpf_tuning_pipeline()
 
     # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    rbpf_tuning_pipeline_multiprocessing()
+    # rbpf_tuning_pipeline_multiprocessing()
     
     
 
