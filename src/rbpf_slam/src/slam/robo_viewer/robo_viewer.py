@@ -38,18 +38,14 @@ class RoboViewer:
         origin_xy: Tuple[float, float] = (0.0, 0.0),
         occ_thres: float = 1.4,
         free_thres: float = -1.4,
-        # heading_vector_length: float = 1.0,
-        # trajectory_marker_size: float = 6.0,
-        # trajectory_line_width: float = 4.0,
-        # current_pose_marker_size: float = 8.0,
-        # heading_line_width: float = 3.0,
-        # heading_head_size: float = 20.0,
+        
         heading_vector_length: float = 0.5,
         trajectory_marker_size: float = 3.0,
         trajectory_line_width: float = 2.0,
         current_pose_marker_size: float = 4.0,
         heading_line_width: float = 1.5,
         heading_head_size: float = 10.0,
+        base_particle_arrow_width = 0.002
     ) -> None:
         # Validate inputs
         # map info
@@ -164,10 +160,10 @@ class RoboViewer:
         )
         self.base_particle_heading_vector_length = (
             0.5 * self.base_heading_vector_length
-        )
-        self.base_particle_arrow_width = 0.004
+        )        
 
         self.visual_scale = 1.0
+        self.base_particle_arrow_width = base_particle_arrow_width
 
         self.heading_vector_length = (
             self.base_heading_vector_length
@@ -175,7 +171,7 @@ class RoboViewer:
         self.particle_heading_vector_length = (
             self.base_particle_heading_vector_length
         )
-        self.particle_arrow_width = self.base_particle_arrow_width
+        self.particle_arrow_width = base_particle_arrow_width
         
         self.n_steps = n_steps
         self.current_step = 1

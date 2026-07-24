@@ -1373,14 +1373,6 @@ def rbpf_tuning_pipeline():
     )
 
     # Save independent per-step diagnostic traces for each ranked run.
-    # if KEEP_STEP_RESULTS:
-    #     result_writer.write_run_steps_csv(
-    #         output_path=STEP_TRACE_PATH,
-    #         ranked_runs=ranked_run_list,
-    #         override=OVERRIDE_EXISTING_RESULTS,
-    #         float_decimals=CSV_FLOAT_DECIMALS,
-    #     )
-    # Save independent per-step diagnostic traces for each ranked run.
     if KEEP_STEP_RESULTS:
         result_writer.write_dataframe_csv(
             path=STEP_TRACE_PATH,
