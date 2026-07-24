@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+
+from typing import Tuple, Optional
+
+from dataclasses import dataclass
+from math import atan2, cos, sin, sqrt
+import random
+import threading
+import time
+
+import rospy
+import message_filters
+
+from geometry_msgs.msg import Pose
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
+from tf.transformations import euler_from_quaternion
+
+from rbpf_slam.msg import (
+    RBPFInput
+)
+
+try:
+    from rbpf_slam.src.slam.rbpf.rbpf import (
+        ParticleParams,
+        MotionModelParams,
+        MeasurementModelParams,
+    )
+    from rbpf_slam.src.slam.rbpf.scan_match_factory import (
+        OccupancyParams,
+        SensorParams,
+        MapParameter,
+        ICPParams,
+        RobotParams,
+        ScanMatcherParams,
+    )
+    # from rbpf_slam.src.slam.optimize_rbpf.playback_defs import ExperimentParams
+    from rbpf_slam.src.slam.infrastructure.playback_recorder import PlaybackRecorder
+
+except ModuleNotFoundError:
+    from slam.rbpf.rbpf import (
+        ParticleParams,
+        MotionModelParams,
+        MeasurementModelParams,
+    )
+    from slam.rbpf.scan_match_factory import (
+        OccupancyParams,
+        SensorParams,
+        MapParameter,
+        ICPParams,
+        RobotParams,
+        ScanMatcherParams,
+    )
+    # from slam.optimize_rbpf.playback_defs import ExperimentParams
+    from slam.infrastructure.playback_recorder import PlaybackRecorder
+
+
+
+
+@dataclass
+class ROSParams:
+    '''
+    Stores ROS topic names and parameters required by the playback node.
+
+    The node processes every nth laser scan. With a laser update rate of 10 Hz
+    and record_every_nth_scan=5, one playback step is recorded every 0.5 s.
+    '''
+    # Ground-truth odometry topic published by libgazebo_ros_p3d.so
+    ground_truth_topic: str = "/ground_truth/odom"
+
+    # Scan topic
+    scan_topic: str = "scan"
+
+    # RBPF input topic
+    rbpf_input_topic: str = "rbpf/input"
+
+    # Laser scanner
+    # Desired time window between 2 scans [s]
+    des_time_window = 0.5 
+    # If time diff is > des_time_window + d_time_window we take this scan 
+    d_time_window = 0.1 * des_time_window
+
+    # Reject scan/ground-truth pairs with a larger interpolation gap [s]
+    # This threshold is checked for both bracketing poses separately.
+    max_sync_error_s: float = 0.02
+
+    # Number of ground-truth poses and selected scans stored temporarily
+    # Queue size for time synchronizer (stores that many values at max to find matching pair)
+    time_synchronizer_queue_size = 50
+    # Time difference between the topic data that is accepted for valid pairs [s]
+    time_synchronizer_slop = 0.02
+
+    # Robot spawn pose used as old pose for the first recorded control
+    robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    # Artificial wheel encoder noise factors
+    motion_error_factor: Optional[float] = None
+    turn_error_factor: Optional[float] = None
+
+    # Laser noise metadata
+    laser_range_resolution: Optional[float] = None
+    laser_noise_type: Optional[str] = None
+    laser_noise_mean: Optional[float] = None
+    laser_noise_stddv: Optional[float] = None
+
+
+
+def compute_wheel_separation():
+    '''
+    Compute the wheel seperation based on the robot's chassis and wheel dimensions.
+    '''
+    h_chassis = 0.15
+    dist_chassis_to_ground = h_chassis / 5
+    r_wheel = h_chassis / 2 + dist_chassis_to_ground
+    w_wheel = 0.3 * r_wheel
+    r_chassis = 0.25
+    wheel_separation = 2 * r_chassis + w_wheel
+
+    return wheel_separation
+
+
+
+class RBPFDataProcessorNode:
+    def __init__(
+        self,
+        ros_params: ROSParams,
+        wheel_separation: float,
+    ):
+        
+        self.ros_params = ros_params
+        self.wheel_separation = wheel_separation
+
+        # Create thread locks 
+        self.lock = threading.Lock()
+
+        # Init previous synchronized pose with robot spawn pose
+        self.prev_pose = tuple(self.ros_params.robot_start_pose)
+        self.prev_scan_msg = None
+
+        # Define topic the message Filter should subscribe to
+        self.scan_sub = message_filters.Subscriber(
+            ros_params.scan_topic,
+            LaserScan,
+        )
+
+        self.ground_truth_sub = message_filters.Subscriber(
+            ros_params.ground_truth_topic,
+            Odometry,
+        )
+
+        # Init Time Synchronizer 
+        self.synchronizer = message_filters.ApproximateTimeSynchronizer(
+            [self.scan_sub, self.ground_truth_sub],
+            queue_size=ros_params.time_synchronizer_queue_size,
+            slop=ros_params.time_synchronizer_slop
+        )
+
+        # Register callback -> synced data will be send to this cb
+        self.synchronizer.registerCallback(self.synchronizer_cb)
+
+        # Add publisher
+        self.rbpf_input_pub = rospy.Publisher(
+            ros_params.rbpf_input_topic,
+            RBPFInput,
+            queue_size=10
+        )
+
+
+        # Define shutdown behavior
+        rospy.on_shutdown(self.on_shutdown)
+
+
+    def on_shutdown(self):
+        '''
+        Defines the shutdown behavior of the node.
+        '''
+        rospy.loginfo("Shutting down synchronized playback node.")
+
+
+    @staticmethod
+    def transform_pose_to_planar_pose(
+        pose: Pose
+    ) -> Tuple[float, float, float]:
+        '''
+        Transforms the pose message to a planar pose, consisting of (x, y, yaw) tuple.
+        '''
+        x= pose.position.x
+        y= pose.position.y
+        orientation = pose.orientation
+        # Transform quaternion angle's to euler angle's
+        (roll, pitch, yaw)= euler_from_quaternion([orientation.x, orientation.y, orientation.z,
+                                                orientation.w])
+        planar_pose= (x, y, yaw)
+        return planar_pose
+
+    staticmethod
+    def _wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3):
+        '''
+        Get's the pose at x_t and x_t-1, as well as robot width and computes the distance the left 
+        and right wheel traveled, since the last time stamp. 
+
+        Parameters:@
+        ----------
+        old_pose: tuple
+            The pose at time x_t-1, given as (x, y, theta)
+        new_pose: tuple
+            The pose at time x_t, given as (x, y, theta)
+        width: float
+            The width of the robot, given as distance between the two wheels
+        eps_alpha: float
+            Threshold to determine if a turn took place, given as minimum angle in radians
+
+        Returns:
+        -------
+        left_control: float
+            The distance the left wheel traveled since the last time stamp
+        right_control: float
+            The distance the right wheel traveled since the last time stamp
+        '''
+        old_x, old_y, old_theta= old_pose
+        new_x, new_y, new_theta= new_pose
+        # Calculate alpha (turning angle)
+        alpha= new_theta - old_theta
+        alpha= atan2(sin(alpha), cos(alpha))
+
+        # Compute direct distance between x_t and x_t-1
+        dist = sqrt((new_x-old_x)**2 + (new_y - old_y)**2)
+
+        # If turning took place
+        if(abs(alpha) > eps_alpha):
+            # Calculate turning radius 
+            radius = dist / (2 * sin(alpha/2))
+            # Calculate left and right control
+            width_by_two= width / 2
+            left_control= (radius - width_by_two) * alpha
+            right_control= (radius + width_by_two) * alpha
+        else:
+            # If not turning took place
+            left_control= dist
+            right_control= dist
+        return (left_control, right_control)
+
+
+    def add_wheel_encoder_noise(
+            self,
+            left_control: float,
+            right_control: float,
+        ) -> Tuple[float, float]:
+            '''
+            Adds Gaussian motion- and turn-dependent noise to wheel travel values.
+
+            The variance follows the same model as the previous wheel encoder node:
+            motion noise depends on each wheel distance and turn noise depends on the
+            difference between left and right wheel travel.
+            '''
+            motion_error_factor = float(self.ros_params.motion_error_factor or 0.0)
+            turn_error_factor = float(self.ros_params.turn_error_factor or 0.0)
+
+            # Compute variance contributions
+            control_difference = left_control - right_control
+            turn_variance = (
+                turn_error_factor * control_difference
+            ) ** 2
+
+            left_variance = (
+                motion_error_factor * left_control
+            ) ** 2 + turn_variance
+            right_variance = (
+                motion_error_factor * right_control
+            ) ** 2 + turn_variance
+
+            left_standard_deviation = sqrt(left_variance)
+            right_standard_deviation = sqrt(right_variance)
+
+            # Add zero-mean Gaussian noise around ideal wheel travel
+            noisy_left_control = random.gauss(
+                left_control,
+                left_standard_deviation,
+            )
+            noisy_right_control = random.gauss(
+                right_control,
+                right_standard_deviation,
+            )
+
+            return noisy_left_control, noisy_right_control
+
+
+    def publish_rbpf_info(
+            self,
+            laser_scan: LaserScan,
+            dl: float, 
+            dr: float,
+            pose: Tuple[float, float, float],
+    ):
+        msg = RBPFInput()
+
+        msg.header = laser_scan.header
+        msg.laser_scan = laser_scan
+
+        msg.dl = dl
+        msg.dr = dr
+        msg.true_pose.x = pose[0]
+        msg.true_pose.y = pose[1]
+        msg.true_pose.theta = pose[2]
+
+        # Publish data 
+
+
+    def synchronizer_cb(
+            self, 
+            laser_scan: LaserScan,
+            ground_truth_odom: Odometry,
+        ):
+            # Validate if laser scan timestamp is within window
+            with self.lock:
+                if self.prev_scan_msg is None:
+                    # Init message
+                    self.prev_scan_msg: LaserScan = laser_scan
+                    return            
+                else:
+                    # Compute time difference
+                    new_laser_time = laser_scan.header.stamp
+                    old_laser_time = self.prev_scan_msg.header.stamp
+                    scan_time_diff = (new_laser_time - old_laser_time).to_sec()
+    
+                # Copy data -> glob var are free now -> leave lock
+                laser_scan_cp = laser_scan
+                ground_truth_odom_cp = ground_truth_odom
+    
+            # Accept new data pair if time difference is within thres
+            if scan_time_diff > (self.ros_params.des_time_window - self.ros_params.d_time_window):
+                # Compute time difference between scan and ground truth odom
+                dt_scan_ground_truth = abs(laser_scan_cp.header.stamp.to_sec() - ground_truth_odom_cp.header.stamp.to_sec())
+                # rospy.loginfo(                
+                #     f"time_diff_scan_ground_truth={dt_scan_ground_truth * 1000.0:.2f} ms"
+                # )
+    
+                # Check if synchronization error is within threshold, otherwise skip 
+                if dt_scan_ground_truth > self.ros_params.max_sync_error_s:
+                    rospy.logwarn(
+                        f"Skipping pair: synchronization error "
+                        f"{dt_scan_ground_truth * 1000.0:.2f} ms"
+                    )
+                    return
+    
+                # Extract ground truth pose 
+                pose = self.transform_pose_to_planar_pose(pose=ground_truth_odom_cp.pose.pose)
+                # rospy.loginfo(f"True pose: x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}")
+                
+                # Simulate wheel encoder data 
+                dl, dr = self._wheelencoder_simulation(
+                    old_pose=self.prev_pose,
+                    new_pose=pose,
+                    width=self.wheel_separation,
+                )
+    
+                # Add noise to wheel encoder data
+                dl, dr = self.add_wheel_encoder_noise(
+                    left_control=dl,
+                    right_control=dr,
+                )
+                
+                # Update prev data
+                self.prev_scan_msg = laser_scan_cp
+                self.prev_pose = pose
+
+                # Publish rbpf input data
+                self.publish_rbpf_info(
+                    laser_scan=laser_scan_cp,
+                    dl=dl, 
+                    dr=dr,
+                    pose=pose
+                )
+            return        

@@ -85,7 +85,7 @@ class ROSParams:
     max_sync_error_s: float = 0.02
 
     # Number of ground-truth poses and selected scans stored temporarily
-    # Que size for time syncrhomizer (stores that many values at max to find matching pair)
+    # Queue size for time synchronizer (stores that many values at max to find matching pair)
     time_synchronizer_queue_size = 50
     # Time difference between the topic data that is accepted for valid pairs [s]
     time_synchronizer_slop = 0.02
@@ -102,6 +102,7 @@ class ROSParams:
     laser_noise_type: Optional[str] = None
     laser_noise_mean: Optional[float] = None
     laser_noise_stddv: Optional[float] = None
+
 
 
 def define_exp_parameter() -> ExperimentParams:
@@ -181,6 +182,7 @@ def define_exp_parameter() -> ExperimentParams:
     )
 
     return exp_param
+
 
 
 @dataclass
@@ -272,12 +274,12 @@ class ROSPlaybackNode:
 
         # Define topic the message Filter should subscribe to
         self.scan_sub = message_filters.Subscriber(
-            "/scan",
+            ros_params.scan_topic,
             LaserScan,
         )
 
         self.ground_truth_sub = message_filters.Subscriber(
-            "/ground_truth/odom",
+            ros_params.ground_truth_topic,
             Odometry,
         )
 
@@ -367,17 +369,16 @@ class ROSPlaybackNode:
             # Update prev data
             self.prev_scan_msg = laser_scan_cp
             self.prev_pose = pose
-        return
-        
+        return        
 
 
-    @staticmethod
+    staticmethod
     def wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3):
         '''
         Get's the pose at x_t and x_t-1, as well as robot width and computes the distance the left 
         and right wheel traveled, since the last time stamp. 
 
-        Parameters:
+        Parameters:@
         ----------
         old_pose: tuple
             The pose at time x_t-1, given as (x, y, theta)
