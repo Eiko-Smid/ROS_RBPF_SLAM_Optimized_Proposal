@@ -5,7 +5,7 @@
 # debugpy.wait_for_client()
 
 import os
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Optional, Tuple
 
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -36,7 +36,7 @@ class RoboViewerLauncher:
 
     def __init__(
         self,
-        trajectory_columns: List[Tuple[str, Tuple[str, ...]]],
+        trajectory_columns: Dict[str, Tuple[str, ...]],
         map_filename: str = "log_odds_map.npy",
         metadata_filename: str = "log_odds_map_metadata.json",
         particle_filename: str = "particles.npy",
@@ -48,22 +48,19 @@ class RoboViewerLauncher:
         Parameters
         ----------
         trajectory_columns:
-            List containing each trajectory name and its CSV columns.
+            Dictionary mapping each trajectory name to its CSV columns.
             The first three columns contain x, y and theta. Additional
             trajectory data, such as the best-particle weight, is retained.
 
             Example:
 
-                [
-                    (
-                        "map_traj",
-                        (
-                            "map_traj_x",
-                            "map_traj_y",
-                            "map_traj_theta",
-                        ),
+                {
+                    "map_traj": (
+                        "map_traj_x",
+                        "map_traj_y",
+                        "map_traj_theta",
                     ),
-                ]
+                }
 
         map_filename:
             Filename of the stored NumPy log-odds map.
@@ -383,9 +380,28 @@ class RoboViewerLauncher:
                 "The loaded trajectory contains no poses."
             )
 
+        # Replace missing pose coordinates with zero so the viewer can still
+        # display trajectories containing incomplete CSV rows.
+        pose_values = trajectory[:, :3]
+        nan_pose_mask = np.isnan(pose_values)
+
+        if np.any(nan_pose_mask):
+            nan_count = int(np.count_nonzero(nan_pose_mask))
+            messagebox.showwarning(
+                title="NaN trajectory values replaced",
+                message=(
+                    "The loaded trajectory contains {} NaN value(s) in its "
+                    "x, y or theta columns. These values are being "
+                    "automatically replaced with 0.0."
+                    .format(nan_count)
+                ),
+            )
+            pose_values[nan_pose_mask] = 0.0
+
         if not np.all(np.isfinite(trajectory)):
             raise ValueError(
-                "The loaded trajectory contains NaN or infinite values."
+                "The loaded trajectory contains infinite values or NaN "
+                "values outside its x, y and theta columns."
             )
         
         # Transform all angles from deg -> rad
@@ -401,7 +417,7 @@ class RoboViewerLauncher:
         '''Load all configured trajectories from the selected CSV file.'''
         trajectories = {}
 
-        for trajectory_name, des_cols in self.trajectory_columns:
+        for trajectory_name, des_cols in self.trajectory_columns.items():
             trajectories[trajectory_name] = self._load_trajectory(
                 des_cols=des_cols,
             )
@@ -473,53 +489,38 @@ def main() -> None:
     start_directory = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
     
     # Define dict containing the name of the trajectory to load/use and the corresponding columns names inside the step.csv
-    trajectory_columns = [
-        (
-            "true_pose_traj",
-            (
-                "true_pose_x",
-                "true_pose_y",
-                "true_pose_theta",
-            ),
+    trajectory_cols = {
+        "true_pose_traj": (
+            "true_pose_x",
+            "true_pose_y",
+            "true_pose_theta",
         ),
-        (
-            "raw_odom_traj",
-            (
-                "raw_odom_pose_x",
-                "raw_odom_pose_y",
-                "raw_odom_pose_theta",
-            ),
+        "raw_odom_traj": (
+            "raw_odom_pose_x",
+            "raw_odom_pose_y",
+            "raw_odom_pose_theta",
         ),
-        (
-            "weighted_mean_traj",
-            (
-                "weighted_mean_pose_x",
-                "weighted_mean_pose_y",
-                "weighted_mean_pose_theta",
-            ),
+        "weighted_mean_traj": (
+            "weighted_mean_pose_x",
+            "weighted_mean_pose_y",
+            "weighted_mean_pose_theta",
         ),
-        (
-            "best_particle_traj",
-            (
-                "best_particle_pose_x",
-                "best_particle_pose_y",
-                "best_particle_pose_theta",
-                "best_particle_weight",
-            ),
+        "best_particle_traj": (
+            "best_particle_pose_x",
+            "best_particle_pose_y",
+            "best_particle_pose_theta",
+            "best_particle_weight",
         ),
-        (
-            "map_traj",
-            (
-                "map_traj_x",
-                "map_traj_y",
-                "map_traj_theta",
-            ),
+        "map_traj": (
+            "map_traj_x",
+            "map_traj_y",
+            "map_traj_theta",
         ),
-    ]
+    }
 
     # Init the robo view launcher -> launches the robo viewer
     robot_view_launcher = RoboViewerLauncher(
-        trajectory_columns=trajectory_columns,
+        trajectory_columns=trajectory_cols,
         start_directory=start_directory,
     )
     robot_view_launcher.run()

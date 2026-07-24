@@ -38,6 +38,11 @@ class StepProcessor:
         "rot_err_mu_true": "rot_err_mu_true_deg",
         "rot_err_mu_sm": "rot_err_mu_sm_deg",
         "rot_err_mu_pred": "rot_err_mu_pred_deg",
+        "rot_err_best_xj_true": "rot_err_best_xj_true_deg",
+        "rot_err_worst_xj_true": "rot_err_worst_xj_true_deg",
+        "min_rot_err_xjs": "min_rot_err_xjs_deg",
+        "min_xj_rot_err_true": "min_xj_rot_err_true_deg",
+        "best_xj_rot_err_true": "best_xj_rot_err_true_deg",
         "prop_std_theta": "prop_std_theta_deg",
     }
 
@@ -55,11 +60,17 @@ class StepProcessor:
         pose_appendix: Sequence[str],
     ) -> Dict[str, object]:
         """
-        Split a pose tuple/list/array into three scalar columns.
+        Split a pose tuple/list/array into scalar columns and convert its
+        heading from radians to degrees.
         """
         if len(pose_appendix) != 3:
             raise ValueError(
                 f"pose_appendix must have exactly 3 elements, got {len(pose_appendix)}."
+            )
+        if not pose_appendix[THETA].endswith("_deg"):
+            raise ValueError(
+                "The pose angle column appendix must end with '_deg', "
+                f"got {pose_appendix[THETA]!r}."
             )
 
         pose_columns = {
@@ -83,7 +94,7 @@ class StepProcessor:
             {
                 name + "_" + pose_appendix[X]: pose[X],
                 name + "_" + pose_appendix[Y]: pose[Y],
-                name + "_" + pose_appendix[THETA]: pose[THETA],
+                name + "_" + pose_appendix[THETA]: float(np.rad2deg(pose[THETA])),
             }
         )
         return pose_columns
@@ -103,7 +114,7 @@ class StepProcessor:
     @staticmethod
     def process_ranked_runs(
         ranked_runs: Iterable[RankedRun],
-        pose_appendix: Sequence[str] = ("x", "y", "theta_rad"),
+        pose_appendix: Sequence[str] = ("x", "y", "theta_deg"),
     ) -> pd.DataFrame:
         """
         Return all stored run steps as a flat DataFrame.

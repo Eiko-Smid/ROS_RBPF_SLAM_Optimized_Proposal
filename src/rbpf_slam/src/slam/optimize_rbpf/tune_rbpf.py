@@ -825,8 +825,17 @@ Synchronized playback data
 
 
 # Playback data path defs
+# STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/"
+# SUB_DIR = "proposal_optm_36_1/"
+# OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
+# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
+# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + "runs/"
+
+# Test
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/"
-SUB_DIR = "proposal_optm_36_1/"
+SUB_DIR = "proposal_test_1/"
 OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
@@ -845,7 +854,7 @@ STORE_MAP_DATA = True
 CSV_FLOAT_DECIMALS = 6
 
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
+N_PLAYBACK_STEPS = None             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
 N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
 # SEED_LIST = [22, 23, 56]
 SEED_LIST = [22, 56]
@@ -862,7 +871,7 @@ MEASUREMENT_STDDEV = 0.03
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0
 
-POSE_APPENDIX = ("x", "y", "theta_rad")
+POSE_APPENDIX = ("x", "y", "theta_deg")
 
 STEP_COLS_TO_USE = [
     # General columns to use
@@ -886,19 +895,19 @@ STEP_COLS_TO_USE = [
     # Poses
     "true_pose_x",
     "true_pose_y",
-    "true_pose_theta_rad",
+    "true_pose_theta_deg",
 
     "raw_odom_pose_x",
     "raw_odom_pose_y",
-    "raw_odom_pose_theta_rad",
+    "raw_odom_pose_theta_deg",
 
     "scan_match_pose_x",
     "scan_match_pose_y",
-    "scan_match_pose_theta_rad",
+    "scan_match_pose_theta_deg",
 
     "est_pose_x",
     "est_pose_y",
-    "est_pose_theta_rad",
+    "est_pose_theta_deg",
 
     # Pose errors
     "trans_error_raw_odom",
