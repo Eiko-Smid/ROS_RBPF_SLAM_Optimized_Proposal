@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 
-# import debugpy
-# debugpy.listen(("localhost", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
+import debugpy
 
 import itertools
 import json
@@ -135,7 +132,7 @@ STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/op
 # RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
 # Test storage
-SUB_DIR = "proposal_optm_test_3_part_storage/"
+SUB_DIR = "proposal_optm_test_4_linear_pipe/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
@@ -1255,6 +1252,7 @@ def rbpf_tuning_pipeline():
     result_writer = ResultWriter()
     ranked_run_conv = RankedRunConverter()
     result_aggregator = ResultAggregator()
+    step_processor = StepProcessor()
 
     # Store compact parameter overview (grid axes + one representative ExperimentParams)
     write_parameter_overview(
@@ -1297,11 +1295,30 @@ def rbpf_tuning_pipeline():
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),
             use_seed_list_for_measurement_noise=USE_SEED_LIST_FOR_MEASUREMENT_NOISE,
             keep_step_results=KEEP_STEP_RESULTS,
+            run_storage_dir=RUN_STORAGE_DIR if STORE_MAP_DATA else None,
+            store_map_data=STORE_MAP_DATA,
         )
 
         # Store ranked runs
         ranked_run_list.extend(ranked_runs)
         optm_durations.append(optm_duration_s)
+
+    # Sort runs by score from lowest to highest
+    ranked_run_list.sort(key=lambda ranked_run: ranked_run.score)
+    
+    # Clean optmization duration
+    cleaned_optm_duratios = None
+    cleaned_optm_duratios = [optm_dur_s for optm_dur_s in optm_durations if optm_dur_s is not None]
+    if cleaned_optm_duratios is not None:
+        overall_optm_duration_s = sum(cleaned_optm_duratios)
+        print(f"\n\nFinished overall scan matching optimization in {overall_optm_duration_s} s")
+
+    # Process step data and store into df
+    if KEEP_STEP_RESULTS:
+        step_trace_df = step_processor.process_ranked_runs(
+            ranked_runs=ranked_run_list,
+            pose_appendix=POSE_APPENDIX,
+        )    
 
     # Aggregate results
     # Convert ranked runs to pandas DataFrame for easier analysis 
@@ -1356,22 +1373,23 @@ def rbpf_tuning_pipeline():
     )
 
     # Save independent per-step diagnostic traces for each ranked run.
+    # if KEEP_STEP_RESULTS:
+    #     result_writer.write_run_steps_csv(
+    #         output_path=STEP_TRACE_PATH,
+    #         ranked_runs=ranked_run_list,
+    #         override=OVERRIDE_EXISTING_RESULTS,
+    #         float_decimals=CSV_FLOAT_DECIMALS,
+    #     )
+    # Save independent per-step diagnostic traces for each ranked run.
     if KEEP_STEP_RESULTS:
-        result_writer.write_run_steps_csv(
-            output_path=STEP_TRACE_PATH,
-            ranked_runs=ranked_run_list,
+        result_writer.write_dataframe_csv(
+            path=STEP_TRACE_PATH,
+            df=step_trace_df,
             override=OVERRIDE_EXISTING_RESULTS,
             float_decimals=CSV_FLOAT_DECIMALS,
+            cols_to_use=STEP_COLS_TO_USE,
+            label="Step trace DataFrame",
         )
-
-    # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
-    # TODO: Add proposal weights again
-    # result_writer.write_proposal_weights_csv(
-    #     output_path=PROPOSAL_WEIGHTS_PATH,
-    #     ranked_runs=ranked_run_list,
-    #     override=OVERRIDE_EXISTING_RESULTS,
-    #     float_decimals=CSV_FLOAT_DECIMALS,
-    # )
 
     print("\nTuning optimization completed.")
 
@@ -1542,14 +1560,19 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 
 def main():
+    # Attatch debugger
+    # debugpy.listen(("localhost", 5678))
+    # print("Waiting for debugger attach...")
+    # debugpy.wait_for_client()
+
     # Initialize numba functions
     warmup_numba_functions()
 
     # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
-    # rbpf_tuning_pipeline()
+    rbpf_tuning_pipeline()
 
     # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    rbpf_tuning_pipeline_multiprocessing()
+    # rbpf_tuning_pipeline_multiprocessing()
     
     
 

@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 
-# import debugpy
-# debugpy.listen(("localhost", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
+import debugpy
 
 import itertools
 import json
@@ -3075,6 +3072,11 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 
 def main():
+    # Attatch debugger
+    debugpy.listen(("localhost", 5678))
+    print("Waiting for debugger attach...")
+    debugpy.wait_for_client()
+    
     # Initialize numba functions
     warmup_numba_functions()
 

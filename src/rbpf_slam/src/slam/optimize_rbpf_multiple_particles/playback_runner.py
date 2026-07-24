@@ -501,44 +501,56 @@ class PlaybackRunner:
                 
                 # Extract evaluation info from the RBPF instance
                 info = rbpf.get_step_info()
-                step_idx_logged = info.get("step")
-                true_pose_logged = info.get("true_pose")
-                est_pose = info.get("weighted_mean_pose")
-                best_particle_pose = info.get("best_particle_pose")
-                neff = info.get("neff")
-                scan_match_failed = info.get("scan_match_failed_any")
-                scan_match_fallback_failed = info.get("scan_match_fallback_failed_any")
-                particle_weight_min = info.get("particle_weight_min")
-                particle_weight_max = info.get("particle_weight_max")
-                particle_weight_mean = info.get("particle_weight_mean")
-                proposal_metrics = info.get("proposal_metrics")
-                measurement_model_counters_fallback = info.get("measurement_model_counters_fallback")
+                step_idx_logged = info.get("step", None)
+                proposal_metrics = info.get("proposal_metrics", None)
+
+                true_pose_logged = info.get("true_pose", None)
+                neff = info.get("neff", None)
+
+                scan_match_failed = info.get("scan_match_failed_any", None)
+                scan_match_fallback_failed = info.get("scan_match_fallback_failed_any", None)
+
+                particle_poses_before_resampling = info.get("particle_poses_before_resampling", None)
+                particle_weights_before_resampling = info.get("particle_weights_before_resampling", None)
+
+                particle_poses = info.get("particle_poses", None)
+                particle_weights = info.get("particle_weights", None)
+
+                particle_inherit_indices = info.get("resampled_indices", None)
 
                 # Evaluate the current step and store results
                 step_result = self.evaluator.evaluate_step(
                     step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
                     t=step.t,
-                    true_pose=true_pose_logged if true_pose_logged is not None else step.true_pose,
+
+                    true_pose=true_pose_logged,
                     raw_odom_pose=(
                         self._raw_odom_poses_cache[step_idx]
                         if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
                         else None
                     ),
-                    est_pose=est_pose,
-                    best_particle_pose=best_particle_pose,
+
                     scan_match_failed=scan_match_failed,
                     scan_match_fallback_failed=scan_match_fallback_failed,
+
+                    particle_poses=particle_poses,
+                    particle_weights=particle_weights,
+
+                    particle_poses_before_resampling=particle_poses_before_resampling,
+                    particle_weights_before_resampling=particle_weights_before_resampling,
                     neff=neff,
-                    particle_weight_min=particle_weight_min,
-                    particle_weight_max=particle_weight_max,
-                    particle_weight_mean=particle_weight_mean,
+
+                    particle_inherit_indices=particle_inherit_indices,
+
                     step_duration=step_duration,
                     proposal_metrics=proposal_metrics,
-                    measurement_model_counters_fallback=measurement_model_counters_fallback,
-
                 )
 
                 run_result.step_results.append(step_result)
+
+        # Get final map and metadata
+        run_result.best_part_map = info.get("best_particle_map", None)
+        run_result.best_part_map_meta = info.get("best_particle_map_meta", None)
 
         # Summarize the run results and store in the run result object
         run_result.summary = self.evaluator.summarize_run(

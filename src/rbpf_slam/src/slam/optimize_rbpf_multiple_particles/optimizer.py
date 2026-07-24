@@ -366,6 +366,8 @@ class RBPFOptimizer:
         map_name: Optional[str] = None,
         use_seed_list_for_measurement_noise: bool = True,
         keep_step_results: bool = False,
+        run_storage_dir: Optional[str] = None,
+        store_map_data: bool = False,
     ) -> Tuple[List[RankedRun], float]:
         """
         Runs the RBPF once per parameter set and ranks all runs by score (lower is better).
@@ -381,6 +383,11 @@ class RBPFOptimizer:
         if total_runs == 0:
             print("No parameter combinations provided. Nothing to optimize.")
             return [], None
+
+        if store_map_data and not run_storage_dir:
+            raise RuntimeError(
+                "STORE_MAP_DATA is enabled, but run storage directory is not configured."
+            )
 
         print(f"Starting RBPF optimization with {total_runs * len(seed_list)} run(s)...")
         ranked_runs: List[RankedRun] = []
@@ -418,6 +425,41 @@ class RBPFOptimizer:
                 # run_result = self.runner.run(run_playback_data, params)
                 run_result = self.runner.run_rbpf_parallel(run_playback_data, params)
                 score = self.scorer.score(run_result.summary)
+
+                # Store the particle history and final highest-weighted particle map.
+                if store_map_data:
+                    seed_part = str(run_seed) if run_seed is not None else "none"
+                    ds_id_part = str(dataset_id) if dataset_id is not None else "unknown_dataset"
+                    map_part = str(map_name) if map_name is not None else "unknown_map"
+                    run_dir = os.path.join(
+                        run_storage_dir,
+                        map_part + "_" + ds_id_part + "_" + str(param_hash) + "_" + seed_part,
+                    )
+
+                    particle_poses_before_resampling = [
+                        step_result.particle_poses_before_resampling
+                        for step_result in run_result.step_results
+                    ]
+                    ParticleDataHandler.save(
+                        output_dir=run_dir,
+                        particle_poses=particle_poses_before_resampling,
+                    )
+
+                    best_p_map = run_result.best_part_map
+                    best_p_map_meta = run_result.best_part_map_meta
+
+                    if best_p_map is not None and best_p_map_meta is not None:
+                        MapDataHandler.save(
+                            output_dir=run_dir,
+                            log_odds_map=best_p_map,
+                            resolution=best_p_map_meta.get("grid_resolution_m"),
+                            shift_x=best_p_map_meta.get("shift_x"),
+                            shift_y=best_p_map_meta.get("shift_y"),
+                            occupied_threshold=params.measurement_model_params.occ_thresh,
+                            free_threshold=params.measurement_model_params.free_thresh,
+                            min_log_odds=params.occupancy_params.min_log_odds,
+                            max_log_odds=params.occupancy_params.max_log_odds,
+                        )
 
                 # Store run results
                 ranked_runs.append(
