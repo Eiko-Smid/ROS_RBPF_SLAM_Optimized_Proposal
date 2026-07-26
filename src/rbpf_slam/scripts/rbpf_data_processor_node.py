@@ -55,6 +55,7 @@ except ModuleNotFoundError:
     from slam.infrastructure.playback_recorder import PlaybackRecorder
 
 
+NODE_NAME = "rbpf_data_processor_node"
 
 
 @dataclass
@@ -76,9 +77,9 @@ class ROSParams:
 
     # Laser scanner
     # Desired time window between 2 scans [s]
-    des_time_window = 0.5 
+    des_time_window: float = 0.5
     # If time diff is > des_time_window + d_time_window we take this scan 
-    d_time_window = 0.1 * des_time_window
+    d_time_window: float = 0.1 * des_time_window
 
     # Reject scan/ground-truth pairs with a larger interpolation gap [s]
     # This threshold is checked for both bracketing poses separately.
@@ -86,9 +87,9 @@ class ROSParams:
 
     # Number of ground-truth poses and selected scans stored temporarily
     # Queue size for time synchronizer (stores that many values at max to find matching pair)
-    time_synchronizer_queue_size = 50
+    time_synchronizer_queue_size: int = 50
     # Time difference between the topic data that is accepted for valid pairs [s]
-    time_synchronizer_slop = 0.02
+    time_synchronizer_slop: float = 0.02
 
     # Robot spawn pose used as old pose for the first recorded control
     robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
@@ -97,17 +98,11 @@ class ROSParams:
     motion_error_factor: Optional[float] = None
     turn_error_factor: Optional[float] = None
 
-    # Laser noise metadata
-    laser_range_resolution: Optional[float] = None
-    laser_noise_type: Optional[str] = None
-    laser_noise_mean: Optional[float] = None
-    laser_noise_stddv: Optional[float] = None
-
 
 
 def compute_wheel_separation():
     '''
-    Compute the wheel seperation based on the robot's chassis and wheel dimensions.
+    Compute the wheel separation based on the robot's chassis and wheel dimensions.
     '''
     h_chassis = 0.15
     dist_chassis_to_ground = h_chassis / 5
@@ -126,7 +121,7 @@ class RBPFDataProcessorNode:
         ros_params: ROSParams,
         wheel_separation: float,
     ):
-        
+        # Store input parameters
         self.ros_params = ros_params
         self.wheel_separation = wheel_separation
 
@@ -165,7 +160,6 @@ class RBPFDataProcessorNode:
             queue_size=10
         )
 
-
         # Define shutdown behavior
         rospy.on_shutdown(self.on_shutdown)
 
@@ -193,7 +187,8 @@ class RBPFDataProcessorNode:
         planar_pose= (x, y, yaw)
         return planar_pose
 
-    staticmethod
+
+    @staticmethod
     def _wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3):
         '''
         Get's the pose at x_t and x_t-1, as well as robot width and computes the distance the left 
@@ -292,27 +287,44 @@ class RBPFDataProcessorNode:
             dr: float,
             pose: Tuple[float, float, float],
     ):
+        # Init RBPFInput message
         msg = RBPFInput()
 
         msg.header = laser_scan.header
         msg.laser_scan = laser_scan
 
-        msg.dl = dl
-        msg.dr = dr
+        msg.wheel_encoder.left = dl
+        msg.wheel_encoder.right = dr
         msg.true_pose.x = pose[0]
         msg.true_pose.y = pose[1]
         msg.true_pose.theta = pose[2]
 
         # Publish data 
+        self.rbpf_input_pub.publish(msg)
 
 
     def synchronizer_cb(
             self, 
             laser_scan: LaserScan,
             ground_truth_odom: Odometry,
-        ):
-            # Validate if laser scan timestamp is within window
+        ) -> None:
+            '''
+            Callback functions that readds the synchronized laser scan and ground truth odometry messages, processes them
+            and publishes the RBPF input message. 
+            The method simulates the wheel encoder data based on the received ground truth odometry and publishes it together
+            with the laser scan data, while ensuring the data is within time thresholds.
+
+            Parameters
+            ----------
+            laser_scan: LaserScan
+                The synchronized laser scan message.
+            ground_truth_odom: Odometry
+                The synchronized ground truth odometry message.
+            
+            '''
+            # Read synchronized data 
             with self.lock:
+                # Check if this is the first scan message received, if so, store it and return
                 if self.prev_scan_msg is None:
                     # Init message
                     self.prev_scan_msg: LaserScan = laser_scan
@@ -371,4 +383,68 @@ class RBPFDataProcessorNode:
                     dr=dr,
                     pose=pose
                 )
-            return        
+            return       
+
+
+    def exe(self):
+        rospy.spin()
+
+ 
+
+
+
+def main():
+    '''Initializes parameters and starts the synchronized playback node.'''
+    # Init node
+    rospy.init_node(NODE_NAME)
+
+    # Get motion error parameters
+    motion_error_factor = rospy.get_param(
+        "/motion_error_factor"
+    )
+    turn_error_factor = rospy.get_param(
+        "/turn_error_factor"
+    )
+
+    # Get robot spawn pose
+    spawn_x = rospy.get_param("/spawn_x")
+    spawn_y = rospy.get_param("/spawn_y")
+    spawn_yaw = rospy.get_param("/spawn_yaw")
+    robot_start_pose = (spawn_x, spawn_y, spawn_yaw)
+
+    # Def wheel sep
+    wheel_separation = compute_wheel_separation()
+    ros_params = ROSParams(
+        motion_error_factor=motion_error_factor,
+        turn_error_factor=turn_error_factor,
+        robot_start_pose=robot_start_pose
+    )
+
+    # Display parameters 
+    rospy.loginfo(f"Node {NODE_NAME} started with parameters:")
+    rospy.loginfo(
+        "Robot start pose: x={:.2f}, y={:.2f}, yaw={:.2f}".format(
+            *robot_start_pose
+        )
+    )
+    rospy.loginfo(f"Ground-truth topic: {ros_params.ground_truth_topic}")
+    rospy.loginfo(f"Motion error factor: {motion_error_factor}")
+    rospy.loginfo(f"Turn error factor: {turn_error_factor}")
+    
+    rospy.loginfo(
+        f"Maximum synchronization error: "
+        f"{ros_params.max_sync_error_s * 1000.0:.1f} ms"
+    )
+
+    # RUn RBPF data processor
+    rbpf_data_processor = RBPFDataProcessorNode(
+        ros_params=ros_params,
+        wheel_separation=wheel_separation
+    )
+
+    rbpf_data_processor.exe()
+
+
+
+if __name__ == "__main__":
+    main()
