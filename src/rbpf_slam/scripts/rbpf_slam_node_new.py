@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import debugpy
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict, Any, List, Union
 
 import rospy
 import threading
@@ -16,6 +16,7 @@ from tf.transformations import euler_from_quaternion, quaternion_from_euler
 # Import messages
 from rbpf_slam.msg import RBPFInput
 from rbpf_slam.msg import LogOddsMap
+from geometry_msgs.msg import PoseStamped
 
 from dataclasses import dataclass
 import time
@@ -71,9 +72,61 @@ NODE_NAME = "rbpf_slam_node"
 '''
 
 TODO: Load start pose
+    Status: Done
 
+
+TODO: Track robot pose and publish
+    - Track some poses like:
+        - true pose (if available)
+        - best particle pose
+        - weighted mean particle pose
+    - Publish these poses to ROS topics
+
+    Status: Done
+
+TODO: Track info 
+    - Track the following information and display even based
+        
+        input_queue_size
+        Neff
+        resampling_performed
+        scan_matching_failed
+    
+    - Track every n steps
+        processing_time
+
+    
+    Status: todo
+
+    
+TODO: Publish best particle map
+    - Easiest v1 would be to simply publish the map of the best particle. Maybe count after how many updates shat should be done
+    - Doing it too often results in performance issues, doing it too infrequently results in low FPS map updates that don't look nice
+
+    Status: Done
+    
+
+TODO: Adapt Map transformation node
+    - Currently the node publishes with its update rate
+    - This is unnessesary because we only need to publish when we actually received a new msg in the msg queue
+    
+    Changes:
+        - Add msg queue to Node
+        - Delete the update rate and do it as we do it here !
+
+
+
+TODO: Add raw odom
+    - Compute raw odom
+    - Add to step data 
+    - before implementing check for tfs in ros cause ros needs raw odom as far as i know.
+    
+
+
+    
 TODO: Read wheel separation from robot description or ROS parameter server.
-
+    
+    Status: todo
 
 '''
 
@@ -90,6 +143,7 @@ POSE_ERR_TRUE_BEST_P_TOPIC = "pose_err_true_best_p"
 POSE_ERR_TRUE_MEAN_P = "pose_err_true_maen_p"
 
 
+Pose2D = Tuple[float, float, float]
 
 
 @dataclass
@@ -114,6 +168,39 @@ class ROSParams:
     laser_tf_frame: str = "laser_scanner_link"
     tf_timeout_s = rospy.Duration(10.0)
 
+
+@dataclass
+class StepResult:
+    # General metrics
+    step_idx: Optional[int] = None
+    t: Optional[float] = None
+    t_step_duration: Optional[float] = None
+    msg_queue_size: Optional[int] = None
+
+    # Ground truth and odom
+    true_pose: Optional[np.ndarray] = None
+    raw_odom_pose: Optional[np.ndarray] = None
+
+    # Scan matcher info
+    scan_match_failed: Optional[bool] = None
+    scan_match_failed_fallback: Optional[bool] = None
+
+    # Particle poses before and after resampling
+    particle_poses: Optional[np.ndarray] = None
+    particle_weights: Optional[np.ndarray] = None
+    particle_poses_before_resampling: Optional[np.ndarray] = None
+    particle_weights_before_resampling: Optional[np.ndarray] = None
+
+    # Weighted mean pose
+    weighted_mean_pose: Optional[np.ndarray] = None
+
+    # Best particle pose and weight
+    max_weight_idx: Optional[int] = None
+    best_particle_pose: Optional[np.ndarray] = None
+    best_particle_weight: Optional[float] = None
+
+    neff: Optional[float] = None
+    resampling: Optional[bool] = None
 
 
 def debug_code():
@@ -321,10 +408,228 @@ def load_ros_params():
 
 
 
+class RBPFEvaluator:
+    @staticmethod
+    def _finite_values(values: List[Optional[float]]) -> np.ndarray:
+        '''
+        Converts the given list to a numpy array. Filters all non-finite values (inf, -inf, nan) and returns 
+        the numpy array.
+        '''
+        arr = np.asarray(values, dtype=float)        
+        return arr[np.isfinite(arr)]
+
+
+    @staticmethod
+    def _has_valid_metric_array(values: Optional[np.ndarray], min_size: int = 1) -> bool:
+        """
+        Returns True only if values is a numpy array with at least min_size finite entries.
+        """
+        if values is None or not isinstance(values, np.ndarray):
+            return False
+        if values.size < min_size:
+            return False
+        return bool(np.all(np.isfinite(values)))
+
+
+    @staticmethod
+    def _safe_mean(values: Optional[np.ndarray], min_size: int = 1, default: float = float("nan")) -> float:
+        """
+        Computes the mean only when a valid timing array is available; otherwise returns default.
+        """
+        if not RBPFEvaluator._has_valid_metric_array(values, min_size=min_size):
+            return default
+        return float(np.mean(values))
+
+    
+    def _pose_to_np_array(self, pose: Pose2D) -> np.ndarray:
+        """
+        Converts a pose tuple to a numpy array.
+        """
+        if pose is None:
+            return None
+
+        if hasattr(pose, "x") and hasattr(pose, "y") and hasattr(pose, "theta"):
+            return np.array([pose.x, pose.y, pose.theta], dtype=np.float64)
+
+        if isinstance(pose, (tuple, list, np.ndarray)) and len(pose) >= 3:
+            return np.array(pose[:3], dtype=np.float64)
+
+        raise TypeError(f"[Evaluator mp] Unsupported pose format: {type(pose)}")
+
+
+    def _weight_to_np_array(self, weights: List[float]) -> np.ndarray:
+        """
+        Converts a list of weights to a numpy array.
+        """
+        if weights is None:
+            return None
+
+        return np.array(weights, dtype=np.float64)
+        
+
+    def _poses_to_np_array(self, poses: List[Pose2D]) -> np.ndarray:
+        """
+        Converts a list of pose tuples to a numpy array.
+        """
+        if poses is None:
+            return None
+
+        return np.array([self._pose_to_np_array(p) for p in poses], dtype=np.float64)
+
+
+    @staticmethod
+    def angle_diff(a: float, b: float) -> float:
+        """
+        Returns wrapped angular difference in [-pi, pi].
+        """
+        return np.arctan2(np.sin(a - b), np.cos(a - b))
+
+
+    @staticmethod
+    def translation_error(p1: Pose2D, p2: Pose2D) -> float:
+        """
+        Euclidean translation error in the x-y plane.
+        """
+        return float(np.hypot(p1[0] - p2[0], p1[1] - p2[1]))
+
+
+    @staticmethod
+    def weighted_mean_position(particle_poses: np.ndarray, particle_weights: np.ndarray) -> np.ndarray:
+        '''
+        Gets the particle poses and the corresponding weights and computes the weighted mean pose of all particles. 
+        The x, y position is computed by weighting the position by its weights and then computing the mean. 
+        
+        The weighted mean orientation is computed by computing the weighted mean of the sin and cos of the angles. 
+        This ensures that the mean orientation is computed correctly even if the angles wrap around 2*pi.
+        '''
+        # Convert to numpy array
+        particle_poses = np.asarray(particle_poses, dtype=float)
+        particle_weights = np.asarray(particle_weights, dtype=float)
+
+        # Check dimensions, shape and finite values
+        if particle_poses.ndim != 2 or particle_poses.shape[1] != 3:
+            raise ValueError(
+                f"Particle poses must have shape (N, 3) got {particle_poses.shape}"
+            )
+        
+        if particle_weights.ndim != 1 or particle_weights.shape[0] != particle_poses.shape[0]:
+            raise ValueError(
+                f"Particle weights must have shape (N, ), where N is number of given poses"
+                f"Number of given poses: {particle_poses.shape[0]} != number of weights: {particle_weights.shape[0]}"
+            )
+        
+        if not np.all(np.isfinite(particle_poses)):
+            raise ValueError(
+                f"Particle poses contain non-finite values: {particle_poses}"
+            )
+
+        if not np.all(np.isfinite(particle_weights)):
+            raise ValueError(
+                f"Particle weights contain non-finite values: {particle_weights}"
+            )
+
+        # Normalize weights
+        particle_weights = RBPFEvaluator.norm_weights(particle_weights)
+
+        # Compute weighted position
+        weighted_position = np.average(particle_poses[:, :2], axis=0, weights=particle_weights,)
+
+        # Compute weighted orientation
+        weighted_mean_rot = np.arctan2(
+            np.sum(particle_weights * np.sin(particle_poses[:, 2])),
+            np.sum(particle_weights * np.cos(particle_poses[:, 2]))
+        )
+        
+        weighted_mean_poses = np.array([weighted_position[0], weighted_position[1], weighted_mean_rot])
+        return weighted_mean_poses
+
+
+    def evaluate_step(
+        self,
+
+        step_idx: Optional[int]=None,
+        t: Optional[float]=None,
+        step_duration: Optional[float]=None,
+        msg_queue_size: Optional[int]=None,
+
+        scan_match_failed: Optional[bool]=None,
+        scan_match_fallback_failed: Optional[bool]=None,
+            
+        particle_poses: List[Pose2D]=None,
+        particle_weights: List[float]=None,
+
+        particle_poses_before_resampling: List[Pose2D]=None,
+        particle_weights_before_resampling: List[float]=None,
+
+        neff: Optional[float]=None,
+        particle_inherit_indices: Optional[List[int]]=None,
+
+        true_pose: Optional[Pose2D] = None,
+        raw_odom_pose: Optional[Pose2D] = None,
+    ) -> StepResult:        
+        # Convert input data to numpy arrays
+        particle_poses = self._poses_to_np_array(particle_poses)
+        particle_weights = self._weight_to_np_array(particle_weights)
+        particle_poses_before_resampling = self._poses_to_np_array(particle_poses_before_resampling)
+        particle_weights_before_resampling = self._weight_to_np_array(particle_weights_before_resampling)
+
+        # Convert optional input data to numpy arrays
+        true_pose = self._pose_to_np_array(true_pose) if true_pose is not None else None
+        raw_odom_pose = self._pose_to_np_array(raw_odom_pose) if raw_odom_pose is not None else None
+
+        # Init step results with None values
+        step_res = StepResult()
+
+        # Add general info to step
+        step_res.step_idx = step_idx
+        step_res.t = t
+        step_res.t_step_duration = step_duration
+        step_res.msg_queue_size = msg_queue_size
+
+        # Add scan matcher info
+        step_res.scan_match_failed = scan_match_failed
+        step_res.scan_match_failed_fallback = scan_match_fallback_failed
+
+        # Add particle poses
+        step_res.particle_poses = particle_poses
+        step_res.particle_weights = particle_weights
+        step_res.particle_poses_before_resampling = particle_poses_before_resampling
+        step_res.particle_weights_before_resampling = particle_weights_before_resampling
+        step_res.true_pose = true_pose
+        step_res.raw_odom_pose = raw_odom_pose
+
+        # Compute weighted mean pose
+        if particle_poses is not None and particle_weights is not None:
+            step_res.weighted_mean_pose = self.weighted_mean_position(
+                particle_poses=particle_poses,
+                particle_weights=particle_weights
+            )
+
+        # Compute best particle pose
+        if particle_poses_before_resampling is not None and particle_weights_before_resampling is not None:
+            step_res.max_weight_idx = np.argmax(particle_weights_before_resampling)
+            step_res.best_particle_pose = particle_poses_before_resampling[step_res.max_weight_idx]
+            step_res.best_particle_weight = particle_weights_before_resampling[step_res.max_weight_idx]
+
+        # Resampling info
+        step_res.neff = neff
+        step_res.resampling = particle_inherit_indices is not None 
+        
+        return step_res
+
+
+
 class RBPF_ROS_Node:
-    def __init__(self, rbpf: RBPF, exp_params: ExperimentParams, ros_params: ROSParams):
+    def __init__(
+        self,
+        rbpf: RBPF,
+        evaluator: RBPFEvaluator,
+        exp_params: ExperimentParams,
+        ros_params: ROSParams
+    ):
         self.rbpf = rbpf
-        self.exp_params = exp_params
+        self.evaluator = evaluator
+        self.filter_params = exp_params
         self.ros_params = ros_params
 
         # Define obj to locks threads
@@ -336,7 +641,7 @@ class RBPF_ROS_Node:
         self.rbpf_input_sub = rospy.Subscriber(
             name=self.ros_params.rbpf_input_topic,
             data_class=RBPFInput,
-            callback=self._rbpf_input_callback,
+            callback=self._rbpf_input_cb,
             queue_size=5
         )
 
@@ -458,6 +763,51 @@ class RBPF_ROS_Node:
         raise RuntimeError(
             f"Timeout of {self.ros_params.tf_timeout_s} exceeded for TF {self.ros_params.base_tf_frame} -> {self.ros_params.laser_tf_frame}"
         )
+    
+
+    @staticmethod
+    def _pose_into_pose_stamped_msg(
+        pose: Tuple[float, float, float],
+        frame: str,
+        stamp: Optional[rospy.Time] = None,
+    ) -> PoseStamped:
+        '''
+        Convert a 2D pose (x, y, theta) into a ROS PoseStamped message with the specified frame and timestamp.
+
+        Parameters
+        ----------
+        pose : Tuple[float, float, float]
+            A tuple representing the 2D pose (x, y, theta) where theta is the orientation in radians.
+        frame : str
+            The frame ID for the PoseStamped message.
+        stamp : Optional[rospy.Time], optional
+            The timestamp for the PoseStamped message. If None, the current time will be used.
+        
+        Returns
+        -------
+        PoseStamped
+            A ROS PoseStamped message containing the specified pose, frame, and timestamp.
+        '''
+        if pose is None or len(pose) != 3:
+            raise ValueError("Pose must be a tuple of (x, y, theta)")
+        if frame is None or not isinstance(frame, str):
+            raise ValueError("Frame must be a valid string")
+
+        msg = PoseStamped()
+        msg.header.stamp = stamp if stamp is not None else rospy.Time.now()
+        msg.header.frame_id = frame
+        msg.pose.position.x = pose[0]
+        msg.pose.position.y = pose[1]
+        msg.pose.position.z = 0.0
+        
+        # Convert yaw to quaternion
+        quat = quaternion_from_euler(0, 0, pose[2])
+        msg.pose.orientation.x = quat[0]
+        msg.pose.orientation.y = quat[1]
+        msg.pose.orientation.z = quat[2]
+        msg.pose.orientation.w = quat[3]
+
+        return msg
 
 
     @staticmethod
@@ -480,7 +830,7 @@ class RBPF_ROS_Node:
         return measurements  
 
 
-    def _rbpf_input_callback(self, msg: RBPFInput) -> None:
+    def _rbpf_input_cb(self, msg: RBPFInput) -> None:
         # Store message into queue for processing in the main loop       
         try:
             self.rbpf_input_queue.put_nowait(msg)
@@ -491,61 +841,222 @@ class RBPF_ROS_Node:
             )
 
 
+    def _publish_pose(
+        self,
+        topic_key: str,
+        pose: Tuple[float, float, float],
+        frame_id: str,
+        stamp: Optional[rospy.Time] = None
+    ) -> None:
+        msg = self._pose_into_pose_stamped_msg(
+            pose=pose,
+            frame=frame_id,
+            stamp=stamp,
+        )
+        self.pose_pub[topic_key].publish(msg)
+
+
+    def _publish_map(self):
+        '''
+        Publishes the best particle's map to the ROS topic.
+        '''
+        best_particle_map = self.rbpf.get_best_particle_map()
+        if best_particle_map is not None:
+            log_odds_map_msg = LogOddsMap()
+            log_odds_map_msg.header.stamp = rospy.Time.now()
+            log_odds_map_msg.header.frame_id = self.ros_params.map_tf_frame
+            log_odds_map_msg.width = best_particle_map.width
+            log_odds_map_msg.height = best_particle_map.height
+            log_odds_map_msg.resolution = best_particle_map.resolution
+            log_odds_map_msg.log_odds_data = best_particle_map.log_odds.flatten().tolist()
+
+            self.map_pub.publish(log_odds_map_msg)
+
+
+    def _publish_data(
+        self,
+        step_res: StepResult,      
+        info: Dict,  
+    ):
+        '''
+        Methods that handles the overall publishing of data to ROS topics. This
+        '''
+        # Publish poses
+        timestamp = step_res.t if step_res.t is not None else rospy.Time.now()
+        pose_data = [
+            (TRUE_POSE_TOPIC, step_res.true_pose, self.ros_params.map_tf_frame, timestamp),
+            (WEIGHTED_MEAN_P_POSE, step_res.weighted_mean_pose, self.ros_params.map_tf_frame, timestamp),
+            (BEST_P_POSE, step_res.best_particle_pose, self.ros_params.map_tf_frame, timestamp)
+        ]
+        for topic_key, pose, frame_id, stamp in pose_data:
+            self._publish_pose(
+                topic_key=topic_key,
+                pose=pose,
+                frame_id=frame_id,
+                stamp=stamp,
+            )
+
+        # Publish map
+        best_p_map: np.ndarray = info.get("best_particle_map", None)
+        best_p_map_meta: Dict = info.get("best_particle_map_meta", None)
+
+        if best_p_map is not None:
+            # Init log odds message
+            map_msg = LogOddsMap()
+            map_msg.header.stamp = timestamp if timestamp is not None else rospy.Time.now()
+            map_msg.header.frame_id = self.ros_params.map_tf_frame
+            map_msg.data = best_p_map.ravel(order="C").tolist()
+
+            map_msg.info.resolution = best_p_map_meta.get("grid_resolution_m")
+            map_msg.info.width = best_p_map_meta.get("number_of_cells_x")
+            map_msg.info.height = best_p_map_meta.get("number_of_cells_y")
+
+            map_msg.info.origin.position.x = - best_p_map_meta.get("shift_x")
+            map_msg.info.origin.position.y = - best_p_map_meta.get("shift_y")
+            map_msg.info.origin.position.z = 0.0
+
+            map_msg.info.origin.orientation.x = 0.0
+            map_msg.info.origin.orientation.y = 0.0
+            map_msg.info.origin.orientation.z = 0.0
+            map_msg.info.origin.orientation.w = 1.0
+
+            # Publish map
+            self.map_pub.publish(map_msg)
+
+
+    def _run_filter(
+        self,
+        laser_scan: LaserScan,
+        dl: float, 
+        dr: float,
+    ):
+        '''
+        Runs the rbpf filter with the given input data. Transforms the given input data into the required format and calls 
+        the rbpf filter's step method to precit the robot pose and estimate the map. 
+
+        Parameters
+        ----------
+        laser_scan : LaserScan
+            The laser scan data from the robot's laser scanner.
+        dl : float
+            The left wheel encoder delta (change in position) since the last update.
+        dr : float
+            The right wheel encoder delta (change in position) since the last update.
+        '''
+        # Transform measurements to (range, bearing) tuples
+        measurements = self.transform_laser_scan_to_measurement(laser_scan)
+
+        # Subsample and clean measuremnts for filter and map
+        every_nth_scan_filter = self.filter_params.every_nth_scan_filter
+        measurements_filter = (
+            measurements[::every_nth_scan_filter] if every_nth_scan_filter > 1 else measurements
+        )
+
+        measurements_filter = [
+            (r, b) for r, b in measurements_filter if np.isfinite(r)
+        ]
+
+        every_nth_scan_map = self.filter_params.every_nth_scan_map
+        measurements_map = (
+            measurements[::every_nth_scan_map] if every_nth_scan_map > 1 else measurements
+        )
+
+        # Do rbpf update step
+        self.rbpf.step_range_finder_model(
+            odom=(dl, dr),
+            measurements_proposal=measurements_filter,
+            measurements_map=measurements_map,
+            proposal_sigma_xy=self.filter_params.proposal_sigma_xy,
+            proposal_sigma_theta=self.filter_params.proposal_sigma_theta,
+            proposal_n_samples=self.filter_params.proposal_n_samples,
+            cov_std_scale=self.filter_params.cov_std_scale,
+            cov_max_std_xy=self.filter_params.cov_max_std_xy,
+            cov_max_std_theta=self.filter_params.cov_max_std_theta,
+            min_std_xy=self.filter_params.min_std_xy,
+            min_std_theta=self.filter_params.min_std_theta,
+        )
+
+
+    def _evaluate_run(
+        self,
+        step_time: float,
+        step_duration: float,
+        msg_queue_size: int
+    ):
+        # Evaluate step results
+        step_res = None
+        info = self.rbpf.get_step_info()
+
+        if info is not None:
+            step_res = self.evaluator.evaluate_step(
+                step_idx=info.get("step", None),
+                t=step_time,
+                step_duration=step_duration,
+                msg_queue_size=msg_queue_size,
+                scan_match_failed=info.get("scan_match_failed", None),
+                scan_match_fallback_failed=info.get("scan_match_fallback_failed", None),
+                particle_poses=info.get("particle_poses", None),
+                particle_weights=info.get("particle_weights", None),
+                particle_poses_before_resampling=info.get("particle_poses_before_resampling", None),
+                particle_weights_before_resampling=info.get("particle_weights_before_resampling", None),
+                neff=info.get("neff", None),
+                particle_inherit_indices = info.get("resampled_indices", None),
+                true_pose=info.get("true_pose", None),
+                raw_odom_pose=None
+            )
+
+        return step_res, info
+
+
     def exe(self) -> None:
         while not rospy.is_shutdown():
             # Extract ne data from queue
             try:
                 msg: RBPFInput = self.rbpf_input_queue.get(timeout=0.1)
+                msg_queue_size = self.rbpf_input_queue.qsize()
             except Empty:    
                 continue
 
             try:
+                # Measure start time
+                start_time = time.perf_counter()
+
                 # Extract data from message
                 laser_scan = msg.laser_scan
                 dl = msg.wheel_encoder.left
                 dr = msg.wheel_encoder.right
 
-                # Transform measurements to (range, bearing) tuples
-                measurements = self.transform_laser_scan_to_measurement(laser_scan)
+                step_time = msg.header.stamp.to_sec()
 
-                # Subsample and clean measuremnts for filter and map
-                every_nth_scan_filter = self.exp_params.every_nth_scan_filter
-                measurements_filter = (
-                    measurements[::every_nth_scan_filter] if every_nth_scan_filter > 1 else measurements
-                )
-
-                measurements_filter = [
-                    (r, b) for r, b in measurements_filter if np.isfinite(r)
-                ]
-
-                every_nth_scan_map = self.exp_params.every_nth_scan_map
-                measurements_map = (
-                    measurements[::every_nth_scan_map] if every_nth_scan_map > 1 else measurements
-                )
-
-                # Do rbpf update step
-                self.rbpf.step_range_finder_model(
-                    odom=(dl, dr),
-                    measurements_proposal=measurements_filter,
-                    measurements_map=measurements_map,
-                    proposal_sigma_xy=self.exp_params.proposal_sigma_xy,
-                    proposal_sigma_theta=self.exp_params.proposal_sigma_theta,
-                    cov_std_scale=self.exp_params.cov_std_scale,
-                    cov_max_std_xy=self.exp_params.cov_max_std_xy,
-                    cov_max_std_theta=self.exp_params.cov_max_std_theta,
-                    min_std_xy=self.exp_params.min_std_xy,
-                    min_std_theta=self.exp_params.min_std_theta,
+                # Run rbpf filter
+                self._run_filter(
+                    laser_scan=laser_scan,
+                    dl=dl,
+                    dr=dr,
                 )
                 
+                step_duration = time.perf_counter() - start_time
+
+                # Evaluate step results
+                step_res, info = self._evaluate_run(
+                    step_time=step_time,
+                    step_duration=step_duration,
+                    msg_queue_size=msg_queue_size
+                )
+
+                # Publish data
+                self._publish_data(
+                    step_res=step_res,
+                    info=info
+                )
+                                
             except Exception as e:
                 rospy.logerr(f"\nError processing RBPF input message:\n{e}")
 
             finally:
                 self.rbpf_input_queue.task_done()
                 
-
-            
-            
+                        
 
 def init():
     # Init ros node
@@ -572,7 +1083,10 @@ def init():
         neff_threshold=exp_params.neff_threshold,
     )
 
-    return rbpf, exp_params, ros_params
+    # Init evaluator
+    evaluator = RBPFEvaluator()
+
+    return rbpf, evaluator, exp_params, ros_params
     
 
 
@@ -581,7 +1095,7 @@ def main():
         debug_code()
 
     # Init RBPF filter
-    rbpf, exp_params, ros_params = init()
+    rbpf, evaluator, exp_params, ros_params = init()
 
 
 if __name__ == "__main__":
