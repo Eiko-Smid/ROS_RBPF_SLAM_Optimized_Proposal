@@ -18,6 +18,7 @@ from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 from rbpf_slam.msg import Measurement
+from rbpf_slam.msg import WheelEncoder
 from rbpf_slam.msg import LogOddsMap
 
 from dataclasses import dataclass
@@ -67,7 +68,7 @@ except ModuleNotFoundError:
     from slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
 
     
-from rbpf_slam.msg import WheelEncoder
+
 from rbpf_slam.msg import PoseErr2D
 
 
@@ -638,7 +639,6 @@ class RBPFROS:
                         odom=(dl, dr),
                         measurements_proposal=measurement_filter,
                         measurements_map_update=measurement_map,
-                        true_pose=true_pose,
                         proposal_sigma_xy=self.exp_params.proposal_sigma_xy,
                         proposal_sigma_theta=self.exp_params.proposal_sigma_theta,
                         proposal_n_samples=self.exp_params.proposal_n_samples,

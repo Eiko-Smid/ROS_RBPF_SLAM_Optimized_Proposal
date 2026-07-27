@@ -451,7 +451,6 @@ class RBPF:
         self._last_step_info = {
             "step": None,
             "neff": None,
-            "true_pose": None,
             "scan_match_failed_any": None,
             "scan_match_fallback_failed_any": None,
             "best_particle_pose": None,
@@ -469,7 +468,6 @@ class RBPF:
         self._last_step_info_scan_match_only = {
             "step": None,
             "neff": None,
-            "true_pose": None,
             "scan_match_failed_any": None,
             "scan_match_fallback_failed_any": None,
             "best_particle_pose": None,
@@ -842,7 +840,6 @@ class RBPF:
         odom: Tuple[float, float],
         measurements_proposal: List[Tuple[float, float]],
         measurements_map_update: List[Tuple[float, float]],
-        true_pose: Optional[Pose2D] = None,
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
@@ -870,9 +867,6 @@ class RBPF:
             The range measurements (range, bearing) for the proposal step.
         measurements_map_update: List[Tuple[float, float]]
             The range measurements (range, bearing) for the map update step.
-        true_pose: Optional[Pose2D]
-            The true pose of the robot for the current time step. This is only used for logging
-            and debugging purposes, e.g. to compute the error of the best particle pose and the weighted mean pose.
         proposal_sigma_xy: float
             The standard deviation in x and y direction for the optimized proposal distribution.
         proposal_sigma_theta: float
@@ -947,7 +941,6 @@ class RBPF:
                     "odom_threshold": self.odom_threshold,
                     "init_failure_reason": self.init_failure_reason,
                     "neff": neff,
-                    "true_pose": None,
                     "scan_match_failed_any": None,
                     "scan_match_fallback_failed_any": None,
                     "best_particle_idx": None,
@@ -1045,7 +1038,6 @@ class RBPF:
         self._last_step_info = {
             "step": step_idx,
             "neff": neff,
-            "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
             "best_particle_idx": best_idx,
@@ -1425,7 +1417,6 @@ class RBPF:
         odom: Tuple[float, float],
         measurements_proposal: List[Tuple[float, float]],
         measurements_map_update: List[Tuple[float, float]],
-        true_pose: Optional[Pose2D] = None,
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
@@ -1509,7 +1500,6 @@ class RBPF:
         self._last_step_info = {
             "step": step_idx,
             "neff": neff,
-            "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
             "best_particle_idx": best_idx,
@@ -1810,7 +1800,6 @@ class RBPF:
         odom: Tuple[float, float],
         measurements_proposal: List[Tuple[float, float]],
         measurements_map_update: List[Tuple[float, float]],
-        true_pose: Optional[Pose2D] = None,
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
@@ -1843,9 +1832,6 @@ class RBPF:
             The range measurements (range, bearing) for the proposal step.
         measurements_map_update: List[Tuple[float, float]]
             The range measurements (range, bearing) for the map update step.
-        true_pose: Optional[Pose2D]
-            The true pose of the robot for the current time step. This is only used for logging
-            and debugging purposes, e.g. to compute the error of the best particle pose and the weighted mean pose.
         proposal_sigma_xy: float
             The standard deviation in x and y direction for the optimized proposal distribution.
         proposal_sigma_theta: float
@@ -1940,7 +1926,6 @@ class RBPF:
                     "mode": "initialization",
                     "step": step_idx,
                     "neff": neff,
-                    "true_pose": true_pose,
                     "scan_match_failed_any": None,
                     "scan_match_fallback_failed_any": None,
                     "particle_poses_before_resampling": particle_poses,
@@ -2045,7 +2030,6 @@ class RBPF:
             "mode": "RBPF",
             "step": step_idx,
             "neff": neff,
-            "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
             "particle_poses_before_resampling": [p.pose for p in self.particles],
@@ -2119,7 +2103,6 @@ class RBPF:
         odom: Tuple[float, float],
         measurements_proposal: List[Tuple[float, float]],
         measurements_map_update: List[Tuple[float, float]],
-        true_pose: Optional[Pose2D] = None,
         proposal_sigma_xy: float = 1.0,
         proposal_sigma_theta: float = 1.0,
         proposal_n_samples: int = 10,
@@ -2215,7 +2198,6 @@ class RBPF:
                 #     "odom_threshold": self.odom_threshold,
                 #     "init_failure_reason": self.init_failure_reason,
                 #     "neff": neff,
-                #     "true_pose": None,
                 #     "scan_match_failed_any": None,
                 #     "scan_match_fallback_failed_any": None,
                 #     "best_particle_idx": None,
@@ -2242,7 +2224,6 @@ class RBPF:
                     "mode": "initialization",
                     "step": step_idx,
                     "neff": neff,
-                    "true_pose": true_pose,
                     "scan_match_failed_any": None,
                     "scan_match_fallback_failed_any": None,
                     "particle_poses_before_resampling": particle_poses,
@@ -2356,7 +2337,6 @@ class RBPF:
         self._last_step_info = {
             "step": step_idx,
             "neff": neff,
-            "true_pose": true_pose,
             "scan_match_failed_any": scan_match_failed_any,
             "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
             "particle_poses_before_resampling": [p.pose for p in self.particles],

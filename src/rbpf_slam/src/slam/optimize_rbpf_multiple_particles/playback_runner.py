@@ -161,7 +161,6 @@ class PlaybackRunner:
                 odom=(step.dl, step.dr),
                 measurements_proposal=measurements_proposal,
                 measurements_map_update=measurements_map,
-                true_pose=step.true_pose,
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
@@ -175,50 +174,12 @@ class PlaybackRunner:
             # Measure step duration
             step_duration = time.time() - step_start_time
             
-            # Extract evaluation info from the RBPF instance
-            # info = rbpf.get_step_info()
-            # step_idx_logged = info.get("step")
-            # true_pose_logged = info.get("true_pose")
-            # est_pose = info.get("weighted_mean_pose")
-            # best_particle_pose = info.get("best_particle_pose")
-            # neff = info.get("neff")
-            # scan_match_failed = info.get("scan_match_failed_any")
-            # scan_match_fallback_failed = info.get("scan_match_fallback_failed_any")
-            # particle_weight_min = info.get("particle_weight_min")
-            # particle_weight_max = info.get("particle_weight_max")
-            # particle_weight_mean = info.get("particle_weight_mean")
-            # proposal_metrics = info.get("proposal_metrics")
-            # measurement_model_counters_fallback = info.get("measurement_model_counters_fallback")
-
-            # # Evaluate the current step and store results
-            # step_result = self.evaluator.evaluate_step(
-            #     step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
-            #     t=step.t,
-            #     true_pose=true_pose_logged if true_pose_logged is not None else step.true_pose,
-            #     raw_odom_pose=(
-            #         self._raw_odom_poses_cache[step_idx]
-            #         if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
-            #         else None
-            #     ),
-            #     est_pose=est_pose,
-            #     best_particle_pose=best_particle_pose,
-            #     scan_match_failed=scan_match_failed,
-            #     scan_match_fallback_failed=scan_match_fallback_failed,
-            #     neff=neff,
-            #     particle_weight_min=particle_weight_min,
-            #     particle_weight_max=particle_weight_max,
-            #     particle_weight_mean=particle_weight_mean,
-            #     step_duration=step_duration,
-            #     proposal_metrics=proposal_metrics,
-            #     measurement_model_counters_fallback=measurement_model_counters_fallback,
-            # )
 
             # Extract evaluation info from rbpf 
             info = rbpf.get_step_info()
             step_idx_logged = info.get("step", None)
             proposal_metrics = info.get("proposal_metrics", None)
 
-            true_pose_logged = info.get("true_pose", None)
             neff = info.get("neff", None)
 
             scan_match_failed = info.get("scan_match_failed_any", None)
@@ -236,7 +197,7 @@ class PlaybackRunner:
                 step_idx=step_idx_logged if step_idx_logged is not None else step_idx,                
                 t=step.t,
                 
-                true_pose=true_pose_logged,
+                true_pose=step.true_pose,
                 raw_odom_pose=(
                     self._raw_odom_poses_cache[step_idx]
                     if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
@@ -485,7 +446,6 @@ class PlaybackRunner:
                     odom=(step.dl, step.dr),
                     measurements_proposal=measurements_proposal,
                     measurements_map_update=measurements_map,
-                    true_pose=step.true_pose,
                     proposal_sigma_xy=params.proposal_sigma_xy,
                     proposal_sigma_theta=params.proposal_sigma_theta,
                     proposal_n_samples=params.proposal_n_samples,
@@ -504,7 +464,6 @@ class PlaybackRunner:
                 step_idx_logged = info.get("step", None)
                 proposal_metrics = info.get("proposal_metrics", None)
 
-                true_pose_logged = info.get("true_pose", None)
                 neff = info.get("neff", None)
 
                 scan_match_failed = info.get("scan_match_failed_any", None)
@@ -523,7 +482,7 @@ class PlaybackRunner:
                     step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
                     t=step.t,
 
-                    true_pose=true_pose_logged,
+                    true_pose=step.true_pose,
                     raw_odom_pose=(
                         self._raw_odom_poses_cache[step_idx]
                         if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
@@ -704,7 +663,6 @@ class PlaybackRunner:
                 odom=(step.dl, step.dr),
                 measurements_proposal=measurements_proposal,
                 measurements_map_update=measurements_map,
-                true_pose=step.true_pose,
                 proposal_sigma_xy=params.proposal_sigma_xy,
                 proposal_sigma_theta=params.proposal_sigma_theta,
                 proposal_n_samples=params.proposal_n_samples,
@@ -720,7 +678,6 @@ class PlaybackRunner:
             # Extract evaluation info from the RBPF instance
             info = rbpf.get_step_info()
             step_idx_logged = info.get("step")
-            true_pose_logged = info.get("true_pose")
             est_pose = info.get("weighted_mean_pose")
             best_particle_pose = info.get("best_particle_pose")
             neff = info.get("neff")
@@ -735,7 +692,7 @@ class PlaybackRunner:
             step_result = self.evaluator.evaluate_step(
                 step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
                 t=step.t,
-                true_pose=true_pose_logged if true_pose_logged is not None else step.true_pose,
+                true_pose=step.true_pose,
                 raw_odom_pose=(
                     self._raw_odom_poses_cache[step_idx]
                     if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)

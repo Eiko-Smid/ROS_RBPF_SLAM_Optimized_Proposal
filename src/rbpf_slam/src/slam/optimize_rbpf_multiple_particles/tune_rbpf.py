@@ -144,6 +144,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Number of workers to use for multiprocessing tuning pipe
+DEBUG_CODE = False
 NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = True
@@ -374,6 +375,14 @@ PLAYBACK_DATA_LIST = [
 #         playback_suffix="1782917349",
 #     )
 # ]
+
+
+
+def debug():
+    debugpy.listen(("localhost", 5678))
+    print("Waiting for debugger attach...")
+    debugpy.wait_for_client()  
+
 
 
 def _to_jsonable(value):
@@ -872,13 +881,13 @@ def _grid_axes() -> dict:
                 "min_std_xy": 0.0,
                 "min_std_theta": np.deg2rad(0.0),
             },
-            {
-                "cov_std_scale": 0.6,
-                "cov_max_std_xy": 1.0,
-                "cov_max_std_theta": np.deg2rad(10),
-                "min_std_xy": 0.0,
-                "min_std_theta": np.deg2rad(0.0),
-            },
+            # {
+            #     "cov_std_scale": 0.6,
+            #     "cov_max_std_xy": 1.0,
+            #     "cov_max_std_theta": np.deg2rad(10),
+            #     "min_std_xy": 0.0,
+            #     "min_std_theta": np.deg2rad(0.0),
+            # },
 
         ],
         # TODO: Delete proposal values when no longer needed later on
@@ -939,6 +948,7 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
 
     axes = _grid_axes()
 
+    # Extract grid axes params
     sigma_measurement = axes.get("sigma_measurement", [0.05])
     every_nth_beam_filter = axes.get("every_nth_beam_filter", [4])
     every_nth_beam_map = axes.get("every_nth_beam_map", [2])
@@ -1553,18 +1563,18 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 def main():
     # Attatch debugger
-    # debugpy.listen(("localhost", 5678))
-    # print("Waiting for debugger attach...")
-    # debugpy.wait_for_client()
-
+    if DEBUG_CODE:
+            debug()
+        
+    
     # Initialize numba functions
     warmup_numba_functions()
 
     # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
-    rbpf_tuning_pipeline()
+    # rbpf_tuning_pipeline()
 
     # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    # rbpf_tuning_pipeline_multiprocessing()
+    rbpf_tuning_pipeline_multiprocessing()
     
     
 
