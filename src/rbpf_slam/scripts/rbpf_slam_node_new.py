@@ -41,6 +41,7 @@ try:
         ScanMatcherParams,
         ScanMatchFactory,
     )
+    from rbpf_slam.src.slam.rbpf.motion_model import MotionModel
     from rbpf_slam.src.slam.optimize_rbpf_multiple_particles.playback_defs import ExperimentParams, PlaybackData
     from rbpf_slam.src.slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
     
@@ -62,6 +63,8 @@ except ModuleNotFoundError:
         ScanMatcherParams,
         ScanMatchFactory,
     )
+
+    from slam.rbpf.motion_model import MotionModel
 
     from slam.optimize_rbpf_multiple_particles.playback_defs import ExperimentParams, PlaybackData
     from slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
@@ -96,7 +99,7 @@ TODO: Track info
         processing_time
 
     
-    Status: todo
+    Status: Done
 
     
 TODO: Publish best particle map
@@ -114,6 +117,7 @@ TODO: Adapt Map transformation node
         - Add msg queue to Node
         - Delete the update rate and do it as we do it here !
 
+    Status: todo
 
 
 TODO: Add raw odom
@@ -121,6 +125,7 @@ TODO: Add raw odom
     - Add to step data 
     - before implementing check for tfs in ros cause ros needs raw odom as far as i know.
     
+    Status: Done
 
 
     
@@ -184,6 +189,9 @@ class StepResult:
     # Scan matcher info
     scan_match_failed: Optional[bool] = None
     scan_match_failed_fallback: Optional[bool] = None
+
+    # Raw odom pose
+    raw_odom_pose: Optional[np.ndarray] = None
 
     # Particle poses before and after resampling
     particle_poses: Optional[np.ndarray] = None
@@ -408,6 +416,70 @@ def load_ros_params():
 
 
 
+class RawOdomEstimator:
+    '''
+    RawOdomEstimator estimates the robot's pose based on raw odometry data. Get's a motion model and a start pose
+    and then can be used to predict the robot's pose. 
+    '''
+    DEFAULT_START_POSE: Pose2D = (0.0, 0.0, 0.0)
+
+    def __init__(
+        self,
+        motion_model: MotionModel,
+        start_pose: Optional[Pose2D] = None
+    ):
+        self.motion_model = motion_model
+        self.pose = start_pose if start_pose is not None else self.DEFAULT_START_POSE
+
+
+    def predict_pose(self, dl: float, dr: float) -> Pose2D:
+        '''
+        Predicts the robot's pose based on the given odometry (dl, dr).
+
+        Parameters
+        ----------
+        dl: float
+            The distance traveled by the left wheel since the last update.
+        dr: float
+            The distance traveled by the right wheel since the last update.
+        
+        Returns
+        -------
+        Pose2D
+            The predicted pose of the robot (x, y, theta).
+        '''
+        self.pose = self.motion_model.predict_pose(self.pose, dl, dr)
+        return self.pose
+
+
+    def get_pose(self) -> Pose2D:
+        '''
+        Returns the current pose of the robot.
+
+        Returns
+        -------
+        Pose2D
+            The current pose of the robot (x, y, theta).
+        '''
+        return self.pose
+    
+
+    def reset(self, start_pose: Optional[Pose2D] = None):
+        '''
+        Resets the robot's pose to the given start pose or to the default start pose if no start pose has been given. 
+
+        Parameters
+        ----------
+        start_pose: Optional[Pose2D]
+            The pose to reset the robot to. If None, the default start pose will be used.
+        '''
+        if start_pose is not None:
+            self.pose = start_pose
+        else: 
+            self.pose = self.DEFAULT_START_POSE
+
+
+
 class RBPFEvaluator:
     @staticmethod
     def _finite_values(values: List[Optional[float]]) -> np.ndarray:
@@ -554,7 +626,8 @@ class RBPFEvaluator:
 
         scan_match_failed: Optional[bool]=None,
         scan_match_fallback_failed: Optional[bool]=None,
-            
+
+        raw_odom_pose: Optional[Pose2D]=None,
         particle_poses: List[Pose2D]=None,
         particle_weights: List[float]=None,
 
@@ -565,7 +638,6 @@ class RBPFEvaluator:
         particle_inherit_indices: Optional[List[int]]=None,
 
         true_pose: Optional[Pose2D] = None,
-        raw_odom_pose: Optional[Pose2D] = None,
     ) -> StepResult:        
         # Convert input data to numpy arrays
         particle_poses = self._poses_to_np_array(particle_poses)
@@ -623,11 +695,13 @@ class RBPF_ROS_Node:
     def __init__(
         self,
         rbpf: RBPF,
+        raw_odom_est: RawOdomEstimator,
         evaluator: RBPFEvaluator,
         exp_params: ExperimentParams,
         ros_params: ROSParams
     ):
         self.rbpf = rbpf
+        self.raw_odom_est = raw_odom_est
         self.evaluator = evaluator
         self.filter_params = exp_params
         self.ros_params = ros_params
@@ -837,7 +911,7 @@ class RBPF_ROS_Node:
         except Full:
             rospy.logerr_throttle(
                 period=2.0,
-                msg="RBPF input queue is full. The filter cannot keep up.",
+                msg="\nRBPF input queue is full. The filter cannot process the incoming data fast enough!",
             )
 
 
@@ -961,6 +1035,9 @@ class RBPF_ROS_Node:
             measurements[::every_nth_scan_map] if every_nth_scan_map > 1 else measurements
         )
 
+        # Compute raw odometry pose
+        self.raw_odom_est.predict_pose(dl=dl, dr=dr)
+
         # Do rbpf update step
         self.rbpf.step_range_finder_model(
             odom=(dl, dr),
@@ -995,6 +1072,7 @@ class RBPF_ROS_Node:
                 msg_queue_size=msg_queue_size,
                 scan_match_failed=info.get("scan_match_failed", None),
                 scan_match_fallback_failed=info.get("scan_match_fallback_failed", None),
+                raw_odom_pose=self.raw_odom_est.get_pose(),
                 particle_poses=info.get("particle_poses", None),
                 particle_weights=info.get("particle_weights", None),
                 particle_poses_before_resampling=info.get("particle_poses_before_resampling", None),
@@ -1002,15 +1080,30 @@ class RBPF_ROS_Node:
                 neff=info.get("neff", None),
                 particle_inherit_indices = info.get("resampled_indices", None),
                 true_pose=info.get("true_pose", None),
-                raw_odom_pose=None
             )
 
         return step_res, info
 
 
+    @staticmethod
+    def display_information(step_res: StepResult):
+        if step_res is None:
+            rospy.logwarn(f"Step result not intialized -> No information to display!")
+
+        if step_res.resampling is True:
+            rospy.loginfo(f"Resampling took place in step {step_res.step_idx}")
+
+        if step_res.scan_match_failed is True:
+            rospy.loginfo(f"Scan Mathing failed in step {step_res.step_idx}!")
+
+        if step_res.scan_match_failed_fallback is True:
+            rospy.loginfo(f"Scan match fallback failed in step {step_res.step_idx}!")
+        
+
+
     def exe(self) -> None:
         while not rospy.is_shutdown():
-            # Extract ne data from queue
+            # Extract new data from queue
             try:
                 msg: RBPFInput = self.rbpf_input_queue.get(timeout=0.1)
                 msg_queue_size = self.rbpf_input_queue.qsize()
@@ -1049,6 +1142,8 @@ class RBPF_ROS_Node:
                     step_res=step_res,
                     info=info
                 )
+
+                self.display_information(step_res=step_res)
                                 
             except Exception as e:
                 rospy.logerr(f"\nError processing RBPF input message:\n{e}")
@@ -1066,8 +1161,10 @@ def init():
     robot_start_pose = load_ros_params()
     ros_params = ROSParams()
     
+    # Define experiment parameters
     exp_params = def_exp_params(start_pose=robot_start_pose)
 
+    # Init Robot Estimator classes
     rbpf_factory = RBPFFactory()
     rbpf = rbpf_factory.create(
         scan_match_fac=ScanMatchFactory(),
@@ -1083,10 +1180,22 @@ def init():
         neff_threshold=exp_params.neff_threshold,
     )
 
+    raw_odom_est = RawOdomEstimator(
+        motion_model=MotionModel(
+            sigma_x=exp_params.motion_model_params.sigma_x,
+            sigma_y=exp_params.motion_model_params.sigma_y,
+            sigma_theta=exp_params.motion_model_params.sigma_theta,
+            wheel_separation=exp_params.motion_model_params.wheel_separation,
+            ctrl_motion_fac=exp_params.motion_model_params.ctrl_motion_fac,
+            ctrl_turn_fac=exp_params.motion_model_params.ctrl_turn_fac,
+        ),
+        start_pose=robot_start_pose
+    )
+
     # Init evaluator
     evaluator = RBPFEvaluator()
 
-    return rbpf, evaluator, exp_params, ros_params
+    return rbpf, raw_odom_est, evaluator, exp_params, ros_params
     
 
 
@@ -1095,7 +1204,7 @@ def main():
         debug_code()
 
     # Init RBPF filter
-    rbpf, evaluator, exp_params, ros_params = init()
+    rbpf, raw_odom_est, evaluator, exp_params, ros_params = init()
 
 
 if __name__ == "__main__":
