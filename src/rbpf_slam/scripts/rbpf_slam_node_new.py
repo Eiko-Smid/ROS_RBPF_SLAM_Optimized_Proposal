@@ -48,7 +48,7 @@ try:
     from rbpf_slam.src.slam.scan_matcher.ogm_scan_matching import OGM
     from rbpf_slam.src.slam.rbpf.motion_model import MotionModel
     from rbpf_slam.src.slam.optimize_rbpf_multiple_particles.playback_defs import ExperimentParams, PlaybackData
-    from rbpf_slam.src.slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
+    # from rbpf_slam.src.slam.infrastructure.playback_recorder import PlaybackRecorder
     
 except ModuleNotFoundError:
     from slam.rbpf.rbpf import (
@@ -71,10 +71,8 @@ except ModuleNotFoundError:
     from slam.scan_matcher.ogm_scan_matching import OGM
     from slam.rbpf.motion_model import MotionModel
     from slam.optimize_rbpf_multiple_particles.playback_defs import ExperimentParams, PlaybackData
-    from slam.infrastructure.playback_recorder import PlaybackRecorder, build_metadata
+    # from slam.infrastructure.playback_recorder import PlaybackRecorder
 
-
-NODE_NAME = "rbpf_slam_node"
 
 '''
 
@@ -160,6 +158,9 @@ TODO: Read wheel separation from robot description or ROS parameter server.
 
 '''
 
+
+NODE_NAME = "rbpf_slam_node"
+
 USE_DEBUGGER = False
 
 MIN_SENSOR_RANGE = 0.1
@@ -192,6 +193,7 @@ class Colormap:
 
 @dataclass
 class ROSParams:
+    max_filter_duration_ms: float = 450
     # Link states topic and params
     link_state_topic: str = "/gazebo/link_states"
     link_state_name: str = "robot_vacuum_cleaner::base_link"
@@ -220,6 +222,7 @@ class StepResult:
     step_idx: Optional[int] = None
     t: Optional[float] = None
     t_step_duration: Optional[float] = None
+    t_filter_duration: Optional[float] = None
     msg_queue_size: Optional[int] = None
 
     # Ground truth and raw odom
@@ -837,6 +840,7 @@ class RBPFEvaluator:
         step_idx: Optional[int]=None,
         t: Optional[float]=None,
         step_duration: Optional[float]=None,
+        filter_duration: Optional[float]=None,
         msg_queue_size: Optional[int]=None,
 
         scan_match_failed: Optional[bool]=None,
@@ -877,6 +881,7 @@ class RBPFEvaluator:
         step_res.step_idx = step_idx
         step_res.t = t
         step_res.t_step_duration = step_duration
+        step_res.t_filter_duration = filter_duration
         step_res.msg_queue_size = msg_queue_size
 
         # Add scan matcher info
@@ -1235,7 +1240,8 @@ class RBPF_ROS_Node:
         # Publish tfs
         # Compute tfs
         tf_msgs = self._compute_tfs(
-            step_res=step_res
+            step_res=step_res,
+            timestamp=timestamp,
         )
 
         if tf_msgs:
@@ -1332,7 +1338,7 @@ class RBPF_ROS_Node:
         self.rbpf.step_range_finder_model(
             odom=(dl, dr),
             measurements_proposal=measurements_filter,
-            measurements_map=measurements_map,
+            measurements_map_update=measurements_map,
             proposal_sigma_xy=self.filter_params.proposal_sigma_xy,
             proposal_sigma_theta=self.filter_params.proposal_sigma_theta,
             proposal_n_samples=self.filter_params.proposal_n_samples,
@@ -1368,6 +1374,7 @@ class RBPF_ROS_Node:
         self,
         step_time: float,
         step_duration: float,
+        filter_duration: float,
         msg_queue_size: int,
         true_pose: Optional[Pose2DMsg] = None
     ):
@@ -1380,6 +1387,7 @@ class RBPF_ROS_Node:
                 step_idx=info.get("step", None),
                 t=step_time,
                 step_duration=step_duration,
+                filter_duration=filter_duration,
                 msg_queue_size=msg_queue_size,
                 scan_match_failed=info.get("scan_match_failed", None),
                 scan_match_fallback_failed=info.get("scan_match_fallback_failed", None),
@@ -1395,12 +1403,26 @@ class RBPF_ROS_Node:
 
         return step_res, info
 
-
-    @staticmethod
-    def display_information(step_res: StepResult):
+    
+    def display_information(
+        self,
+        step_res: StepResult,
+        total_step_time: float
+    ):
+        rospy.logwarn(f"Total step time is: {total_step_time} s")
         if step_res is None:
             rospy.logwarn(f"Step result not intialized -> No information to display!")
             return
+
+        if step_res.t_filter_duration is not None:
+            if step_res.t_filter_duration > self.ros_params.max_filter_duration_ms:
+                t_filter_duration_ms = step_res.t_filter_duration * 1000.0
+                rospy.logwarn(
+                    f"\nFilter duration exceeded given threshold."
+                    f"Filter duration: {t_filter_duration_ms:.4f} ms > {self.ros_params.max_filter_duration_ms:.4f} ms."
+                    f"In step {step_res.step_idx}."
+                )
+            rospy.loginfo(f"Step {step_res.step_idx} took {step_res.t_step_duration:.4f} seconds.")
 
         if step_res.resampling is True:
             rospy.loginfo(f"Resampling took place in step {step_res.step_idx}")
@@ -1556,18 +1578,21 @@ class RBPF_ROS_Node:
                 step_time = step_timestamp.to_sec()
 
                 # Run rbpf filter
+                start_time_filter = time.perf_counter()
                 self._run_filter(
                     laser_scan=laser_scan,
                     dl=dl,
                     dr=dr,
                 )
-                
+
+                filter_duration = time.perf_counter() - start_time_filter
                 step_duration = time.perf_counter() - start_time
 
                 # Evaluate step results
                 step_res, info = self._evaluate_run(
                     step_time=step_time,
                     step_duration=step_duration,
+                    filter_duration=filter_duration,
                     msg_queue_size=msg_queue_size,
                     true_pose=true_pose,
                 )
@@ -1583,7 +1608,9 @@ class RBPF_ROS_Node:
                     timestamp=step_timestamp,
                 )
 
-                self.display_information(step_res=step_res)
+                total_step_time = time.perf_counter() - start_time
+
+                self.display_information(step_res=step_res, total_step_time=total_step_time)
                                 
             except Exception:
                 rospy.logerr(

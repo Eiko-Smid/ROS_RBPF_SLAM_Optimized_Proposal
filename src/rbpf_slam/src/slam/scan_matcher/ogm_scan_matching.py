@@ -1419,11 +1419,11 @@ class OGM:
     @staticmethod
     def discretize_map(            
         ogm: np.ndarray,
-        occ_thres,
-        free_thres,
-        col_val_unknown = -1,
-        col_val_occ=100,
-        col_value_free=0
+        occ_thres: float,
+        free_thres: float,
+        col_val_unknown: int = -1,
+        col_val_occ:int =100,
+        col_val_free: int=0
     ) -> np.ndarray:
             '''
             Discretizes the given log Odds map into discrete a map with discrete color values. If the logOdds value is >= occ_threshold,
@@ -1445,11 +1445,11 @@ class OGM:
             '''                    
             # Discretize the map
             ogm_cp = np.full(
-                ogm,
+                ogm.shape,
                 fill_value=col_val_unknown,
                 dtype=np.int8
             )
-            ogm_cp[ogm <= free_thres] = col_value_free
+            ogm_cp[ogm <= free_thres] = col_val_free
             ogm_cp[ogm >= occ_thres] = col_val_occ
     
             return ogm_cp

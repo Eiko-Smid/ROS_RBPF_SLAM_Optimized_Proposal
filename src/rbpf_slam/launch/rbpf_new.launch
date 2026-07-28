@@ -1,10 +1,10 @@
 <launch>
     <!--Define useful parameters-->
-    <arg name="paused" default="true"/>
+    <arg name="paused" default="false"/>
 
     <!--Define world to launch-->
-    <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house_light.world"/>
-    <!-- <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/turtle_map.world"/> -->
+    <!-- <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house_light.world"/> -->
+    <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/turtle_map.world"/>
     <!-- <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/robot_vacuum_cleaner.world"/> -->
 
     <!--Robot spawn pose for cafe map-->
@@ -75,12 +75,15 @@
     </include>
 
     <!--Generate static transform between map and odom -->
-    <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" />
+    <!-- <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" /> -->
 
     <!--Launch the occupancy grid mapping algorithm (with known pose).-->
     <node pkg="rbpf_slam" name="rbpf_data_processor_node" type="rbpf_data_processor_node.py" output="screen">        
     </node>
 
+    <node pkg="rbpf_slam" name="rbpf_slam_node" type="rbpf_slam_node_new.py" output="screen">        
+    </node>
+    
     <!--Launch rviz-->
     <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rbpf_slam)/rviz/ogm_rviz_cfg.rviz">
     </node>
