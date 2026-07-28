@@ -1000,6 +1000,10 @@ class OGM:
     '''
     IDX_X= 0
     IDX_Y= 1
+    COL_VAL_OCC=100
+    COL_VAL_FREE=0
+    COL_VAL_UNKNOWN=-1
+
     def __init__(self, map_parameter: List[float], occupancy_parameter: List[float], sensor_parameter: List[float]) -> None:
         '''
         Constructor of the OGM class. Initializes all parameters and variables needed for the algorithm. Also checks 
@@ -1409,6 +1413,47 @@ class OGM:
         else:
             occupancy_value= 1.0
         return occupancy_value
+
+        
+
+    @staticmethod
+    def discretize_map(            
+        ogm: np.ndarray,
+        occ_thres,
+        free_thres,
+        col_val_unknown = -1,
+        col_val_occ=100,
+        col_value_free=0
+    ) -> np.ndarray:
+            '''
+            Discretizes the given log Odds map into discrete a map with discrete color values. If the logOdds value is >= occ_threshold,
+            then the occ color value gets written to it. If the logOdds value is <= free_threshold, then the free color value gets
+            written, else the unknown value. 
+    
+            Parameters
+            ----------
+            occ_thres: float
+                The threshold for occupied cells in log Odds space. Value >= occ_thres -> col_val = col_val_occ
+            free_thres: float
+                The threshold for free cells in log Odds space. Value <= free_thres -> col_val = col_value_free
+            col_val_unknown: Optional[int]
+                The color value for unknown cells. If None, defaults to self.COL_VAL_UNKNOWN.
+            col_val_occ: Optional[int]
+                The color value for occupied cells. If None, defaults to self.COL_VAL_OCC.
+            col_value_free: Optional[int]
+                The color value for free cells. If None, defaults to self.COL_VAL_FREE. 
+            '''                    
+            # Discretize the map
+            ogm_cp = np.full(
+                ogm,
+                fill_value=col_val_unknown,
+                dtype=np.int8
+            )
+            ogm_cp[ogm <= free_thres] = col_value_free
+            ogm_cp[ogm >= occ_thres] = col_val_occ
+    
+            return ogm_cp
+
 
 
     @staticmethod

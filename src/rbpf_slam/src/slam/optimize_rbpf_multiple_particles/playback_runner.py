@@ -723,6 +723,7 @@ class PlaybackRunner:
         timing_summary = rbpf.timing_summary()
         run_result.summary.update(timing_summary)
 
+
         def _to_ms(value):
             return value * 1000.0 if value is not None else None
 
