@@ -109,23 +109,11 @@ TODO: Track info
 TODO: Publish best particle map
     - Easiest v1 would be to simply publish the map of the best particle. Maybe count after how many updates shat should be done
     - Doing it too often results in performance issues, doing it too infrequently results in low FPS map updates that don't look nice
+    - We now do the transformation from logodds map -> discrete map (color map) directly inside the node
+    - We therefore need to add a method to convert the ogm -> discrete map into the OGM class and use it here.
 
     Status: Done
     
-
-TODO: Adapt Map transformation node
-    - Currently the node publishes with its update rate
-    - This is unnessesary because we only need to publish when we actually received a new msg in the msg queue
-    
-    Changes:
-        - Add msg queue to Node
-        - Delete the update rate and do it as we do it here !
-
-    Channge:
-         Converted directly in Node
-
-    Status: DOne
-
 
 TODO: Add raw odom
     - Compute raw odom
@@ -135,9 +123,20 @@ TODO: Add raw odom
     Status: Done
 
 
+TODO: Fix all mistakes until current Node state
+
+    Status: Done
+    
+
 TODO: Add TFs
 
-    Status: todo
+    Status: Done
+
+
+TODO: Add time measurement if step duration > threshold
+    - Define ros param max_step_duration
+    - Define ros param max_fitler_duration
+    - Display warning if step duration > threshold 
 
     
 TODO: Check frame ids
@@ -175,6 +174,13 @@ POSE_ERR_TRUE_MEAN_P = "pose_err_true_maen_p"
 
 
 Pose2D = Tuple[float, float, float]
+
+
+@dataclass
+class tf_poses:
+    map_to_base_pose: Pose2D = (0.0, 0.0, 0.0)
+    odom_to_base_pose: Pose2D = (0.0, 0.0, 0.0)
+    map_to_odom_pose: Pose2D = (0.0, 0.0, 0.0)
 
 
 @dataclass
@@ -445,6 +451,166 @@ def load_ros_params():
 
     return robot_start_pose
 
+
+
+class Transformations2D:
+    """
+    Stateless helper class for 2D rigid-body transformations.
+
+    A pose (x, y, theta) represents the pose of a child frame expressed
+    in a parent/reference frame.
+
+    The corresponding matrix transforms points from the child frame
+    into the parent/reference frame.
+    """
+
+    @staticmethod
+    def pose_to_matrix(pose: Union[Pose2D, np.ndarray]) -> np.ndarray:
+        """
+        Convert a pose (x, y, theta) into a 3x3 homogeneous
+        transformation matrix.
+        """
+        pose_array = np.asarray(pose, dtype=np.float64)
+
+        if pose_array.shape != (3,):
+            raise ValueError(
+                f"Pose must have shape (3,), but got {pose_array.shape}."
+            )
+
+        if not np.all(np.isfinite(pose_array)):
+            raise ValueError(
+                f"Pose contains non-finite values: {pose_array}."
+            )
+
+        x, y, theta = pose_array
+
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+
+        return np.array(
+            [
+                [cos_theta, -sin_theta, x],
+                [sin_theta,  cos_theta, y],
+                [0.0,        0.0,       1.0],
+            ],
+            dtype=np.float64,
+        )
+    
+
+    @staticmethod
+    def matrix_to_pose(transform: np.ndarray) -> Pose2D:
+        """
+        Convert a 3x3 homogeneous transformation matrix into
+        a pose (x, y, theta).
+        """
+        transform = np.asarray(transform, dtype=np.float64)
+
+        if transform.shape != (3, 3):
+            raise ValueError(
+                "Transformation matrix must have shape (3, 3), "
+                f"but got {transform.shape}."
+            )
+
+        if not np.all(np.isfinite(transform)):
+            raise ValueError(
+                "Transformation matrix contains non-finite values."
+            )
+
+        x = transform[0, 2]
+        y = transform[1, 2]
+
+        theta = np.arctan2(
+            transform[1, 0],
+            transform[0, 0],
+        )
+
+        return float(x), float(y), float(theta)
+
+
+    @classmethod
+    def inverse(cls, transform: Union[Pose2D, np.ndarray]) -> Pose2D:
+        """
+        Invert a 2D transformation.
+
+        If the input represents:
+
+            parent -> child
+
+        the returned pose represents:
+
+            child -> parent
+        """
+        transform_matrix = cls.pose_to_matrix(transform)
+        inverse_matrix = np.linalg.inv(transform_matrix)
+
+        return cls.matrix_to_pose(inverse_matrix)
+
+
+    @classmethod
+    def compose(
+        cls,
+        first_transform: Union[Pose2D, np.ndarray],
+        second_transform: Union[Pose2D, np.ndarray],
+    ) -> Pose2D:
+        """
+        Compose two transformations.
+
+        Matrix equation:
+
+            T_result = T_first @ T_second
+
+        Therefore, second_transform is applied first, followed by
+        first_transform.
+
+        Example:
+
+            T_A_C = T_A_B @ T_B_C
+        """
+        first_matrix = cls.pose_to_matrix(first_transform)
+        second_matrix = cls.pose_to_matrix(second_transform)
+
+        result_matrix = first_matrix @ second_matrix
+
+        return cls.matrix_to_pose(result_matrix)
+
+
+    @classmethod
+    def relative_transform(
+        cls,
+        source_pose: Union[Pose2D, np.ndarray],
+        target_pose: Union[Pose2D, np.ndarray],
+        ) -> Pose2D:
+        """
+        Compute the transform that expresses the source frame in
+        the target frame.
+
+        Both source_pose and target_pose must be expressed in the
+        same reference frame.
+
+        Given:
+
+            T_reference_source
+            T_reference_target
+
+        this computes:
+
+            T_target_source
+                = inverse(T_reference_target)
+                  @ T_reference_source
+
+        The returned pose therefore transforms coordinates from the
+        source frame into the target frame.
+        """
+        reference_to_source = cls.pose_to_matrix(source_pose)
+        reference_to_target = cls.pose_to_matrix(target_pose)
+
+        target_to_source = (
+            np.linalg.inv(reference_to_target)
+            @ reference_to_source
+        )
+
+        return cls.matrix_to_pose(target_to_source)
+        
 
 
 class RawOdomEstimator:
@@ -1063,8 +1229,19 @@ class RBPF_ROS_Node:
         '''
         Methods that handles the overall publishing of data to ROS topics. 
         '''
-        # Publish poses
+        # Define one time stamp for all messages to be published 
         timestamp = timestamp if timestamp is not None else rospy.Time.now()
+
+        # Publish tfs
+        # Compute tfs
+        tf_msgs = self._compute_tfs(
+            step_res=step_res
+        )
+
+        if tf_msgs:
+            self.tf_broadcaster.sendTransform(tf_msgs)
+
+        # Publish poses
         pose_data = [
             (TRUE_POSE_TOPIC, step_res.true_pose, self.ros_params.map_tf_frame, timestamp),
             (WEIGHTED_MEAN_P_POSE, step_res.weighted_mean_pose, self.ros_params.map_tf_frame, timestamp),
@@ -1233,8 +1410,127 @@ class RBPF_ROS_Node:
 
         if step_res.scan_match_failed_fallback is True:
             rospy.loginfo(f"Scan match fallback failed in step {step_res.step_idx}!")
-        
 
+
+    @staticmethod
+    def _pose_into_transform_stamped_msg(
+        pose: Pose2D,
+        parent_frame: str,
+        child_frame: str,
+        timestamp: rospy.Time,
+    ) -> TransformStamped:
+        """
+        Convert a 2D pose into a ROS TransformStamped message.
+
+        The pose describes the child frame relative to the parent frame.
+        """
+        if pose is None or len(pose) != 3:
+            raise ValueError("Pose must contain (x, y, theta).")
+
+        transform_msg = TransformStamped()
+
+        # Header
+        transform_msg.header.stamp = timestamp
+        transform_msg.header.frame_id = parent_frame
+
+        # Frame located relative to the parent
+        transform_msg.child_frame_id = child_frame
+
+        # Translation of child inside parent
+        transform_msg.transform.translation.x = float(pose[0])
+        transform_msg.transform.translation.y = float(pose[1])
+        transform_msg.transform.translation.z = 0.0
+
+        # Rotation of child inside parent
+        quat = quaternion_from_euler(
+            0.0,
+            0.0,
+            float(pose[2]),
+        )
+
+        transform_msg.transform.rotation.x = quat[0]
+        transform_msg.transform.rotation.y = quat[1]
+        transform_msg.transform.rotation.z = quat[2]
+        transform_msg.transform.rotation.w = quat[3]
+
+        return transform_msg
+
+    
+    def _compute_tfs(
+        self,
+        step_res: StepResult,
+        timestamp: rospy.Time,
+    ) -> List[TransformStamped]:
+        """
+        Create the currently available dynamic transforms.
+
+        Returns
+        -------
+        List[TransformStamped]
+            Empty list:
+                No transform can currently be published.
+
+            One transform:
+                Only odom -> base is available.
+
+            Two transforms:
+                map -> odom and odom -> base are available.
+        """
+        # List to add transforms msgs to
+        transforms = []
+
+        raw_odom_pose = step_res.raw_odom_pose
+        best_particle_pose = step_res.best_particle_pose
+
+        # Skip tf computation if raw ododm is missing
+        if raw_odom_pose is None:
+            rospy.logwarn_throttle(
+                2.0,
+                "Raw odometry pose is unavailable. Skipping TF publication.",
+            )
+            return transforms
+
+        # Transfer raw odometry pose into tf msg
+        odom_to_base_tf = self._pose_into_transform_stamped_msg(
+            pose=raw_odom_pose,
+            parent_frame=self.ros_params.odom_tf_frame,
+            child_frame=self.ros_params.base_tf_frame,
+            timestamp=timestamp,
+        )
+
+        transforms.append(odom_to_base_tf)
+
+        # Display warning when best particle pose unavailable -> can't compute map -> odom tf
+        if best_particle_pose is None:
+            rospy.logwarn_throttle(
+                2.0,
+                "Best-particle pose is unavailable. "
+                "Publishing only odom -> base_link.",
+            )
+            return transforms
+
+        # Compute map -> odom tf
+        base_to_odom_pose = Transformations2D.inverse(
+            raw_odom_pose
+        )
+
+        map_to_odom_pose = Transformations2D.compose(
+            first_transform=best_particle_pose,
+            second_transform=base_to_odom_pose,
+        )
+
+        # Transfer map_odom into tf msg
+        map_to_odom_tf = self._pose_into_transform_stamped_msg(
+            pose=map_to_odom_pose,
+            parent_frame=self.ros_params.map_tf_frame,
+            child_frame=self.ros_params.odom_tf_frame,
+            timestamp=timestamp,
+        )
+
+        transforms.append(map_to_odom_tf)
+
+        return transforms
+            
 
     def exe(self) -> None:
         while not rospy.is_shutdown():
