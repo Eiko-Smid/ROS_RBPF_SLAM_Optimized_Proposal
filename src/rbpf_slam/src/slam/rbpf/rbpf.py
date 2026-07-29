@@ -1950,6 +1950,7 @@ class RBPF:
                     "init_count_threshold": self.init_count_threshold,
                     "init_failure_reason": self.init_failure_reason,
                     "odom_threshold": self.odom_threshold,
+                    "resampled_indices": None
                 }
 
                 return None

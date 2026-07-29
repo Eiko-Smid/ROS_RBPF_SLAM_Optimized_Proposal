@@ -8,6 +8,12 @@
     <gazebo>
         <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
             <alwaysOn>true</alwaysOn>
+            <!--- Enable/Disable publishing of tfs -->
+            <publishOdomTF>false</publishOdomTF>
+            <publishTf>false</publishTf>
+            <publishWheelTF>false</publishWheelTF>
+            <publishWheelJointState>true</publishWheelJointState>
+
             <!-- Plugin update rate in Hz -->
             <updateRate>${update_rate}</updateRate>
             <!-- Name of left joint, defaults to `left_joint` -->

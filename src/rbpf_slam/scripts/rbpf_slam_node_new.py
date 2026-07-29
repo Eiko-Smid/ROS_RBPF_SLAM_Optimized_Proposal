@@ -139,7 +139,7 @@ TODO: Add time measurement if step duration > threshold
     
 TODO: Check frame ids
 
-    Status: todo
+    Status: Done
 
 
 TODO: Add time measurements if fitler is too slow
@@ -149,8 +149,23 @@ TODO: Add time measurements if fitler is too slow
         - Map discretization
         - Evaluation
 
-    Status: todo
+    Status: Not needed, time is fast enough!
     
+
+TODO: Check if all warnings get displayed
+    - Currently scan matching has never shown up despite the fact that it has failed before
+      in the optimization pipes for the turttle bot map. 
+    - Now an entire turtle bot run hasn't resutlted into a fail. Very unlikely
+
+    -> Update all reads of the dict and raise errro or at lest display warning if a key is missing.
+
+    Status: done
+
+TODO: Validate that we correctly read data from rbpf info dict
+
+    - Done by creating a little helper that echekcs if dict, key exists.
+    - Handleed bolleans corrrectly.
+
 
 TODO: Read wheel separation from robot description or ROS parameter server.
     
@@ -202,7 +217,8 @@ class ROSParams:
     rbpf_input_topic: str = "rbpf/input"
     input_queue_size: int = 10
     # log odds map topic
-    map_topic: str = "rbpf/map"
+    # map_topic: str = "rbpf/map"
+    map_topic: str = "map"
 
     # TFs
     map_tf_frame: str = "map"
@@ -231,7 +247,7 @@ class StepResult:
 
     # Scan matcher info
     scan_match_failed: Optional[bool] = None
-    scan_match_failed_fallback: Optional[bool] = None
+    scan_match_fallback_failed: Optional[bool] = None
 
     # Particle poses before and after resampling
     particle_poses: Optional[np.ndarray] = None
@@ -885,8 +901,8 @@ class RBPFEvaluator:
         step_res.msg_queue_size = msg_queue_size
 
         # Add scan matcher info
-        step_res.scan_match_failed = scan_match_failed
-        step_res.scan_match_failed_fallback = scan_match_fallback_failed
+        step_res.scan_match_failed = bool(scan_match_failed) if scan_match_failed is not None else None 
+        step_res.scan_match_fallback_failed = bool(scan_match_fallback_failed) if scan_match_fallback_failed is not None else None
 
         # Add particle poses
         step_res.particle_poses = particle_poses
@@ -1370,6 +1386,40 @@ class RBPF_ROS_Node:
         return discretized_map
 
 
+    @staticmethod
+    def __read_rbpf_info(info: Dict, key: str):
+        '''
+        Cheks whether the given info obj is indeed and dict and if the key is a str. If not raises a ValueError. 
+        Alos checks if the given key is in the info dict.
+
+        Parameters
+        ----------
+        info : Dict
+            The info dictionary from the RBPF filter containing various information about the current step.
+        key : str
+            The key to look for in the info dictionary.
+        
+        Returns
+        -------
+        value: Any
+            The value associated with the given key in the info dictionary. If the key does not exist, raises a KeyError.
+        '''
+        # Check if info is a dictionary and key is a string
+        if not isinstance(info, dict):
+            raise ValueError("RBPF info must be a dictionary.")
+
+        if not isinstance(key, str):
+            raise ValueError("RBPF info key must be a string.")
+
+        # Check if the key exists in the info dictionary
+        if key not in info.keys():
+            raise KeyError(f"Key '{key}' not found in RBPF info dictionary. Keys are:\n{list(info.keys())}")
+        
+        value = info.get(key, None)
+        
+        return value
+
+
     def _evaluate_run(
         self,
         step_time: float,
@@ -1382,24 +1432,38 @@ class RBPF_ROS_Node:
         step_res = None
         info = self.rbpf.get_step_info()
 
-        if info is not None:
-            step_res = self.evaluator.evaluate_step(
-                step_idx=info.get("step", None),
-                t=step_time,
-                step_duration=step_duration,
-                filter_duration=filter_duration,
-                msg_queue_size=msg_queue_size,
-                scan_match_failed=info.get("scan_match_failed", None),
-                scan_match_fallback_failed=info.get("scan_match_fallback_failed", None),
-                raw_odom_pose=self.raw_odom_est.get_pose(),
-                particle_poses=info.get("particle_poses", None),
-                particle_weights=info.get("particle_weights", None),
-                particle_poses_before_resampling=info.get("particle_poses_before_resampling", None),
-                particle_weights_before_resampling=info.get("particle_weights_before_resampling", None),
-                neff=info.get("neff", None),
-                particle_inherit_indices = info.get("resampled_indices", None),
-                true_pose=true_pose,
-            )
+        if info is None:
+            raise ValueError("RBPF info is None. Cannot evaluate run without step information.")
+
+        # Extract data 
+        step_idx = self.__read_rbpf_info(info, "step") 
+        scan_match_failed = self.__read_rbpf_info(info, "scan_match_failed_any")
+        scan_match_fallback_failed = self.__read_rbpf_info(info, "scan_match_fallback_failed_any")
+        particle_poses = self.__read_rbpf_info(info, "particle_poses")
+        particle_weights = self.__read_rbpf_info(info, "particle_weights")
+        particle_poses_before_resampling = self.__read_rbpf_info(info, "particle_poses_before_resampling")
+        particle_weights_before_resampling = self.__read_rbpf_info(info, "particle_weights_before_resampling")
+        neff = self.__read_rbpf_info(info, "neff")
+        resampled_indices = self.__read_rbpf_info(info, "resampled_indices")
+
+        # Evaluate step results
+        step_res = self.evaluator.evaluate_step(
+            step_idx=step_idx,
+            t=step_time,
+            step_duration=step_duration,
+            filter_duration=filter_duration,
+            msg_queue_size=msg_queue_size,
+            scan_match_failed=scan_match_failed,
+            scan_match_fallback_failed=scan_match_fallback_failed,
+            raw_odom_pose=self.raw_odom_est.get_pose(),
+            particle_poses=particle_poses,
+            particle_weights=particle_weights,
+            particle_poses_before_resampling=particle_poses_before_resampling,
+            particle_weights_before_resampling=particle_weights_before_resampling,
+            neff=neff,
+            particle_inherit_indices=resampled_indices,
+            true_pose=true_pose,
+        )
 
         return step_res, info
 
@@ -1409,7 +1473,7 @@ class RBPF_ROS_Node:
         step_res: StepResult,
         total_step_time: float
     ):
-        rospy.logwarn(f"Total step time is: {total_step_time} s")
+        # rospy.logwarn(f"Total step time is: {total_step_time} s")
         if step_res is None:
             rospy.logwarn(f"Step result not intialized -> No information to display!")
             return
@@ -1422,16 +1486,16 @@ class RBPF_ROS_Node:
                     f"Filter duration: {t_filter_duration_ms:.4f} ms > {self.ros_params.max_filter_duration_ms:.4f} ms."
                     f"In step {step_res.step_idx}."
                 )
-            rospy.loginfo(f"Step {step_res.step_idx} took {step_res.t_step_duration:.4f} seconds.")
+                rospy.loginfo(f"Complete Step {step_res.step_idx} took {step_res.t_step_duration:.4f} seconds.")
 
-        if step_res.resampling is True:
+        if step_res.resampling:
             rospy.loginfo(f"Resampling took place in step {step_res.step_idx}")
 
-        if step_res.scan_match_failed is True:
-            rospy.loginfo(f"Scan Mathing failed in step {step_res.step_idx}!")
+        if step_res.scan_match_failed:
+            rospy.logwarn(f"Scan Matching failed in step {step_res.step_idx}!")
 
-        if step_res.scan_match_failed_fallback is True:
-            rospy.loginfo(f"Scan match fallback failed in step {step_res.step_idx}!")
+        if step_res.scan_match_fallback_failed:
+            rospy.logwarn(f"Scan Matching fallback failed in step {step_res.step_idx}!")
 
 
     @staticmethod
