@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import debugpy
 import traceback
+import xml.etree.ElementTree as ET
 from typing import List, Tuple, Optional, Dict, Any, List, Union
 
 import geometry_msgs
@@ -275,17 +276,31 @@ def debug_code():
 
 
 
-def compute_wheel_separation():
+def load_wheel_separation():
     '''
-    Compute the wheel separation based on the robot's chassis and wheel dimensions.
+    Load the wheel separation computed in the generated robot description.
     '''
-    h_chassis = 0.15
-    dist_chassis_to_ground = h_chassis / 5
-    r_wheel = h_chassis / 2 + dist_chassis_to_ground
-    w_wheel = 0.3 * r_wheel
-    r_chassis = 0.25
-    wheel_separation = 2 * r_chassis + w_wheel
+    robot_description = rospy.get_param(
+        "/robot_vacuum_cleaner_description"
+    )
+    robot = ET.fromstring(robot_description)
+    wheel_separation_element = robot.find(
+        ".//plugin[@name='differential_drive_controller']/wheelSeparation"
+    )
 
+    if (
+        wheel_separation_element is None
+        or wheel_separation_element.text is None
+    ):
+        raise RuntimeError(
+            "wheelSeparation not found in robot_vacuum_cleaner_description"
+        )
+
+    wheel_separation = float(wheel_separation_element.text)
+    rospy.loginfo(
+        "Loaded wheel separation from robot description: %s",
+        wheel_separation,
+    )
     return wheel_separation
 
 
@@ -323,7 +338,7 @@ def def_exp_params(start_pose):
     '''
     Returns an instance of the initialized Experiment Parameters for the RBPF filter.
     '''
-    wheel_separation = compute_wheel_separation()
+    wheel_separation = load_wheel_separation()
 
     measurement_model_params = BeamRangeFinderMeasModelParams(
         occ_thresh=1.4,

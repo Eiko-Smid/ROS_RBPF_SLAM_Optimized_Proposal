@@ -955,6 +955,7 @@ class RBPF:
                     "timing_metrics_s": None,
                     "timing_resampling_s": None,
                     "proposal_metrics": None,
+                    "resampled_indices": None,
                 }
 
                 return neff, self.particles[0].pose
