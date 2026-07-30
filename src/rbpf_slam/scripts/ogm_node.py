@@ -2,23 +2,20 @@
 import debugpy
 
 import rospy
-import threading
 import tf2_ros
 
+from queue import Empty, Full, Queue
 
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Pose, Point, Quaternion, TransformStamped
-from gazebo_msgs.msg import LinkStates
+from geometry_msgs.msg import Point, Pose2D as Pose2DMsg, TransformStamped
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
-from rbpf_slam.msg import Measurement
-from rbpf_slam.msg import LogOddsMap
+from rbpf_slam.msg import LogOddsMap, RBPFInput
 
 
-from typing import List, Tuple
+from typing import Tuple
 from dataclasses import dataclass
-import time
 import numpy as np
 
 # Import classes (support both roslaunch and direct execution contexts)
@@ -51,13 +48,11 @@ def debug_code():
 
 @dataclass
 class ROSParams:
-    update_rate = 2
-    link_state_topic = "/gazebo/link_states"
-    link_state_name = "robot_vacuum_cleaner::base_link"
+    rbpf_input_topic = "rbpf/input"
+    input_queue_size = 10
     odom_tf_frame = "odom_link"
     base_tf_frame = "base_link"
     laser_tf_frame = "laser_scanner_link"
-    scan_topic= "scan"
     map_topic= "log_odds_map"
 
 
@@ -85,7 +80,7 @@ def define_experiment_params():
         map_param=MapParameter(
             map_width=10.0,
             map_height=10.0,
-            grid_resolution_m=0.1,
+            grid_resolution_m=0.05,
         ),  
     )
 
@@ -126,10 +121,6 @@ class OGMROSCommunication:
         self.ogm = ogm
         self.ros_params = ros_params
 
-        self.link_state_message = None
-        self.link_state_name = ros_params.link_state_name
-        self.link_state_index = None
-        self.laser_scan = None
         self.laser_pose_world = None
 
         # Cache the static base->laser transform once (2D: x, y, yaw).
@@ -138,19 +129,21 @@ class OGMROSCommunication:
         self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         self.base_to_laser_pose_2d = self.lookup_base_to_laser_transform_2d()
         
-        # Define subscriber for link states and laser scan
-        self.link_states_subscriber = rospy.Subscriber(
-            self.ros_params.link_state_topic, LinkStates, self.link_states_callback
+        # Receive synchronized scan, wheel odometry, and true pose data from the
+        # RBPF data processor.
+        self.rbpf_input_queue = Queue(maxsize=self.ros_params.input_queue_size)
+        self.rbpf_input_subscriber = rospy.Subscriber(
+            name=self.ros_params.rbpf_input_topic,
+            data_class=RBPFInput,
+            callback=self._rbpf_input_cb,
+            queue_size=5,
         )
-        self.laser_scan_subscriber= rospy.Subscriber(self.ros_params.scan_topic, LaserScan, self.laser_scan_callback)
 
         # Define publisher for map
         self.map_publisher = rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
 
         # Colorization
         self.col_map_poitns = rospy.Publisher("debug_cells", Marker, queue_size=1)
-
-        self.lock = threading.Lock()
 
 
     def lookup_base_to_laser_transform_2d(self):
@@ -188,32 +181,18 @@ class OGMROSCommunication:
         return (0.0, 0.0, 0.0)
 
 
-    def link_states_callback(self, link_states: LinkStates):
-        '''Receive gazebo link state from topic.'''
-        with self.lock:
-            # Extract message
-            self.link_state_message = link_states
-
-            # Find link state name index -> base_link index
-            if self.link_state_index is None:
-                try:
-                    self.link_state_index = link_states.name.index(self.link_state_name)
-                    rospy.loginfo(f"Found link state index: {self.link_state_index}")
-                except ValueError:
-                    rospy.logwarn_throttle(5.0, f"Link {self.link_state_name} not found in Gazebo link states.")
-
-            if self.link_state_index is None:
-                for i in range(len(link_states.name)):
-                    if self.link_state_name == link_states.name[i]:
-                        self.link_state_index = i
-                        break
-        
-
-    def laser_scan_callback(self, laser_scan):
-        '''Receive laser scan from topic.'''
-        self.lock.acquire()
-        self.laser_scan= laser_scan
-        self.lock.release()
+    def _rbpf_input_cb(self, msg: RBPFInput) -> None:
+        '''Store synchronized input data for processing in the main loop.'''
+        try:
+            self.rbpf_input_queue.put_nowait(msg)
+        except Full:
+            rospy.logerr_throttle(
+                period=2.0,
+                msg=(
+                    "\nOGM input queue is full. The mapper cannot process "
+                    "the incoming data fast enough!"
+                ),
+            )
 
 
     @staticmethod
@@ -261,20 +240,11 @@ class OGMROSCommunication:
 
     
     @staticmethod
-    def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
+    def transform_pose_to_planar_pose(pose: Pose2DMsg):
         '''
-        Transforms the link state message to a planar pose, consisting of (x, y, yaw) tuple.
+        Transform a ROS Pose2D message to an (x, y, yaw) tuple.
         '''
-        link_state_pose: Pose = link_state.pose[link_state_index]
-
-        x= link_state_pose.position.x
-        y= link_state_pose.position.y
-        orientation = link_state_pose.orientation
-        # Transform quaternion angle's to euler angle's
-        (roll, pitch, yaw)= euler_from_quaternion([orientation.x, orientation.y, orientation.z,
-                                                orientation.w])
-        planar_pose= (x, y, yaw)
-        return planar_pose
+        return (pose.x, pose.y, pose.theta)
 
 
     @staticmethod
@@ -359,30 +329,18 @@ class OGMROSCommunication:
         
     def execute(self):
         '''Main loop for executing the algorithm.'''
-        update_rate= rospy.Rate(self.ros_params.update_rate)
         while not rospy.is_shutdown():
-            # rospy.loginfo("Mapping node running")
-            # Check if data was received
-            
-            # Check if data is available
-            if (
-                self.link_state_message is not None
-                and self.link_state_index is not None
-                and self.laser_scan is not None
-            ):
+            try:
+                msg: RBPFInput = self.rbpf_input_queue.get(timeout=0.1)
+            except Empty:
+                continue
+
+            try:
                 rospy.loginfo_once("OGM Initalized.")
 
-                # get data from callbacks
-                with self.lock:
-                    link_state = self.link_state_message
-                    link_state_index = self.link_state_index 
-                    laser_scan = self.laser_scan
-
-                # Transform data
-                pose = self.transform_link_state_pose_to_planar_pose(
-                    link_state=link_state,
-                    link_state_index=link_state_index,
-                )
+                # Extract the synchronized data produced by rbpf_data_processor_node.
+                laser_scan = msg.laser_scan
+                pose = self.transform_pose_to_planar_pose(msg.true_pose)
 
                 # Optional world-frame laser pose for later world-point projection.
                 self.laser_pose_world = self.transform_planar_pose(
@@ -413,7 +371,7 @@ class OGMROSCommunication:
                     pose=pose,
                     parent_frame=self.ros_params.odom_tf_frame,
                     child_frame=self.ros_params.base_tf_frame,
-                    timestamp=rospy.Time.now()
+                    timestamp=msg.header.stamp,
                 )
 
                 # Publish tfs
@@ -422,7 +380,8 @@ class OGMROSCommunication:
                 # Transform and publish map
                 self.publish_occupancy_grid_message()
 
-            update_rate.sleep()
+            finally:
+                self.rbpf_input_queue.task_done()
 
 
 
@@ -448,4 +407,4 @@ def main():
     
 
 if __name__=="__main__":
-    main()  
+    main()
