@@ -11,7 +11,7 @@ from ..rbpf.rbpf import RBPFFactory
 from ..rbpf.motion_model import MotionModel
 from ..rbpf.scan_match_factory import ScanMatchFactory
 from ..rbpf.particle_process_pool import ParticleProcessPool #_init_worker
-from ..rbpf.particle_thread_pool import ParticleThreadPool
+
 
 
 Pose2D = Tuple[float, float, float]
