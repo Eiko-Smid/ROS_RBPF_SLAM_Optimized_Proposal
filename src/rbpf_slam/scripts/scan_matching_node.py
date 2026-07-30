@@ -10,6 +10,7 @@ import os
 import sys
 import csv
 import json
+import xml.etree.ElementTree as ET
 from typing import List, Tuple, Any
 from dataclasses import dataclass, field
 import time
@@ -788,6 +789,34 @@ def transform_2D_grid_to_1D_grid(self, indice):
 #  Main
 #__________________________________________________________________________________________________________________________________
 
+def load_wheel_separation():
+    '''
+    Load the wheel separation computed in the generated robot description.
+    '''
+    robot_description = rospy.get_param(
+        "/robot_vacuum_cleaner_description"
+    )
+    robot = ET.fromstring(robot_description)
+    wheel_separation_element = robot.find(
+        ".//plugin[@name='differential_drive_controller']/wheelSeparation"
+    )
+
+    if (
+        wheel_separation_element is None
+        or wheel_separation_element.text is None
+    ):
+        raise RuntimeError(
+            "wheelSeparation not found in robot_vacuum_cleaner_description"
+        )
+
+    wheel_separation = float(wheel_separation_element.text)
+    rospy.loginfo(
+        "Loaded wheel separation from robot description: %s",
+        wheel_separation,
+    )
+    return wheel_separation
+
+
 def main():
     # Init node
     rospy.init_node("scan_matching_node", anonymous=True)
@@ -835,14 +864,8 @@ def main():
 
     every_nth_ray = 5   # Only use every nth ray of the laser scan for scan matching to reduce computational cost
 
-    # Define robot params
-    # Robot chassis parameter (need to be received from .yaml later)
-    h_chassis= 0.15
-    dist_chassis_to_ground= h_chassis/5
-    r_wheel= h_chassis/2 + dist_chassis_to_ground
-    w_wheel= 0.3 * r_wheel
-    r_chassis= 0.25
-    wheel_separation= 2 * r_chassis + w_wheel
+    # Load wheel separation from the generated robot description
+    wheel_separation = load_wheel_separation()
 
 
     # Get map and extract infos

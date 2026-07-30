@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-from typing import Tuple, Optional
+from typing import Tuple
 
 from dataclasses import dataclass
 from math import atan2, cos, sin, sqrt
 import random
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 import rospy
 import message_filters
@@ -62,56 +63,88 @@ NODE_NAME = "rbpf_data_processor_node"
 class ROSParams:
     '''
     Stores ROS topic names and parameters required by the playback node.
-
-    The node processes every nth laser scan. With a laser update rate of 10 Hz
-    and record_every_nth_scan=5, one playback step is recorded every 0.5 s.
     '''
-    # Ground-truth odometry topic published by libgazebo_ros_p3d.so
-    ground_truth_topic: str = "/ground_truth/odom"
-
-    # Scan topic
-    scan_topic: str = "scan"
-
-    # RBPF input topic
-    rbpf_input_topic: str = "rbpf/input"
-
-    # Laser scanner
-    # Desired time window between 2 scans [s]
-    des_time_window: float = 0.5
-    # If time diff is > des_time_window + d_time_window we take this scan 
-    d_time_window: float = 0.1 * des_time_window
-
-    # Reject scan/ground-truth pairs with a larger interpolation gap [s]
-    # This threshold is checked for both bracketing poses separately.
-    max_sync_error_s: float = 0.02
-
-    # Number of ground-truth poses and selected scans stored temporarily
-    # Queue size for time synchronizer (stores that many values at max to find matching pair)
-    time_synchronizer_queue_size: int = 50
-    # Time difference between the topic data that is accepted for valid pairs [s]
-    time_synchronizer_slop: float = 0.02
-
-    # Robot spawn pose used as old pose for the first recorded control
-    robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-
-    # Artificial wheel encoder noise factors
-    motion_error_factor: Optional[float] = None
-    turn_error_factor: Optional[float] = None
+    ground_truth_topic: str
+    scan_topic: str
+    rbpf_input_topic: str
+    desired_time_window_s: float
+    time_window_tolerance_s: float
+    max_sync_error_s: float
+    time_synchronizer_queue_size: int
+    time_synchronizer_slop_s: float
+    robot_start_pose: Tuple[float, float, float]
+    motion_error_factor: float
+    turn_error_factor: float
 
 
 
-def compute_wheel_separation():
+def load_wheel_separation():
     '''
-    Compute the wheel separation based on the robot's chassis and wheel dimensions.
+    Load the wheel separation computed in the generated robot description.
     '''
-    h_chassis = 0.15
-    dist_chassis_to_ground = h_chassis / 5
-    r_wheel = h_chassis / 2 + dist_chassis_to_ground
-    w_wheel = 0.3 * r_wheel
-    r_chassis = 0.25
-    wheel_separation = 2 * r_chassis + w_wheel
+    robot_description = rospy.get_param(
+        "/robot_vacuum_cleaner_description"
+    )
+    robot = ET.fromstring(robot_description)
+    wheel_separation_element = robot.find(
+        ".//plugin[@name='differential_drive_controller']/wheelSeparation"
+    )
 
+    if (
+        wheel_separation_element is None
+        or wheel_separation_element.text is None
+    ):
+        raise RuntimeError(
+            "wheelSeparation not found in robot_vacuum_cleaner_description"
+        )
+
+    wheel_separation = float(wheel_separation_element.text)
+    rospy.loginfo(
+        "Loaded wheel separation from robot description: %s",
+        wheel_separation,
+    )
     return wheel_separation
+
+
+def load_ros_node_params(
+    robot_start_pose: Tuple[float, float, float],
+    motion_error_factor: float,
+    turn_error_factor: float,
+) -> ROSParams:
+    '''Load fixed ROS settings and add values supplied by the launch file.'''
+    config = rospy.get_param("~ros")
+
+    try:
+        topics = config["topics"]
+        synchronization = config["synchronization"]
+
+        return ROSParams(
+            ground_truth_topic=topics["ground_truth"],
+            scan_topic=topics["scan"],
+            rbpf_input_topic=topics["rbpf_input"],
+            desired_time_window_s=float(
+                synchronization["desired_time_window_s"]
+            ),
+            time_window_tolerance_s=float(
+                synchronization["time_window_tolerance_s"]
+            ),
+            max_sync_error_s=float(
+                synchronization["max_sync_error_s"]
+            ),
+            time_synchronizer_queue_size=int(
+                synchronization["time_synchronizer_queue_size"]
+            ),
+            time_synchronizer_slop_s=float(
+                synchronization["time_synchronizer_slop_s"]
+            ),
+            robot_start_pose=robot_start_pose,
+            motion_error_factor=motion_error_factor,
+            turn_error_factor=turn_error_factor,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid RBPF data processor ROS configuration: {exc}"
+        ) from exc
 
 
 
@@ -147,7 +180,7 @@ class RBPFDataProcessorNode:
         self.synchronizer = message_filters.ApproximateTimeSynchronizer(
             [self.scan_sub, self.ground_truth_sub],
             queue_size=ros_params.time_synchronizer_queue_size,
-            slop=ros_params.time_synchronizer_slop
+            slop=ros_params.time_synchronizer_slop_s
         )
 
         # Register callback -> synced data will be send to this cb
@@ -248,8 +281,8 @@ class RBPFDataProcessorNode:
             motion noise depends on each wheel distance and turn noise depends on the
             difference between left and right wheel travel.
             '''
-            motion_error_factor = float(self.ros_params.motion_error_factor or 0.0)
-            turn_error_factor = float(self.ros_params.turn_error_factor or 0.0)
+            motion_error_factor = self.ros_params.motion_error_factor
+            turn_error_factor = self.ros_params.turn_error_factor
 
             # Compute variance contributions
             control_difference = left_control - right_control
@@ -340,7 +373,10 @@ class RBPFDataProcessorNode:
                 ground_truth_odom_cp = ground_truth_odom
     
             # Accept new data pair if time difference is within thres
-            if scan_time_diff > (self.ros_params.des_time_window - self.ros_params.d_time_window):
+            if scan_time_diff > (
+                self.ros_params.desired_time_window_s
+                - self.ros_params.time_window_tolerance_s
+            ):
                 # Compute time difference between scan and ground truth odom
                 dt_scan_ground_truth = abs(laser_scan_cp.header.stamp.to_sec() - ground_truth_odom_cp.header.stamp.to_sec())
                 # rospy.loginfo(                
@@ -389,7 +425,6 @@ class RBPFDataProcessorNode:
     def exe(self):
         rospy.spin()
 
- 
 
 
 
@@ -397,30 +432,33 @@ def main():
     '''Initializes parameters and starts the synchronized playback node.'''
     # Init node
     rospy.init_node(NODE_NAME)
+    config_name = rospy.get_param("~config_name")
 
     # Get motion error parameters
-    motion_error_factor = rospy.get_param(
-        "/motion_error_factor"
+    motion_error_factor = float(
+        rospy.get_param("/motion_error_factor")
     )
-    turn_error_factor = rospy.get_param(
-        "/turn_error_factor"
+    turn_error_factor = float(
+        rospy.get_param("/turn_error_factor")
     )
 
     # Get robot spawn pose
-    spawn_x = rospy.get_param("/spawn_x")
-    spawn_y = rospy.get_param("/spawn_y")
-    spawn_yaw = rospy.get_param("/spawn_yaw")
-    robot_start_pose = (spawn_x, spawn_y, spawn_yaw)
+    robot_start_pose = (
+        float(rospy.get_param("/spawn_x")),
+        float(rospy.get_param("/spawn_y")),
+        float(rospy.get_param("/spawn_yaw")),
+    )
 
-    # Def wheel sep
-    wheel_separation = compute_wheel_separation()
-    ros_params = ROSParams(
+    # Load wheel separation from the generated robot description
+    wheel_separation = load_wheel_separation()
+    ros_params = load_ros_node_params(
+        robot_start_pose=robot_start_pose,
         motion_error_factor=motion_error_factor,
         turn_error_factor=turn_error_factor,
-        robot_start_pose=robot_start_pose
     )
 
     # Display parameters 
+    rospy.loginfo("Loaded RBPF data processor configuration: %s", config_name)
     rospy.loginfo(f"Node {NODE_NAME} started with parameters:")
     rospy.loginfo(
         "Robot start pose: x={:.2f}, y={:.2f}, yaw={:.2f}".format(

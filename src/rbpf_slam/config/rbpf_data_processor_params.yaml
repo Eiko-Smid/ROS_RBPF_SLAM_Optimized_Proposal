@@ -1,0 +1,27 @@
+# ============================================================
+# RBPF data processor Version-1 configuration
+# ============================================================
+
+config_name: "rbpf_data_processor_v1"
+
+
+# ============================================================
+# ROS-specific configuration of rbpf_data_processor_node
+# ============================================================
+
+ros:
+
+  topics:
+    ground_truth: "/ground_truth/odom"
+    scan: "scan"
+    rbpf_input: "rbpf/input"
+
+
+  synchronization:
+    desired_time_window_s: 0.5
+    time_window_tolerance_s: 0.05
+
+    max_sync_error_s: 0.02
+
+    time_synchronizer_queue_size: 50
+    time_synchronizer_slop_s: 0.02

@@ -179,13 +179,7 @@ NODE_NAME = "rbpf_slam_node"
 
 USE_DEBUGGER = False
 
-MIN_SENSOR_RANGE = 0.1
-MAX_SENSOR_RANGE = 10.0
-
 # Pose names
-TRUE_POSE_TOPIC = "true_pose"
-BEST_P_POSE = "best_particle_pose"
-WEIGHTED_MEAN_P_POSE = "weighted_mean_particle_pose"
 POSE_ERR_TRUE_BEST_P_TOPIC = "pose_err_true_best_p"
 POSE_ERR_TRUE_MEAN_P = "pose_err_true_maen_p"
 
@@ -209,27 +203,18 @@ class Colormap:
 
 @dataclass
 class ROSParams:
-    max_filter_duration_ms: float = 450
-    # Link states topic and params
-    link_state_topic: str = "/gazebo/link_states"
-    link_state_name: str = "robot_vacuum_cleaner::base_link"
-
-    # RBPF input topic
-    rbpf_input_topic: str = "rbpf/input"
-    input_queue_size: int = 10
-    # log odds map topic
-    # map_topic: str = "rbpf/map"
-    map_topic: str = "map"
-
-    # TFs
-    map_tf_frame: str = "map"
-    odom_tf_frame: str = "odom_link"
-    base_tf_frame: str = "base_link"
-    laser_tf_frame: str = "laser_scanner_link"
-    tf_timeout_s: rospy.Duration = field(
-        default_factory=lambda: rospy.Duration(10.0)
-    )
-
+    rbpf_input_topic: str
+    map_topic: str
+    true_pose_topic: str
+    best_particle_pose_topic: str
+    weighted_mean_particle_pose_topic: str
+    map_tf_frame: str
+    odom_tf_frame: str
+    base_tf_frame: str
+    laser_tf_frame: str
+    input_queue_size: int
+    tf_timeout_s: float
+    max_filter_duration_s: float
     col_map: Colormap = field(default_factory=Colormap)
 
 
@@ -334,155 +319,101 @@ def _initialize_experiment_tag(exp_params: ExperimentParams) -> ExperimentParams
 
 
 
-def def_exp_params(start_pose):
+def load_experiment_params(start_pose: Pose2D) -> ExperimentParams:
     '''
-    Returns an instance of the initialized Experiment Parameters for the RBPF filter.
+    Load the RBPF experiment configuration and add robot-specific values.
     '''
+    config = rospy.get_param("~experiment")
     wheel_separation = load_wheel_separation()
 
-    measurement_model_params = BeamRangeFinderMeasModelParams(
-        occ_thresh=1.4,
-        free_thresh=-1.4,
-        unknown_ratio_thresh=0.3,
-        known_free_ratio_thresh=0.7,
-        sigma_hit=0.07,
-        w_hit=0.5,
-        w_short=0.3,
-        lambda_short=0.20,
-        w_max=0.10,
-        w_rand=0.10,
-        p_unknown=0.10,
-        p_out_of_map=0.15,
-        p_unexpected_known_free=0.00,
-        p_pred_below_min=0.02,
-        alpha_meas=0.075,
-        beam_step=2,
-        eps=1e-12,
-    )
+    try:
+        icp_config = dict(config["icp_params"])
+        downsample_grid_size = icp_config.pop("downsample_grid_size")
 
-    occupancy_params = OccupancyParams(
-        prior_probability=0.5,
-        min_distance_to_border=10.0,
-        increasing_probability=0.85,
-        decreasing_probability=0.15,
-        min_log_odds=-5.0,
-        max_log_odds=5.0,
-    )
-    sensor_params = SensorParams(
-        min_sensor_range=MIN_SENSOR_RANGE,
-        max_sensor_range=MAX_SENSOR_RANGE,
-    )
-    map_param = MapParameter(
-        map_width=10.0,
-        map_height=10.0,
-        grid_resolution_m=0.05,
-    )
-    icp_params = ICPParams(
-        max_n_points=1200,
-        downssample_grid_size=0.1,
-        max_correspondence_distance=0.4,
-        neighbors_pca=6,
-        max_iterations=5,
-        epsilon_rel=1e-3,
-        no_improvement_limit=3,
-        min_error=5e-4,
-        min_dtrans=1e-3,
-        min_drot=1e-2,
-        min_points=20,
-        min_corresp=25,
-        min_hessian_rank=3,
-        max_hessian_condition=1e8,
-        max_translation_jump=0.7,
-        max_rotation_jump=np.deg2rad(45.0),
-        max_acceptable_mean_error=0.15,
-    )
-    robot_params = RobotParams(
-        wheel_separation=wheel_separation,
-    )
-    scan_matcher_params = ScanMatcherParams(
-        occ_thres=1.4,
-        delta_r=0.6,
-        surface_radius_m=0.2,
-        min_free_ratio=0.4,
-    )
-    particle_params = ParticleParams(
-        n_particles=20,
-        start_pose=start_pose,
-    )
-    motion_model_params = MotionModelParams(
-        sigma_x=0.12,
-        sigma_y=0.12,
-        sigma_theta=0.11,
-        wheel_separation=wheel_separation,
-        ctrl_motion_fac=0.1,
-        ctrl_turn_fac=0.15,
-    )
-
-    exp_params = ExperimentParams(
-        occupancy_params=occupancy_params,
-        sensor_params=sensor_params,
-        map_param=map_param,
-        icp_params=icp_params,
-        robot_params=robot_params,
-        scan_matcher_params=scan_matcher_params,
-        particle_params=particle_params,
-        motion_model_params=motion_model_params,
-        measurement_model_params=measurement_model_params,
-        every_nth_scan_filter=2,
-        every_nth_scan_map=2,
-        neff_threshold=6.0,
-        proposal_sigma_xy=0.06,
-        proposal_sigma_theta=np.deg2rad(1.432),
-        proposal_n_samples=3,
-        cov_std_scale=0.5,
-        cov_max_std_xy=1.0,
-        cov_max_std_theta=np.deg2rad(10.0),
-        min_std_xy=0.0,
-        min_std_theta=np.deg2rad(0.0),
-        meas_kernel_size=1,
-        gaussian_sigma=0.05,
-        proposal_alpha=1.0,
-        proposal_beta=1.0,
-        measurement_noise_stddev=0.03,
-        used_meas_model="LaserRangeFinderModel",
-        tag="",
-    )
+        exp_params = ExperimentParams(
+            measurement_model_params=BeamRangeFinderMeasModelParams(
+                **config["measurement_model_params"]
+            ),
+            occupancy_params=OccupancyParams(
+                **config["occupancy_params"]
+            ),
+            sensor_params=SensorParams(
+                **config["sensor_params"]
+            ),
+            map_param=MapParameter(
+                **config["map_params"]
+            ),
+            icp_params=ICPParams(
+                downssample_grid_size=downsample_grid_size,
+                **icp_config,
+            ),
+            robot_params=RobotParams(
+                wheel_separation=wheel_separation,
+            ),
+            scan_matcher_params=ScanMatcherParams(
+                **config["scan_matcher_params"]
+            ),
+            particle_params=ParticleParams(
+                start_pose=start_pose,
+                **config["particle_params"],
+            ),
+            motion_model_params=MotionModelParams(
+                wheel_separation=wheel_separation,
+                **config["motion_model_params"],
+            ),
+            tag="",
+            **config["rbpf_params"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid RBPF experiment configuration: {exc}"
+        ) from exc
 
     return _initialize_experiment_tag(exp_params=exp_params)
 
 
 
-def load_ros_params():
-    # Get motion error params
-    motion_error_factor = rospy.get_param(
-        "/motion_error_factor"
+def load_ros_node_params() -> ROSParams:
+    '''Load ROS topics, frames, and runtime settings from configuration.'''
+    config = rospy.get_param("~ros")
+
+    try:
+        topics = config["topics"]
+        frames = config["frames"]
+        runtime = config["runtime"]
+
+        return ROSParams(
+            rbpf_input_topic=topics["rbpf_input"],
+            map_topic=topics["map"],
+            true_pose_topic=topics["true_pose"],
+            best_particle_pose_topic=topics["best_particle_pose"],
+            weighted_mean_particle_pose_topic=(
+                topics["weighted_mean_particle_pose"]
+            ),
+            map_tf_frame=frames["map"],
+            odom_tf_frame=frames["odom"],
+            base_tf_frame=frames["base"],
+            laser_tf_frame=frames["laser"],
+            input_queue_size=int(runtime["input_queue_size"]),
+            tf_timeout_s=float(runtime["tf_timeout_s"]),
+            max_filter_duration_s=float(
+                runtime["max_filter_duration_s"]
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid RBPF ROS configuration: {exc}"
+        ) from exc
+
+
+def load_robot_start_pose() -> Pose2D:
+    '''Load the robot start pose supplied by the launch file.'''
+    robot_start_pose = (
+        float(rospy.get_param("/spawn_x")),
+        float(rospy.get_param("/spawn_y")),
+        float(rospy.get_param("/spawn_yaw")),
     )
-    turn_error_factor = rospy.get_param(
-        "/turn_error_factor"
-    )
-
-    # Get lidar params
-    laser_range_resolution = rospy.get_param("/laser_range_resolution")
-    laser_noise_type = rospy.get_param("/laser_noise_type")
-    laser_noise_mean = rospy.get_param("/laser_noise_mean")
-    laser_noise_stddv = rospy.get_param("/laser_noise_stddv")
-    
-    # Get robot spawn pose
-    spawn_x = rospy.get_param("/spawn_x")
-    spawn_y = rospy.get_param("/spawn_y")
-    spawn_yaw = rospy.get_param("/spawn_yaw")
-    robot_start_pose = (spawn_x, spawn_y, spawn_yaw)
-
-    # Print loaded parameters
-    rospy.loginfo(f"\n\nDisplay loaded parameters:")
-    rospy.loginfo(f"Loaded motion error factor: {motion_error_factor}")
-    rospy.loginfo(f"Loaded turn error factor: {turn_error_factor}")
-    rospy.loginfo(f"Loaded laser range resolution: {laser_range_resolution}")
-    rospy.loginfo(f"Loaded laser noise type: {laser_noise_type}")
-    rospy.loginfo(f"Loaded laser noise mean: {laser_noise_mean}")
-    rospy.loginfo(f"Loaded laser noise stddv: {laser_noise_stddv}")
-    rospy.loginfo(f"Loaded robot spawn pose: {robot_start_pose}\n\n")
-
+    rospy.loginfo("Loaded robot start pose: %s", robot_start_pose)
     return robot_start_pose
 
 
@@ -987,18 +918,18 @@ class RBPF_ROS_Node:
 
         # Pose publisher
         self.pose_pub = {            
-            TRUE_POSE_TOPIC: rospy.Publisher(
-                name=TRUE_POSE_TOPIC,
+            self.ros_params.true_pose_topic: rospy.Publisher(
+                name=self.ros_params.true_pose_topic,
                 data_class=PoseStamped,
                 queue_size=2
             ),
-            WEIGHTED_MEAN_P_POSE: rospy.Publisher(
-                name=WEIGHTED_MEAN_P_POSE,
+            self.ros_params.weighted_mean_particle_pose_topic: rospy.Publisher(
+                name=self.ros_params.weighted_mean_particle_pose_topic,
                 data_class=PoseStamped,
                 queue_size=2
             ),
-            BEST_P_POSE: rospy.Publisher(
-                name=BEST_P_POSE,
+            self.ros_params.best_particle_pose_topic: rospy.Publisher(
+                name=self.ros_params.best_particle_pose_topic,
                 data_class=PoseStamped,
                 queue_size=2
             ),                        
@@ -1045,7 +976,10 @@ class RBPF_ROS_Node:
             A tuple (x, y, yaw) representing the 2D transformation from src_frame to targ_frame, where x and y 
             are the translation components and yaw is the rotation around the z-axis. 
         '''
-        timeout_time = rospy.Time.now() + self.ros_params.tf_timeout_s
+        timeout_time = (
+            rospy.Time.now()
+            + rospy.Duration(self.ros_params.tf_timeout_s)
+        )
 
         while not rospy.is_shutdown() and rospy.Time.now() < timeout_time:
             try:
@@ -1280,9 +1214,24 @@ class RBPF_ROS_Node:
 
         # Publish poses
         pose_data = [
-            (TRUE_POSE_TOPIC, step_res.true_pose, self.ros_params.map_tf_frame, timestamp),
-            (WEIGHTED_MEAN_P_POSE, step_res.weighted_mean_pose, self.ros_params.map_tf_frame, timestamp),
-            (BEST_P_POSE, step_res.best_particle_pose, self.ros_params.map_tf_frame, timestamp)
+            (
+                self.ros_params.true_pose_topic,
+                step_res.true_pose,
+                self.ros_params.map_tf_frame,
+                timestamp,
+            ),
+            (
+                self.ros_params.weighted_mean_particle_pose_topic,
+                step_res.weighted_mean_pose,
+                self.ros_params.map_tf_frame,
+                timestamp,
+            ),
+            (
+                self.ros_params.best_particle_pose_topic,
+                step_res.best_particle_pose,
+                self.ros_params.map_tf_frame,
+                timestamp,
+            ),
         ]
         for topic_key, pose, frame_id, t_stamp in pose_data:
             if pose is not None:
@@ -1494,11 +1443,14 @@ class RBPF_ROS_Node:
             return
 
         if step_res.t_filter_duration is not None:
-            if step_res.t_filter_duration > self.ros_params.max_filter_duration_ms:
+            if (step_res.t_filter_duration > self.ros_params.max_filter_duration_s):
                 t_filter_duration_ms = step_res.t_filter_duration * 1000.0
+                max_filter_duration_ms = (
+                    self.ros_params.max_filter_duration_s * 1000.0
+                )
                 rospy.logwarn(
                     f"\nFilter duration exceeded given threshold."
-                    f"Filter duration: {t_filter_duration_ms:.4f} ms > {self.ros_params.max_filter_duration_ms:.4f} ms."
+                    f"Filter duration: {t_filter_duration_ms:.4f} ms > {max_filter_duration_ms:.4f} ms."
                     f"In step {step_res.step_idx}."
                 )
                 rospy.loginfo(f"Complete Step {step_res.step_idx} took {step_res.t_step_duration:.4f} seconds.")
@@ -1706,12 +1658,14 @@ def init():
     # Init ros node
     rospy.init_node(NODE_NAME)
 
-    # Load ROS parameters
-    robot_start_pose = load_ros_params()
-    ros_params = ROSParams()
+    # Load configuration and values supplied by the robot launch
+    config_name = rospy.get_param("~config_name")
+    robot_start_pose = load_robot_start_pose()
+    ros_params = load_ros_node_params()
     
     # Define experiment parameters
-    exp_params = def_exp_params(start_pose=robot_start_pose)
+    exp_params = load_experiment_params(start_pose=robot_start_pose)
+    rospy.loginfo("Loaded RBPF configuration: %s", config_name)
 
     # Init Robot Estimator classes
     rbpf_factory = RBPFFactory()
