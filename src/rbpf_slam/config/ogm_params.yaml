@@ -1,0 +1,68 @@
+# ============================================================
+# OGM Version-1 configuration
+# ============================================================
+
+config_name: "ogm_v1"
+
+
+# ============================================================
+# OGM experiment parameters
+# ============================================================
+
+experiment:
+
+  occupancy_params:
+    prior_probability: 0.5
+    min_distance_to_border: 10.0
+    increasing_probability: 0.85
+    decreasing_probability: 0.15
+    min_log_odds: -5.0
+    max_log_odds: 5.0
+
+
+  sensor_params:
+    min_sensor_range: 0.1
+    max_sensor_range: 10.0
+
+
+  map_params:
+    map_width: 10.0
+    map_height: 10.0
+    grid_resolution_m: 0.05
+
+
+  discretization:
+    occ_thresh: 1.4
+    free_thresh: -1.4
+
+
+# ============================================================
+# OccupancyGrid colormap
+# ============================================================
+
+colormap:
+  col_val_unknown: -1
+  col_val_occ: 100
+  col_val_free: 0
+
+
+# ============================================================
+# ROS-specific configuration of ogm_node
+# ============================================================
+
+ros:
+
+  topics:
+    rbpf_input: "rbpf/input"
+    map: "map"
+
+
+  frames:
+    map: "map"
+    odom: "odom_link"
+    base: "base_link"
+    laser: "laser_scanner_link"
+
+
+  runtime:
+    input_queue_size: 10

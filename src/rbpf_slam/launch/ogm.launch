@@ -96,12 +96,8 @@
     </node>
 
 <!--Launch the occupancy grid mapping algorithm (with known pose).-->
-    <node pkg="rbpf_slam" name="ogm_node" type="ogm_node.py" output="screen">        
-    </node>
-
-<!--Launch the LogOddsToOccupancyGrid algorithm that transforms the map from logOdds space to scaled probability
-space and publishes the map as nav_msgs.msg OccupancyGrid message.-->
-    <node pkg="rbpf_slam" name="log_odds_map_to_occupancy_grid" type="log_odds_map_to_occupancy_grid.py" output="screen">
+    <node pkg="rbpf_slam" name="ogm_node" type="ogm_node.py" output="screen">
+        <rosparam command="load" file="$(find rbpf_slam)/config/ogm_params.yaml"/>
     </node>
 
 <!--Launch rviz-->

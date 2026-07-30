@@ -8,10 +8,11 @@ from queue import Empty, Full, Queue
 
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, Pose2D as Pose2DMsg, TransformStamped
+from nav_msgs.msg import OccupancyGrid
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
-from rbpf_slam.msg import LogOddsMap, RBPFInput
+from rbpf_slam.msg import RBPFInput
 
 
 from typing import Tuple
@@ -35,6 +36,7 @@ except ModuleNotFoundError:
     )
 
 USE_DEBUGGER = False
+NODE_NAME = "ogm_node"
 Pose2D = Tuple[float, float, float]
 
 
@@ -45,15 +47,22 @@ def debug_code():
     print("Debugger attached")
 
 
+@dataclass
+class Colormap:
+    col_val_unknown: int = -1
+    col_val_occ: int = 100
+    col_val_free: int = 0
+
 
 @dataclass
 class ROSParams:
-    rbpf_input_topic = "rbpf/input"
-    input_queue_size = 10
-    odom_tf_frame = "odom_link"
-    base_tf_frame = "base_link"
-    laser_tf_frame = "laser_scanner_link"
-    map_topic= "log_odds_map"
+    rbpf_input_topic: str
+    map_topic: str
+    map_tf_frame: str
+    odom_tf_frame: str
+    base_tf_frame: str
+    laser_tf_frame: str
+    input_queue_size: int
 
 
 @dataclass
@@ -61,30 +70,74 @@ class OGMParams:
     occupancy_params: OccupancyParams
     sensor_params: SensorParams
     map_param: MapParameter
+    occ_thresh: float
+    free_thresh: float
 
 
-def define_experiment_params():
-    exp_param = OGMParams(
-        occupancy_params=OccupancyParams(
-            prior_probability=0.5,
-            min_distance_to_border=10.0,
-            increasing_probability=0.85,
-            decreasing_probability=0.15,
-            min_log_odds=-5.0,
-            max_log_odds=5.0,
-        ),
-        sensor_params=SensorParams(
-            min_sensor_range=0.1,
-            max_sensor_range=10.0,
-        ),
-        map_param=MapParameter(
-            map_width=10.0,
-            map_height=10.0,
-            grid_resolution_m=0.05,
-        ),  
-    )
+def load_experiment_params() -> OGMParams:
+    '''Load the OGM experiment configuration.'''
+    config = rospy.get_param("~experiment")
 
-    return exp_param
+    try:
+        discretization = config["discretization"]
+
+        return OGMParams(
+            occupancy_params=OccupancyParams(
+                **config["occupancy_params"]
+            ),
+            sensor_params=SensorParams(
+                **config["sensor_params"]
+            ),
+            map_param=MapParameter(
+                **config["map_params"]
+            ),
+            occ_thresh=float(discretization["occ_thresh"]),
+            free_thresh=float(discretization["free_thresh"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid OGM experiment configuration: {exc}"
+        ) from exc
+
+
+def load_colormap_params() -> Colormap:
+    '''Load OccupancyGrid colormap values from configuration.'''
+    config = rospy.get_param("~colormap")
+
+    try:
+        return Colormap(
+            col_val_unknown=int(config["col_val_unknown"]),
+            col_val_occ=int(config["col_val_occ"]),
+            col_val_free=int(config["col_val_free"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid OGM colormap configuration: {exc}"
+        ) from exc
+
+
+def load_ros_node_params() -> ROSParams:
+    '''Load ROS topics, frames, and runtime settings from configuration.'''
+    config = rospy.get_param("~ros")
+
+    try:
+        topics = config["topics"]
+        frames = config["frames"]
+        runtime = config["runtime"]
+
+        return ROSParams(
+            rbpf_input_topic=topics["rbpf_input"],
+            map_topic=topics["map"],
+            map_tf_frame=frames["map"],
+            odom_tf_frame=frames["odom"],
+            base_tf_frame=frames["base"],
+            laser_tf_frame=frames["laser"],
+            input_queue_size=int(runtime["input_queue_size"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid OGM ROS configuration: {exc}"
+        ) from exc
 
 
 def init_ogm(exp_param: OGMParams) -> OGM:
@@ -116,10 +169,18 @@ def init_ogm(exp_param: OGMParams) -> OGM:
 
 
 class OGMROSCommunication:
-    def __init__(self, ogm: OGM, ros_params: ROSParams):
+    def __init__(
+        self,
+        ogm: OGM,
+        ogm_params: OGMParams,
+        ros_params: ROSParams,
+        col_map: Colormap,
+    ):
         # Set member variables
         self.ogm = ogm
+        self.ogm_params = ogm_params
         self.ros_params = ros_params
+        self.col_map = col_map
 
         self.laser_pose_world = None
 
@@ -139,8 +200,13 @@ class OGMROSCommunication:
             queue_size=5,
         )
 
-        # Define publisher for map
-        self.map_publisher = rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
+        # Define publisher for the discretized occupancy grid map.
+        self.map_publisher = rospy.Publisher(
+            name=self.ros_params.map_topic,
+            data_class=OccupancyGrid,
+            queue_size=1,
+            latch=True,
+        )
 
         # Colorization
         self.col_map_poitns = rospy.Publisher("debug_cells", Marker, queue_size=1)
@@ -238,7 +304,46 @@ class OGMROSCommunication:
 
         return transform_msg
 
-    
+
+    @staticmethod
+    def _map_into_occupancy_grid_msg(
+        map_raveled: np.ndarray,
+        timestamp: rospy.Time,
+        frame_id: str,
+        grid_res: float,
+        width: int,
+        height: int,
+        origin_x: float,
+        origin_y: float,
+        orient_yaw: float = 0.0,
+    ) -> OccupancyGrid:
+        '''Create an OccupancyGrid message from a flattened map and its metadata.'''
+        map_msg = OccupancyGrid()
+
+        timestamp = timestamp if timestamp is not None else rospy.Time.now()
+
+        map_msg.header.stamp = timestamp
+        map_msg.header.frame_id = frame_id
+        map_msg.data = map_raveled
+
+        map_msg.info.map_load_time = timestamp
+        map_msg.info.resolution = grid_res
+        map_msg.info.width = width
+        map_msg.info.height = height
+
+        map_msg.info.origin.position.x = origin_x
+        map_msg.info.origin.position.y = origin_y
+        map_msg.info.origin.position.z = 0.0
+
+        quat = quaternion_from_euler(0.0, 0.0, orient_yaw)
+        map_msg.info.origin.orientation.x = quat[0]
+        map_msg.info.origin.orientation.y = quat[1]
+        map_msg.info.origin.orientation.z = quat[2]
+        map_msg.info.origin.orientation.w = quat[3]
+
+        return map_msg
+
+
     @staticmethod
     def transform_pose_to_planar_pose(pose: Pose2DMsg):
         '''
@@ -275,10 +380,58 @@ class OGMROSCommunication:
         return (transformed_x, transformed_y, transformed_yaw)
 
 
-    def publish_occupancy_grid_message(self):
-        '''Get's the logOdds map and do all necessary transformation's for publishing the Occupancy Message.'''
-        # Publish current map from ogm algorithm
-        self.map_publisher.publish(self.ogm.get_log_odds_map_object())
+    def convert_log_odds_map(self, log_odds_map: np.ndarray) -> np.ndarray:
+        '''
+        Discretize a log-odds map into unknown, free, and occupied cells.
+
+        Parameters
+        ----------
+        log_odds_map : np.ndarray
+            The log-odds map to be discretized.
+
+        Returns
+        -------
+        np.ndarray
+            The discretized occupancy grid map.
+        '''
+        if log_odds_map is None:
+            rospy.logwarn("No log-odds map available. Skipping map publishing.")
+            return None
+
+        return OGM.discretize_map(
+            ogm=log_odds_map,
+            occ_thres=self.ogm_params.occ_thresh,
+            free_thres=self.ogm_params.free_thresh,
+            col_val_unknown=self.col_map.col_val_unknown,
+            col_val_free=self.col_map.col_val_free,
+            col_val_occ=self.col_map.col_val_occ,
+        )
+
+
+    def publish_occupancy_grid_message(self, timestamp: rospy.Time) -> None:
+        '''
+        Discretize the current OGM map and publish it as an OccupancyGrid.
+        '''
+        log_odds_map = self.ogm.get_log_odds_map()
+        map_meta = self.ogm.get_map_meta()
+
+        discretized_map = self.convert_log_odds_map(log_odds_map)
+        if discretized_map is None:
+            return
+
+        map_msg = self._map_into_occupancy_grid_msg(
+            map_raveled=discretized_map.ravel(order="C").tolist(),
+            timestamp=timestamp,
+            frame_id=self.ros_params.map_tf_frame,
+            grid_res=float(map_meta.get("grid_resolution_m")),
+            width=int(map_meta.get("number_of_cells_x")),
+            height=int(map_meta.get("number_of_cells_y")),
+            origin_x=float(-map_meta.get("shift_x")),
+            origin_y=float(-map_meta.get("shift_y")),
+            orient_yaw=0.0,
+        )
+
+        self.map_publisher.publish(map_msg)
 
 
 
@@ -327,8 +480,10 @@ class OGMROSCommunication:
         self.col_map_poitns.publish(marker)
 
         
-    def execute(self):
-        '''Main loop for executing the algorithm.'''
+    def exe(self):
+        '''
+        Main loop that executes the algorithm.
+        '''
         while not rospy.is_shutdown():
             try:
                 msg: RBPFInput = self.rbpf_input_queue.get(timeout=0.1)
@@ -378,31 +533,49 @@ class OGMROSCommunication:
                 self.tf_broadcaster.sendTransform(odom_base_tf)
                 
                 # Transform and publish map
-                self.publish_occupancy_grid_message()
+                self.publish_occupancy_grid_message(timestamp=msg.header.stamp)
 
             finally:
                 self.rbpf_input_queue.task_done()
 
 
 
+def init():
+    # Init ROS node
+    rospy.init_node(NODE_NAME)
+
+    # Load configuration
+    config_name = rospy.get_param("~config_name")
+    exp_params = load_experiment_params()
+    ros_params = load_ros_node_params()
+    col_map = load_colormap_params()
+
+    # Init OGM
+    ogm = init_ogm(exp_param=exp_params)
+
+    rospy.loginfo("Loaded OGM configuration: %s", config_name)
+
+    return ogm, exp_params, ros_params, col_map
+
+
 def main():
     # Debug code if enabled
     if USE_DEBUGGER:
             debug_code()
-            
-    # Init OGM
-    exp_param = define_experiment_params()
-    ogm = init_ogm(exp_param=exp_param)
-    
-    # Init Node
-    rospy.init_node("optimized_occupancy_grid_algo_with_map_extension", anonymous=True)
+
+    # Initialize node and parameters
+    ogm, exp_params, ros_params, col_map = init()
 
     # Initialize algorithm
-    ros_params = ROSParams()
-    ros_ogm= OGMROSCommunication(ogm=ogm, ros_params=ros_params)
+    ros_ogm = OGMROSCommunication(
+        ogm=ogm,
+        ogm_params=exp_params,
+        ros_params=ros_params,
+        col_map=col_map,
+    )
 
     # Start the algorithm
-    ros_ogm.execute()
+    ros_ogm.exe()
 
     
 

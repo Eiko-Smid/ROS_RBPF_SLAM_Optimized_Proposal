@@ -1492,6 +1492,9 @@ class RBPF_ROS_Node:
             
 
     def exe(self) -> None:
+        '''
+        Main loop that executes the algorithm.
+        '''
         while not rospy.is_shutdown():
             # Extract new data from queue
             try:
