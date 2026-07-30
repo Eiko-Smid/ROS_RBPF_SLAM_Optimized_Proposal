@@ -1,51 +1,60 @@
 #!/usr/bin/env python3
 import debugpy
 
-# debugpy.listen(("0.0.0.0", 5678))
-# print("⏳ Waiting for debugger attach...")
-# debugpy.wait_for_client()
-# print("✅ Debugger attached")
-
-
 import rospy
 import threading
 import tf2_ros
 
+
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point
-from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose, Point, Quaternion, TransformStamped
 from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
-from tf.transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 from rbpf_slam.msg import Measurement
 from rbpf_slam.msg import LogOddsMap
 
+
+from typing import List, Tuple
 from dataclasses import dataclass
 import time
 import numpy as np
 
 # Import classes (support both roslaunch and direct execution contexts)
 try:
-    from slam.scan_matcher.ogm_scan_matching import OGM
-    from slam.rbpf.scan_match_factory import (
-        OccupancyParams,
-        SensorParams,
-        MapParameter,
-    )
-except ModuleNotFoundError:
     from rbpf_slam.src.slam.scan_matcher.ogm_scan_matching import OGM
     from rbpf_slam.src.slam.rbpf.scan_match_factory import (
         OccupancyParams,
         SensorParams,
         MapParameter,
     )
+except ModuleNotFoundError:
+    from slam.scan_matcher.ogm_scan_matching import OGM
+    from slam.rbpf.scan_match_factory import (
+        OccupancyParams,
+        SensorParams,
+        MapParameter,
+    )
+
+USE_DEBUGGER = False
+Pose2D = Tuple[float, float, float]
+
+
+def debug_code():
+    debugpy.listen(("0.0.0.0", 5678))
+    print("Waiting for debugger attach...")
+    debugpy.wait_for_client()
+    print("Debugger attached")
+
+
 
 @dataclass
 class ROSParams:
     update_rate = 2
     link_state_topic = "/gazebo/link_states"
     link_state_name = "robot_vacuum_cleaner::base_link"
+    odom_tf_frame = "odom_link"
     base_tf_frame = "base_link"
     laser_tf_frame = "laser_scanner_link"
     scan_topic= "scan"
@@ -63,9 +72,9 @@ def define_experiment_params():
     exp_param = OGMParams(
         occupancy_params=OccupancyParams(
             prior_probability=0.5,
-            min_distance_to_border=13.0,
-            increasing_probability=0.7,
-            decreasing_probability=0.3,
+            min_distance_to_border=10.0,
+            increasing_probability=0.85,
+            decreasing_probability=0.15,
             min_log_odds=-5.0,
             max_log_odds=5.0,
         ),
@@ -126,6 +135,7 @@ class OGMROSCommunication:
         # Cache the static base->laser transform once (2D: x, y, yaw).
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         self.base_to_laser_pose_2d = self.lookup_base_to_laser_transform_2d()
         
         # Define subscriber for link states and laser scan
@@ -136,6 +146,7 @@ class OGMROSCommunication:
 
         # Define publisher for map
         self.map_publisher = rospy.Publisher(self.ros_params.map_topic, LogOddsMap, queue_size=1) 
+
         # Colorization
         self.col_map_poitns = rospy.Publisher("debug_cells", Marker, queue_size=1)
 
@@ -204,6 +215,50 @@ class OGMROSCommunication:
         self.laser_scan= laser_scan
         self.lock.release()
 
+
+    @staticmethod
+    def _pose_into_transform_stamped_msg(
+        pose: Pose2D,
+        parent_frame: str,
+        child_frame: str,
+        timestamp: rospy.Time,
+    ) -> TransformStamped:
+        """
+        Convert a 2D pose into a ROS TransformStamped message.
+
+        The pose describes the child frame relative to the parent frame.
+        """
+        if pose is None or len(pose) != 3:
+            raise ValueError("Pose must contain (x, y, theta).")
+
+        transform_msg = TransformStamped()
+
+        # Header
+        transform_msg.header.stamp = timestamp
+        transform_msg.header.frame_id = parent_frame
+
+        # Frame located relative to the parent
+        transform_msg.child_frame_id = child_frame
+
+        # Translation of child inside parent
+        transform_msg.transform.translation.x = float(pose[0])
+        transform_msg.transform.translation.y = float(pose[1])
+        transform_msg.transform.translation.z = 0.0
+
+        # Rotation of child inside parent
+        quat = quaternion_from_euler(
+            0.0,
+            0.0,
+            float(pose[2]),
+        )
+
+        transform_msg.transform.rotation.x = quat[0]
+        transform_msg.transform.rotation.y = quat[1]
+        transform_msg.transform.rotation.z = quat[2]
+        transform_msg.transform.rotation.w = quat[3]
+
+        return transform_msg
+
     
     @staticmethod
     def transform_link_state_pose_to_planar_pose(link_state: LinkStates, link_state_index: int):
@@ -256,54 +311,8 @@ class OGMROSCommunication:
         self.map_publisher.publish(self.ogm.get_log_odds_map_object())
 
 
-    # def publish_green_cells(self, horizontal, vertical, ogm: OGM):
-    #     marker = Marker()
-    #     marker.header.frame_id = "map"
-    #     marker.header.stamp = rospy.Time.now()
-    #     marker.pose.orientation.w = 1.0
 
-    #     marker.ns = "test_cells"
-    #     marker.id = 0
-    #     marker.type = Marker.CUBE_LIST
-    #     marker.action = Marker.ADD
-
-    #     # size of each cell
-    #     marker.scale.x = ogm.grid_resolution_m
-    #     marker.scale.y = ogm.grid_resolution_m
-    #     marker.scale.z = 0.0
-
-    #     # GREEN color
-    #     marker.color.r = 0.0
-    #     marker.color.g = 1.0
-    #     marker.color.b = 0.0
-    #     marker.color.a = 1.0
-
-    #     # Extract cell indices
-    #     i_min, i_max = vertical
-    #     j_min, j_max = horizontal
-    #     i, j = np.indices((i_max - i_min, j_max - j_min))
-    #     i_global = i + i_min
-    #     j_global = j + j_min
-
-    #     i_flat = i_global.ravel()
-    #     j_flat = j_global.ravel()
-
-    #     points = []
-    #     for i, j in zip(i_flat, j_flat):
-    #         x, y = ogm.transform_grid_cell_to_point((i, j))
-    #         p = Point()
-    #         p.x = x
-    #         p.y = y
-    #         p.z = 0
-    #         marker.points.append(p)
-
-    #     self.col_map_poitns.publish(marker)
-
-
-    def publish_green_cells(self, i_range, j_range, ogm):
-        from visualization_msgs.msg import Marker
-        from geometry_msgs.msg import Point
-
+    def publish_green_cells(self, i_range, j_range, ogm):        
         marker = Marker()
         marker.header.frame_id = "map"
         marker.header.stamp = rospy.Time.now()
@@ -398,6 +407,17 @@ class OGMROSCommunication:
                 # log beam otuside map count
                 if self.ogm.beam_out_map_count > 0:
                     rospy.loginfo(f"Beam outside map count: {self.ogm.beam_out_map_count}")
+
+                # Define tf odom -> base link
+                odom_base_tf = self._pose_into_transform_stamped_msg(
+                    pose=pose,
+                    parent_frame=self.ros_params.odom_tf_frame,
+                    child_frame=self.ros_params.base_tf_frame,
+                    timestamp=rospy.Time.now()
+                )
+
+                # Publish tfs
+                self.tf_broadcaster.sendTransform(odom_base_tf)
                 
                 # Transform and publish map
                 self.publish_occupancy_grid_message()
@@ -407,13 +427,16 @@ class OGMROSCommunication:
 
 
 def main():
+    # Debug code if enabled
+    if USE_DEBUGGER:
+            debug_code()
+            
     # Init OGM
     exp_param = define_experiment_params()
     ogm = init_ogm(exp_param=exp_param)
     
     # Init Node
     rospy.init_node("optimized_occupancy_grid_algo_with_map_extension", anonymous=True)
-
 
     # Initialize algorithm
     ros_params = ROSParams()
