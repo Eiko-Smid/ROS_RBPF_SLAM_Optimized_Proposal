@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 
-# import debugpy
-# debugpy.listen(("localhost", 5678))
-# print("Waiting for debugger attach...")
-# debugpy.wait_for_client()
-
+import debugpy
 
 import itertools
 import json
@@ -15,7 +11,7 @@ from typing import Any, Dict, Iterator, List, Tuple, Union
 from ..infrastructure.playback_loader import PlaybackLoader
 from ..infrastructure.playback_converter import PlaybackConverter
 
-from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams
+from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, BeamRangeFinderMeasModelParams
 from ..rbpf.scan_match_factory import (
     OccupancyParams,
     SensorParams,
@@ -140,13 +136,26 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
 '''
 
 
-OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_6_3_summary"
-SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_6_3_trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_6_3_params.json"
+# Playback data path defs
+STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/"
 
-# OPTM_SUMMARY_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_summary"
-# SCAN_MATCHING_STEP_TRACE_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/sm_test_1_params.json"
+# Default storage
+# SUB_DIR = "sm_optm_6_4/"
+# OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
+
+# Test storage
+SUB_DIR = "sm_test_2/"
+OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
+SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
+
+# Ctrl debugger
+DEBUG_CODE = False
+
+# Switch between sequential and parallel optimization pipe
+USE_PARALLEL_OPTM_PIEP = False
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
@@ -155,10 +164,10 @@ KEEP_STEP_RESULTS = False
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = None
+N_PLAYBACK_STEPS = 50
 N_OPTIMIZATION_REPEATS = 1
-SEED_LIST = [22, 23, 56]
-# SEED_LIST = [22, 56]
+# SEED_LIST = [22, 23, 56]
+SEED_LIST = [22, 56]
 
 # Controls ONLY measurement-noise seeding behavior in optimizer:
 # - True:  use values from SEED_LIST for deterministic per-seed measurement noise.
@@ -181,6 +190,7 @@ class PlaybackDataset:
 
 
 PLAYBACK_DATA_LIST = [
+    # turtle bot map
     PlaybackDataset(
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
         playback_suffix="1779363559",
@@ -189,27 +199,18 @@ PLAYBACK_DATA_LIST = [
     #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
     #     playback_suffix="1779375646",
     # ),
+    # AWS map
     PlaybackDataset(
         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
         playback_suffix="1780397517",
     )
 ]
 
-# # Load turtle bot map
-# PLAYBACK_DATA_LIST = [
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
-#         playback_suffix="1779363559",
-#     )
-# ]
 
-# Load AWS map
-# PLAYBACK_DATA_LIST = [
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
-#         playback_suffix="1780397517",
-#     )
-# ]
+def debug():
+    debugpy.listen(("localhost", 5678))
+    print("Waiting for debugger attach...")
+    debugpy.wait_for_client()  
 
 
 
@@ -236,49 +237,10 @@ def _compute_wheel_separation() -> float:
     return 2 * r_chassis + w_wheel
 
 
-# # Adapting the map build and extraction part before changing icp params
-# def _grid_axes() -> Dict[str, List[Union[float, int]]]:
-#     return {
-#         # Playback sampling
-#         "every_nth_beam_filter": [4],
-#         "every_nth_beam_map": [1, 2],
-
-#         # OccupancyParams (OGM)
-#         "occupancy_prob_pairs": [
-#             {
-#                 "increasing_probability": 0.7,
-#                 "decreasing_probability": 0.3,
-#             },
-#             {
-#                 "increasing_probability": 0.85,
-#                 "decreasing_probability": 0.15,
-#             },
-#         ],
-#         "min_log_odds": [-5.0],
-#         "max_log_odds": [5.0],
-
-#         # ScanMatcherParams
-#         "occ_thres": [0.8, 1.4],
-#         "delta_r": [0.4, 0.6],
-#         "surface_radius_m": [0.2],
-#         "min_free_ratio": [0.25, 0.4],
-
-#         # ICPParams
-#         "max_n_points": [400, 800],
-#         "neighbors_pca": [10, 20],
-#         "max_iterations": [5],
-#         "max_correspondence_distance": [0.4, 0.6],
-#         "min_corresp": [15],
-#         "max_translation_jump": [0.5],
-#         "max_rotation_jump_deg": [45.0],
-#         "max_acceptable_mean_error": [0.15],
-#     }
-
-
 # Define params for big grid search after newly implemented grid based subsampling
 def _grid_axes():
     return {
-        "every_nth_beam_filter": [2, 4],
+        "every_nth_beam_filter": [2],
         "every_nth_beam_map": [2],
 
         "occupancy_prob_pairs": [
@@ -297,121 +259,14 @@ def _grid_axes():
 
         "max_n_points": [800, 1200],
         "downssample_grid_size": [0.1],
-        "neighbors_pca": [6, 10],
-        "max_iterations": [5, 8],
-        "max_correspondence_distance": [0.3, 0.4],
+        "neighbors_pca": [6],
+        "max_iterations": [5],
+        "max_correspondence_distance": [0.4],
         "min_corresp": [25],
-        "max_translation_jump": [0.5],
+        "max_translation_jump": [0.7],
         "max_rotation_jump_deg": [45.0],
         "max_acceptable_mean_error": [0.15],
     }
-
-    
-
-# grid based subsampling finetuning
-# def _grid_axes():
-#     return {
-#         "every_nth_beam_filter": [2, 3],
-#         "every_nth_beam_map": [2],
-
-#         "occupancy_prob_pairs": [
-#             {
-#                 "increasing_probability": 0.85,
-#                 "decreasing_probability": 0.15,
-#             },
-#         ],
-#         "min_log_odds": [-5.0],
-#         "max_log_odds": [5.0],
-
-#         "occ_thres": [1.4],
-#         "delta_r": [0.6],
-#         "surface_radius_m": [0.2],
-#         "min_free_ratio": [0.35, 0.4, 0.45],
-
-#         "max_n_points": [800, 1200],
-#         "downssample_grid_size": [0.075, 0.1, 0.125],
-#         "neighbors_pca": [5, 6, 7, 8],
-#         "max_iterations": [5],
-#         "max_correspondence_distance": [0.35, 0.4, 0.45],
-#         "min_corresp": [25],
-
-#         "max_translation_jump": [0.5],
-#         "max_rotation_jump_deg": [45.0],
-#         "max_acceptable_mean_error": [0.15],
-#     }    
-
-
-# Fine tuning for 0.05 m grid resolution 
-# def _grid_axes():
-#     return {
-#         "every_nth_beam_filter": [2, 3, 4],
-#         "every_nth_beam_map": [2],
-
-#         "occupancy_prob_pairs": [
-#             {
-#                 "increasing_probability": 0.85,
-#                 "decreasing_probability": 0.15,
-#             },
-#         ],
-#         "min_log_odds": [-5.0],
-#         "max_log_odds": [5.0],
-
-#         "occ_thres": [1.4],
-#         "delta_r": [0.6],
-#         "surface_radius_m": [0.2, 0.4],
-#         "min_free_ratio": [0.2, 0.4],
-
-#         "max_n_points": [1200, 1400],
-#         "downssample_grid_size": [0.1, 0.2],
-
-#         "neighbors_pca": [4, 6, 8],
-#         "max_iterations": [5, 7],
-#         "max_correspondence_distance": [0.3, 0.35, 0.4],
-#         "min_corresp": [25],
-#         "max_translation_jump": [0.5],
-#         "max_rotation_jump_deg": [45.0],
-#         "max_acceptable_mean_error": [0.15],
-#     }
-
-
-# def _grid_axes() -> Dict[str, List[Union[float, int]]]:
-#     return {
-#         # Playback sampling
-#         "every_nth_beam_filter": [4],
-#         "every_nth_beam_map": [2],
-
-#         # OccupancyParams (OGM)
-#         "occupancy_prob_pairs": [
-#             {
-#                 "increasing_probability": 0.7,
-#                 "decreasing_probability": 0.3,
-#             },
-#             {
-#                 "increasing_probability": 0.85,
-#                 "decreasing_probability": 0.15,
-#             },
-#         ],
-#         "min_log_odds": [-5.0],
-#         "max_log_odds": [5.0],
-
-#         # ScanMatcherParams
-#         "occ_thres": [0.8],
-#         "delta_r": [0.5],
-#         "surface_radius_m": [0.2],
-#         "min_free_ratio": [0.25],
-
-#         # ICPParams
-#         "max_n_points": [400],
-#         "downssample_grid_size": [0.1, 0.2],
-
-#         "neighbors_pca": [10],
-#         "max_iterations": [5],
-#         "max_correspondence_distance": [0.6],
-#         "min_corresp": [15],
-#         "max_translation_jump": [0.3],
-#         "max_rotation_jump_deg": [45.0],
-#         "max_acceptable_mean_error": [0.15],
-#     }
 
 
 def write_parameter_overview(
@@ -562,7 +417,7 @@ def generate_param_grid(
                 map_param=MapParameter(
                     map_width=10.0,
                     map_height=10.0,
-                    grid_resolution_m=0.05, # TODO: Test 0.05 m grid resolution 
+                    grid_resolution_m=0.05,
                 ),
                 icp_params=ICPParams(
                     max_n_points=max_n_points,
@@ -607,9 +462,7 @@ def generate_param_grid(
                     ctrl_turn_fac=0.15,
                 ),
                 # Unused in scan-matching-only mode but required by ExperimentParams.
-                measurement_model_params=MeasurementModelParams(
-                    sigma_measurement=0.25,
-                ),
+                measurement_model_params=BeamRangeFinderMeasModelParams(),
                 every_nth_scan_filter=every_nth_filter,
                 every_nth_scan_map=every_nth_map,
                 proposal_sigma_xy=1.0,
@@ -642,6 +495,7 @@ def build_optimizer() -> ScanMatchingOptimizer:
         runner=runner,
         scorer=ScanMatchingScorer(),
     )
+
 
 
 def scan_matcher_tuning_pipeline() -> None:
@@ -886,10 +740,19 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
 
 
 
-
 def main() -> None:
-    # scan_matcher_tuning_pipeline()    
-    scan_matcher_tuning_pipeline_multiprocessing()
+    # Start Debugger 
+    if DEBUG_CODE:
+        debug()
+
+    if USE_PARALLEL_OPTM_PIEP:
+        # Scan matcher tuning pipe parallel
+        scan_matcher_tuning_pipeline_multiprocessing()
+    else:
+        # Scan matcher unting pipe sequential
+        scan_matcher_tuning_pipeline()
+
+    
 
 
 if __name__ == "__main__":

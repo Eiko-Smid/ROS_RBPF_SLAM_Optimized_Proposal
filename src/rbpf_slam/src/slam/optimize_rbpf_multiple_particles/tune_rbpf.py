@@ -124,24 +124,27 @@ from .step_processor import StepProcessor
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-# SUB_DIR = "proposal_optm_1_14/"
-# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
-# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
-# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
-
-# Test storage
-SUB_DIR = "proposal_optm_test_4_linear_pipe/"
+SUB_DIR = "proposal_optm_1_14/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
 RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
+# Test storage
+# SUB_DIR = "proposal_optm_test_4_linear_pipe/"
+# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
+
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
+
+# Switch between sequential and parallel optimization pipe
+USE_PARALLEL_OPTM_PIEP = False
 
 # Number of workers to use for multiprocessing tuning pipe
 DEBUG_CODE = False
@@ -1565,18 +1568,17 @@ def main():
     # Attatch debugger
     if DEBUG_CODE:
             debug()
-        
-    
+            
     # Initialize numba functions
     warmup_numba_functions()
 
-    # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
-    # rbpf_tuning_pipeline()
+    if USE_PARALLEL_OPTM_PIEP:
+        # Scan matcher tuning pipe parallel
+        rbpf_tuning_pipeline_multiprocessing()
+    else:
+        # Scan matcher unting pipe sequential
+        rbpf_tuning_pipeline()
 
-    # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    rbpf_tuning_pipeline_multiprocessing()
-    
-    
 
 
 if __name__ == "__main__":

@@ -209,7 +209,7 @@ class ScanMatchingOptimizer:
             "motion_ctrl_turn_fac": exp_params.motion_model_params.ctrl_turn_fac,
 
             # MeasurementModelParams
-            "measurement_sigma_measurement": exp_params.measurement_model_params.sigma_measurement,
+            # "measurement_sigma_measurement": exp_params.measurement_model_params.sigma_measurement,
 
             # ExperimentParams (tag intentionally excluded)
             "every_nth_scan_filter": exp_params.every_nth_scan_filter,

@@ -2063,7 +2063,6 @@ class RBPF:
         return None
 
 
-
     def process_particle_update_results(
         self,
         results: List[ParticleUpdateResult]
@@ -2096,7 +2095,6 @@ class RBPF:
                 self.update_measurement_model_counters_fallback(res.meas_model_fallback_res)           
 
         return log_p_weights, scan_match_failed_any, scan_match_fallback_failed_any
-
 
 
     def step_parallel(

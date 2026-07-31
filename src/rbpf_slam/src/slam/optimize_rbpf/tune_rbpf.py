@@ -843,6 +843,10 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
 # USED_MEAS_MODEL = "GMAPPING"
 
+# Switch between sequential and parallel optimization pipe
+USE_PARALLEL_OPTM_PIEP = False
+
+
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
@@ -3088,11 +3092,12 @@ def main():
     # Initialize numba functions
     warmup_numba_functions()
 
-    # RBPF tuning pipeline with RBPF step parallelization (multiprocessing)
-    # rbpf_tuning_pipeline()
-
-    # RBPF tuning pipeline with pipeline parallelization (multiprocessing)
-    rbpf_tuning_pipeline_multiprocessing()
+    if USE_PARALLEL_OPTM_PIEP:
+        # Scan matcher tuning pipe parallel
+        rbpf_tuning_pipeline_multiprocessing()
+    else:
+        # Scan matcher unting pipe sequential
+        rbpf_tuning_pipeline()
     
     
 
