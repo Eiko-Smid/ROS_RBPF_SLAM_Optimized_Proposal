@@ -295,8 +295,6 @@ def load_robot_start_pose() -> Pose2D:
 
 
 
-
-
 class RBPF_ROS_Node:
     def __init__(
         self,
