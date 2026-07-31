@@ -28,6 +28,7 @@ from .scorer_scanmatching import ScanMatchingScorer
 from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
 from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggregatorScanMatching
+from .step_processor import StepProcessor
 
 
 '''
@@ -146,7 +147,7 @@ STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_ma
 # PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
 
 # Test storage
-SUB_DIR = "sm_test_2/"
+SUB_DIR = "sm_test_4/"
 OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
@@ -155,12 +156,12 @@ PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
 DEBUG_CODE = False
 
 # Switch between sequential and parallel optimization pipe
-USE_PARALLEL_OPTM_PIEP = False
+USE_PARALLEL_OPTM_PIPE = False
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
-KEEP_STEP_RESULTS = False
+KEEP_STEP_RESULTS = True
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
@@ -181,6 +182,74 @@ MAX_SENSOR_RANGE = 10.0
 
 # Define icp control params [skip_subsampling]
 ICP_CTRL_PARAMS = [True]
+
+POSE_APPENDIX = ("x", "y", "theta_deg")
+
+STEP_COLS_TO_USE = [
+    # General run information
+    "rank",
+    "score",
+    "dataset_id",
+    "map_name",
+    "seed",
+    "parameter_tag",
+    "parameter_hash",
+
+    "step_idx",
+    "t",
+
+    # Scan matching and ICP information
+    "scan_match_failed",
+    "icp_iterations",
+    "n_correspondences",
+    "use_transformation",
+    "stop_reason",
+
+    # Measurement and map information
+    "n_measurements_total",
+    "n_valid_measurements_filter",
+    "n_valid_measurements_map_update",
+    "n_map_points_extracted",
+
+    "icp_best_trans_param",
+    "icp_best_rot_abs_deg",
+    "icp_mean_error",
+
+    # Poses
+    "true_pose_x",
+    "true_pose_y",
+    "true_pose_theta_deg",
+
+    "raw_odom_pose_x",
+    "raw_odom_pose_y",
+    "raw_odom_pose_theta_deg",
+
+    "pred_pose_x",
+    "pred_pose_y",
+    "pred_pose_theta_deg",
+
+    "corr_pose_x",
+    "corr_pose_y",
+    "corr_pose_theta_deg",
+
+    # Pose errors
+    "raw_odom_trans_err",
+    "pred_trans_err",
+    "corr_trans_err",
+    "raw_odom_rot_err_deg",
+    "pred_rot_err_deg",
+    "corr_rot_err_deg",
+
+    "pred_to_corr_trans_err",
+    "pred_to_corr_rot_err_deg",
+
+    # Timings
+    "t_ogm_ms",
+    "t_scan_matching_ms",
+    "t_prediction_ms",
+    "t_map_extraction_ms",
+    "t_correct_pose_ms",
+]
 
 
 @dataclass
@@ -511,6 +580,7 @@ def scan_matcher_tuning_pipeline() -> None:
     writer = ResultWriterScanMatching()
     ranked_run_conv = RankedRunConverterScanMatching()
     result_aggregator = ResultAggregatorScanMatching()
+    step_processor = StepProcessor()
 
     # Store compact parameter overview (grid axes + one representative ExperimentParams)
     write_parameter_overview(
@@ -558,10 +628,20 @@ def scan_matcher_tuning_pipeline() -> None:
         optm_durations.append(optm_duration_s)
         ranked_run_list.extend(ranked_runs)
 
+    # Sort runs by score from lowest to highest across all datasets.
+    ranked_run_list.sort(key=lambda ranked_run: ranked_run.score)
+
     cleaned_optm_duratios = [optm_dur_s for optm_dur_s in optm_durations if optm_dur_s is not None]
     if cleaned_optm_duratios is not None:
         overall_optm_duration_s = sum(cleaned_optm_duratios)
         print(f"\n\nFinished overall scan matching optimization in {overall_optm_duration_s} s")
+
+    # Process step data into one flat DataFrame row per stored step.
+    if KEEP_STEP_RESULTS:
+        step_trace_df = step_processor.process_ranked_runs(
+            ranked_runs=ranked_run_list,
+            pose_appendix=POSE_APPENDIX,
+        )
 
     # Aggregate results
     ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
@@ -605,13 +685,16 @@ def scan_matcher_tuning_pipeline() -> None:
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 
-    # Optional: Save per-step traces for all runs.
-    # writer.write_ranked_step_traces_csv(
-    #     output_path=SCAN_MATCHING_STEP_TRACE_PATH,
-    #     ranked_runs=ranked_run_list,
-    #     override=OVERRIDE_EXISTING_RESULTS,
-    #     float_decimals=CSV_FLOAT_DECIMALS,
-    # )
+    # Save independent per-step diagnostic traces for each ranked run.
+    if KEEP_STEP_RESULTS:
+        writer.write_dataframe_csv(
+            path=SCAN_MATCHING_STEP_TRACE_PATH,
+            df=step_trace_df,
+            override=OVERRIDE_EXISTING_RESULTS,
+            float_decimals=CSV_FLOAT_DECIMALS,
+            cols_to_use=STEP_COLS_TO_USE,
+            label="Step trace DataFrame",
+        )
 
     print("Scan-matching-only tuning run finished.")
 
@@ -630,6 +713,7 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
     writer = ResultWriterScanMatching()
     ranked_run_conv = RankedRunConverterScanMatching()
     result_aggregator = ResultAggregatorScanMatching()
+    step_processor = StepProcessor()
 
     # Store compact parameter overview (grid axes + one representative ExperimentParams)
     write_parameter_overview(
@@ -680,10 +764,20 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
         optm_durations.append(optm_duration_s)
         ranked_run_list.extend(ranked_runs)
 
+    # Sort runs by score from lowest to highest across all datasets.
+    ranked_run_list.sort(key=lambda ranked_run: ranked_run.score)
+
     cleaned_optm_duratios = [optm_dur_s for optm_dur_s in optm_durations if optm_dur_s is not None]
     if cleaned_optm_duratios is not None:
         overall_optm_duration_s = sum(cleaned_optm_duratios)
         print(f"\n\nFinished overall scan matching optimization in {overall_optm_duration_s} s")
+
+    # Process step data into one flat DataFrame row per stored step.
+    if KEEP_STEP_RESULTS:
+        step_trace_df = step_processor.process_ranked_runs(
+            ranked_runs=ranked_run_list,
+            pose_appendix=POSE_APPENDIX,
+        )
 
     # Aggregate results
     ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
@@ -729,11 +823,13 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
     
     # Save step data only when needed
     if KEEP_STEP_RESULTS:
-        writer.write_ranked_step_traces_csv(
-            output_path=SCAN_MATCHING_STEP_TRACE_PATH,
-            ranked_runs=ranked_run_list,
+        writer.write_dataframe_csv(
+            path=SCAN_MATCHING_STEP_TRACE_PATH,
+            df=step_trace_df,
             override=OVERRIDE_EXISTING_RESULTS,
             float_decimals=CSV_FLOAT_DECIMALS,
+            cols_to_use=STEP_COLS_TO_USE,
+            label="Step trace DataFrame",
         )
 
     print("Scan-matching-only tuning run finished.")
@@ -745,7 +841,7 @@ def main() -> None:
     if DEBUG_CODE:
         debug()
 
-    if USE_PARALLEL_OPTM_PIEP:
+    if USE_PARALLEL_OPTM_PIPE:
         # Scan matcher tuning pipe parallel
         scan_matcher_tuning_pipeline_multiprocessing()
     else:

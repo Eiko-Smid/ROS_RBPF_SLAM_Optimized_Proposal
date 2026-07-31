@@ -18,11 +18,6 @@ class ResultWriterScanMatching:
 
 
     @staticmethod
-    def _optional_value(value: Any) -> Any:
-        return value if value is not None else ResultWriterScanMatching._nan()
-
-
-    @staticmethod
     def _optional_deg(value_rad: Any) -> float:
         return math.degrees(value_rad) if value_rad is not None else ResultWriterScanMatching._nan()
 
@@ -74,6 +69,7 @@ class ResultWriterScanMatching:
         df: pd.DataFrame,
         override: bool = False,
         float_decimals: int = 6,
+        cols_to_use: List[str] = None,
         label: str = "DataFrame",
     ) -> None:
         file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
@@ -83,6 +79,11 @@ class ResultWriterScanMatching:
             return
 
         formatted_df = df.copy()
+
+        if cols_to_use is not None:
+            existing_cols = [col for col in cols_to_use if col in formatted_df.columns]
+            formatted_df = formatted_df.loc[:, existing_cols]
+
         for col in formatted_df.columns:
             formatted_df[col] = formatted_df[col].map(
                 lambda value: (
@@ -94,150 +95,6 @@ class ResultWriterScanMatching:
 
         formatted_df.to_csv(path, index=False)
         print(f"\n{label} has been saved to:\n{path}")
-
-
-    @staticmethod
-    def write_ranked_step_traces_csv(
-        output_path: str,
-        ranked_runs: List[RankedRunScanMatching],
-        override: bool = False,
-        float_decimals: int = 6,
-    ) -> None:
-        output_file_path = Path(output_path)
-        output_file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        if output_file_path.exists() and not override:
-            print(f"Skipping scan-matching step trace (exists, override=False): {output_file_path}")
-            return
-
-        with open(output_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                [
-                    "rank",
-                    "tag",
-                    "seed",
-                    "step",
-                    "t",
-
-                    "scan_match_failed",
-                    "icp_iterations",
-                    "n_correspondences",
-                    "use_transformation",
-                    "stop_reason",
-
-                    "n_measurements_total",
-                    "n_valid_measurements_filter",
-                    "n_valid_measurements_map_update",
-                    "n_map_points_extracted",
-
-                    "icp_best_trans_param",
-                    "icp_best_rot_abs_deg",
-                    "icp_mean_err",
-
-                    "true_x",
-                    "true_y",
-                    "true_theta_deg",
-                    "raw_odom_x",
-                    "raw_odom_y",
-                    "raw_odom_theta_deg",
-                    "pred_x",
-                    "pred_y",
-                    "pred_theta_deg",
-                    "corr_x",
-                    "corr_y",
-                    "corr_theta_deg",
-
-                    # Baseline errors from raw odometry-only pose propagation.
-                    "raw_odom_trans_err",
-                    "pred_trans_err",
-                    "corr_trans_err",
-                    "raw_odom_rot_err_deg",
-                    "pred_rot_err_deg",
-                    "corr_rot_err_deg",
-
-                    "pred_to_corr_trans_err",
-                    "pred_to_corr_rot_err_deg",                    
-                    
-                    "t_ogm_ms",
-                    "t_scan_matching_ms",
-                    "t_prediction_ms",
-                    "t_map_extraction_ms",
-                    "t_correct_pose_ms",
-                ]
-            )
-
-            ordered_runs = sorted(ranked_runs, key=lambda run: run.score)
-            for rank, run in enumerate(ordered_runs, start=1):
-                run_tag = ResultWriterScanMatching._build_tag_from_params(run.params)
-                for step in run.step_results:
-                    true_x, true_y, true_theta = step.true_pose if step.true_pose is not None else (None, None, None)
-                    raw_odom_x, raw_odom_y, raw_odom_theta = (
-                        step.raw_odom_pose if step.raw_odom_pose is not None else (None, None, None)
-                    )
-                    pred_x, pred_y, pred_theta = step.pred_pose if step.pred_pose is not None else (None, None, None)
-                    corr_x, corr_y, corr_theta = step.corr_pose if step.corr_pose is not None else (None, None, None)
-
-                    row = [
-                        rank,
-                        run_tag,
-                        run.seed,
-                        step.step_idx,
-                        step.t,
-
-                        ResultWriterScanMatching._optional_value(step.scan_match_failed),
-                        ResultWriterScanMatching._optional_value(step.icp_iterations),
-                        ResultWriterScanMatching._optional_value(step.n_correspondences),
-                        ResultWriterScanMatching._optional_value(step.use_transformation),
-                        ResultWriterScanMatching._optional_value(step.stop_reason),
-                        
-                        step.n_measurements_total,
-                        step.n_valid_measurements_filter,
-                        step.n_valid_measurements_map_update,
-                        ResultWriterScanMatching._optional_value(step.n_map_points_extracted),
-                        
-                        ResultWriterScanMatching._optional_value(step.icp_best_trans_param),
-                        ResultWriterScanMatching._optional_deg(step.icp_best_rot_abs_rad),
-                        ResultWriterScanMatching._optional_value(step.icp_mean_error),
-
-                        ResultWriterScanMatching._optional_value(true_x),
-                        ResultWriterScanMatching._optional_value(true_y),
-                        ResultWriterScanMatching._optional_deg(true_theta),
-                        ResultWriterScanMatching._optional_value(raw_odom_x),
-                        ResultWriterScanMatching._optional_value(raw_odom_y),
-                        ResultWriterScanMatching._optional_deg(raw_odom_theta),
-                        ResultWriterScanMatching._optional_value(pred_x),
-                        ResultWriterScanMatching._optional_value(pred_y),
-                        ResultWriterScanMatching._optional_deg(pred_theta),
-                        ResultWriterScanMatching._optional_value(corr_x),
-                        ResultWriterScanMatching._optional_value(corr_y),
-                        ResultWriterScanMatching._optional_deg(corr_theta),
-
-                        ResultWriterScanMatching._optional_value(step.raw_odom_trans_err),
-                        ResultWriterScanMatching._optional_value(step.pred_trans_err),
-                        ResultWriterScanMatching._optional_value(step.corr_trans_err),
-                        ResultWriterScanMatching._optional_deg(step.raw_odom_rot_err),
-                        ResultWriterScanMatching._optional_deg(step.pred_rot_err),
-                        ResultWriterScanMatching._optional_deg(step.corr_rot_err),
-
-                        ResultWriterScanMatching._optional_value(step.pred_to_corr_trans_err),
-                        ResultWriterScanMatching._optional_deg(step.pred_to_corr_rot_err),
-                        
-                        ResultWriterScanMatching._optional_ms(step.t_ogm),
-                        ResultWriterScanMatching._optional_ms(step.t_scan_matching),
-                        ResultWriterScanMatching._optional_ms(step.t_prediction),
-                        ResultWriterScanMatching._optional_ms(step.t_map_extraction),
-                        ResultWriterScanMatching._optional_ms(step.t_correct_pose),
-                    ]
-
-                    writer.writerow(
-                        [
-                            ResultWriterScanMatching._format_csv_value(value, float_decimals=float_decimals)
-                            for value in row
-                        ]
-                    )
-
-        print(f"\nScan-matching step trace has been saved to:\n{output_path}")
 
 
     @staticmethod

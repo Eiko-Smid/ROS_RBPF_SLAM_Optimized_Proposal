@@ -5,8 +5,9 @@ from typing import Dict, Iterable, Sequence
 import numpy as np
 import pandas as pd
 
-from .evaluator import StepResult
-from .optimizer import RankedRun
+from .evaluator_scanmatching import StepResultScanMatching
+from .optimizer_scanmatching import RankedRunScanMatching
+
 
 # Constants for pose component indexing
 X = 0
@@ -16,42 +17,44 @@ THETA = 2
 
 class StepProcessor:
     """
-    Convert the stored step results of ranked runs into one flat DataFrame row
-    per step.
+    Convert the stored step results of ranked scan-matching runs into one flat
+    DataFrame row per step.
 
-    Pose fields are split into scalar columns. All other StepResult fields are
-    copied to the row, with additional aliases for the existing step-trace CSV
-    column names and units.
+    Coordinate-pose fields are split into scalar columns. All other step fields
+    are preserved under their native names, with additional degree and
+    millisecond aliases for the step-trace CSV.
     """
 
-    _FIELD_ALIASES = {
-        "step_idx": "step_id",
-        "trans_err_raw_odom": "trans_error_raw_odom",
-        "translation_error": "trans_error",
+    _RADIAN_TO_DEGREE_ALIASES = {
+        "rot_err": "rot_err_deg",
+        "pred_rot_err": "pred_rot_err_deg",
+        "raw_odom_rot_err": "raw_odom_rot_err_deg",
+        "corr_rot_err": "corr_rot_err_deg",
+        "icp_best_rot_abs_rad": "icp_best_rot_abs_deg",
+        "pred_to_corr_rot_err": "pred_to_corr_rot_err_deg",
     }
 
-    _RADIAN_TO_DEGREE_ALIASES = {
-        "rotation_error": "rot_error_deg",
-        "rot_err_raw_odom": "rot_error_raw_odom_deg",
-        "rotation_error_best_p": "rot_error_best_p_deg",
-        "rot_err_sm_true": "rot_err_sm_true_deg",
-        "rot_err_mu_true": "rot_err_mu_true_deg",
-        "rot_err_mu_sm": "rot_err_mu_sm_deg",
-        "rot_err_mu_pred": "rot_err_mu_pred_deg",
-        "rot_err_best_xj_true": "rot_err_best_xj_true_deg",
-        "rot_err_worst_xj_true": "rot_err_worst_xj_true_deg",
-        "min_rot_err_xjs": "min_rot_err_xjs_deg",
-        "min_xj_rot_err_true": "min_xj_rot_err_true_deg",
-        "best_xj_rot_err_true": "best_xj_rot_err_true_deg",
-        "prop_std_theta": "prop_std_theta_deg",
+    _SECOND_TO_MILLISECOND_ALIASES = {
+        "t_ogm": "t_ogm_ms",
+        "t_scan_matching": "t_scan_matching_ms",
+        "t_prediction": "t_prediction_ms",
+        "t_map_extraction": "t_map_extraction_ms",
+        "t_correct_pose": "t_correct_pose_ms",
+        "step_duration": "step_duration_ms",
+        "timing_update_particle": "timing_update_particle_ms",
     }
+
 
     @staticmethod
     def _is_pose(name: str) -> bool:
-        """
-        Return True for coordinate-pose fields, excluding pose-error metrics.
-        """
-        return name.lower().endswith("_pose")
+        """Return True only for coordinate-pose fields, not pose timing fields."""
+        name_lowered = name.lower()
+        return (
+            name_lowered.endswith("_pose")
+            and not name_lowered.startswith("t_")
+            and not name_lowered.startswith("timing_")
+        )
+
 
     @staticmethod
     def _split_pose(
@@ -60,8 +63,9 @@ class StepProcessor:
         pose_appendix: Sequence[str],
     ) -> Dict[str, object]:
         """
-        Split a pose tuple/list/array into scalar columns and convert its
-        heading from radians to degrees.
+        Split a pose tuple/list/array and convert its heading to degrees.
+
+        Missing, malformed, or non-finite poses produce three None values.
         """
         if len(pose_appendix) != 3:
             raise ValueError(
@@ -99,38 +103,37 @@ class StepProcessor:
         )
         return pose_columns
 
-    @staticmethod
-    def _optional_ms(value_s):
-        return value_s * 1000.0 if value_s is not None else None
 
     @staticmethod
     def _optional_deg(value_rad):
-        if value_rad is None:
-            return None
-        if not isinstance(value_rad, Real):
+        if value_rad is None or not isinstance(value_rad, Real):
             return None
         return float(np.rad2deg(value_rad))
 
+
+    @staticmethod
+    def _optional_ms(value_s):
+        if value_s is None or not isinstance(value_s, Real):
+            return None
+        return float(value_s) * 1000.0
+
+
     @staticmethod
     def process_ranked_runs(
-        ranked_runs: Iterable[RankedRun],
+        ranked_runs: Iterable[RankedRunScanMatching],
         pose_appendix: Sequence[str] = ("x", "y", "theta_deg"),
     ) -> pd.DataFrame:
-        """
-        Return all stored run steps as Data Frame.
-        """
+        """Return all stored scan-matching run steps as a flat DataFrame."""
         rows = []
 
         for rank, run in enumerate(ranked_runs, start=1):
             for step_idx, step in enumerate(run.step_results):
-                # Raise an error if the step is not a StepResult instance
-                if not isinstance(step, StepResult):
+                if not isinstance(step, StepResultScanMatching):
                     raise TypeError(
                         f"Step {step_idx} of run with rank {rank} "
-                        "is not a valid StepResult instance."
+                        "is not a valid StepResultScanMatching instance."
                     )
 
-                # Define general columns
                 row = {
                     "rank": rank,
                     "score": run.score,
@@ -145,7 +148,6 @@ class StepProcessor:
                     name = field.name
                     value = getattr(step, name)
 
-                    # Check if step result is a pose and split pose -> x, y, theta columns
                     if StepProcessor._is_pose(name):
                         row.update(
                             StepProcessor._split_pose(
@@ -156,19 +158,15 @@ class StepProcessor:
                         )
                         continue
 
-                    # Preserve every non-pose StepResult field under its native name.
                     row[name] = value
-
-                    alias = StepProcessor._FIELD_ALIASES.get(name)
-                    if alias is not None:
-                        row[alias] = value
 
                     degree_alias = StepProcessor._RADIAN_TO_DEGREE_ALIASES.get(name)
                     if degree_alias is not None:
                         row[degree_alias] = StepProcessor._optional_deg(value)
 
-                    if name == "step_duration":
-                        row["step_duration_ms"] = StepProcessor._optional_ms(value)
+                    millisecond_alias = StepProcessor._SECOND_TO_MILLISECOND_ALIASES.get(name)
+                    if millisecond_alias is not None:
+                        row[millisecond_alias] = StepProcessor._optional_ms(value)
 
                 rows.append(row)
 
