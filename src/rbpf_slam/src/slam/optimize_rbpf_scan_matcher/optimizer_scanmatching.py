@@ -16,7 +16,7 @@ from ..rbpf.rbpf import RBPFFactory
 from ..optimize_rbpf.playback_defs import ExperimentParams, PlaybackData
 from ..optimize_rbpf.playback_defs import StepData
 from ..infrastructure.playback_converter import PlaybackConverter
-from .playback_runner_scanmatching import PlaybackRunnerScanMatching, RawOdometryPropagator
+from .playback_runner_scanmatching import PlaybackRunnerScanMatching
 from .scorer_scanmatching import ScanMatchingScorer
 from .evaluator_scanmatching import RunSummaryScanMatching, StepResultScanMatching, ScanMatchingEvaluator
 
@@ -58,7 +58,6 @@ def _init_scan_matching_worker(playback_data: PlaybackData) -> None:
     _WORKER_RUNNER = PlaybackRunnerScanMatching(
         factory=RBPFFactory(),
         evaluator=ScanMatchingEvaluator(),
-        raw_odom_propagator=RawOdometryPropagator(),
     )  
 
     _WORKER_SCORER = ScanMatchingScorer()
@@ -110,14 +109,6 @@ def _run_scan_matching_job(job: dict) -> RankedRunScanMatching:
         min_range=params.sensor_params.min_sensor_range,
         max_range=params.sensor_params.max_sensor_range,
     )
-
-    # Create runner and scorer object to excute the job
-    # runner = PlaybackRunnerScanMatching(
-    #     factory=RBPFFactory(),
-    #     evaluator=ScanMatchingEvaluator(),
-    #     raw_odom_propagator=RawOdometryPropagator(),
-    # )
-    # scorer = ScanMatchingScorer()
 
     # Generate parameter hash to identify the parameter set used for the job
     parameter_for_hash = ScanMatchingOptimizer.generate_params_for_hash(params)

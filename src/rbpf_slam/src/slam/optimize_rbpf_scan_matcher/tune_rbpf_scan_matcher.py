@@ -23,7 +23,7 @@ from ..rbpf.scan_match_factory import (
 
 from ..optimize_rbpf.playback_defs import ExperimentParams
 from .evaluator_scanmatching import ScanMatchingEvaluator
-from .playback_runner_scanmatching import PlaybackRunnerScanMatching, RawOdometryPropagator
+from .playback_runner_scanmatching import PlaybackRunnerScanMatching
 from .scorer_scanmatching import ScanMatchingScorer
 from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
@@ -134,6 +134,14 @@ from .step_processor import StepProcessor
     6.3 Try icp without downsampling of the map points (keep all map points) 
 
 
+7. Reference results
+
+    7.1 Ref 1 (Full n playbacks)
+        - After every code change that can influence the results, compare the results against this reference (score)
+    
+
+    
+
 '''
 
 
@@ -141,7 +149,7 @@ from .step_processor import StepProcessor
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/"
 
 # Default storage
-# SUB_DIR = "sm_optm_6_4/"
+# SUB_DIR = "sm_optm_7_1/"
 # OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 # SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
 # PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
@@ -165,7 +173,7 @@ KEEP_STEP_RESULTS = True
 
 CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50
+N_PLAYBACK_STEPS = None
 N_OPTIMIZATION_REPEATS = 1
 # SEED_LIST = [22, 23, 56]
 SEED_LIST = [22, 56]
@@ -313,9 +321,9 @@ def _grid_axes():
         "max_log_odds": [5.0],
 
         "occ_thres": [1.4],
-        "delta_r": [0.4, 0.6],
+        "delta_r": [0.6],
         "surface_radius_m": [0.2],
-        "min_free_ratio": [0.3, 0.4],
+        "min_free_ratio": [0.4],
 
         "max_n_points": [800, 1200],
         "downssample_grid_size": [0.1],
@@ -555,7 +563,6 @@ def build_optimizer() -> ScanMatchingOptimizer:
     runner = PlaybackRunnerScanMatching(
         factory=RBPFFactory(),
         evaluator=ScanMatchingEvaluator(),
-        raw_odom_propagator=RawOdometryPropagator(),
     )
 
     return ScanMatchingOptimizer(
