@@ -281,9 +281,11 @@ class ScanMatchingOptimizer:
         map_name: Optional[str] = None,
         use_seed_list_for_measurement_noise: bool = True,
     ) -> List[RankedRunScanMatching]:
+        # Convert params and seeds
         params_list = list(param_grid)
         seed_list = [int(s) for s in seeds] if seeds is not None else [None]
 
+        # Validate input data
         if not seed_list:
             seed_list = [None]
 
@@ -298,16 +300,21 @@ class ScanMatchingOptimizer:
         # Measure starting time
         start_time = time.perf_counter()
 
+        # Process runs
         with tqdm(total=total_n_runs, desc="Scan matching optimization", unit="run") as pbar:
             for params in params_list:
+                # Define parameter hash to identify the parameter set used for the run
                 parameter_for_hash = self.generate_params_for_hash(params)
                 param_json = json.dumps(parameter_for_hash, sort_keys=True)
                 param_hash = hashlib.sha256(param_json.encode()).hexdigest()[:12]
 
+                # Run sm for param set on different seeds
                 for run_seed in seed_list:
                     if run_seed is not None:
                         np.random.seed(run_seed)
 
+                    # Define if seed lst should be used for the measurement noise or not.
+                    # If not the measurement noise will be purely random and results will not be reproducible. 
                     if use_seed_list_for_measurement_noise:
                         measurement_noise_seed = run_seed
                     else:
@@ -321,13 +328,11 @@ class ScanMatchingOptimizer:
                         max_range=params.sensor_params.max_sensor_range,
                     )
 
-                    # Test if seed works
-                    # prob_val = np.random.normal(1.5, 1.0)
-                    # print(f"Seed {run_seed} produced value: {prob_val}")
-
+                    # Run scan matcher and score results
                     run_result = self.runner.run(run_playback_data, params)
                     score = self.scorer.score(run_result.summary)
 
+                    # Store run results 
                     ranked_runs.append(
                         RankedRunScanMatching(
                             params=params,
@@ -342,6 +347,7 @@ class ScanMatchingOptimizer:
                         )
                     )
                     pbar.update(1)
+
         # Measure ending time and print info
         end_time = time.perf_counter()
         optm_duration_s = end_time - start_time
@@ -450,7 +456,7 @@ class ScanMatchingOptimizer:
                     pbar.update(1)
 
 
-        # Compute optimization time and print 
+        # Compute optimization time and display it 
         end_time = time.perf_counter()
         optm_duration_s = end_time - start_time
 

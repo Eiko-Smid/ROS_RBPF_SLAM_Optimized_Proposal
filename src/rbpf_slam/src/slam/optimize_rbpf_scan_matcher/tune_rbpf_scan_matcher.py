@@ -147,7 +147,7 @@ STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_ma
 # PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
 
 # Test storage
-SUB_DIR = "sm_test_4/"
+SUB_DIR = "sm_test_2/"
 OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
@@ -156,7 +156,7 @@ PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
 DEBUG_CODE = False
 
 # Switch between sequential and parallel optimization pipe
-USE_PARALLEL_OPTM_PIPE = False
+USE_PARALLEL_OPTM_PIPE = True
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
@@ -297,15 +297,6 @@ def _to_jsonable(value: Any) -> Any:
     return value
 
 
-def _compute_wheel_separation() -> float:
-    h_chassis = 0.15
-    dist_chassis_to_ground = h_chassis / 5
-    r_wheel = h_chassis / 2 + dist_chassis_to_ground
-    w_wheel = 0.3 * r_wheel
-    r_chassis = 0.25
-    return 2 * r_chassis + w_wheel
-
-
 # Define params for big grid search after newly implemented grid based subsampling
 def _grid_axes():
     return {
@@ -341,17 +332,25 @@ def _grid_axes():
 def write_parameter_overview(
     path: str,
     n_repeats: int,
+    wheel_separation: float,
     override: bool = False,
 ) -> None:
     file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
 
     if file_exists and not override:
-        print("\nParameter overview has not been saved because file already exists and override is set to False!")
+        print(f"\nParameter overview has not been saved because file already exists and override is set to False!\n{path}")
         return
 
     axes = _grid_axes()
     dummy_pose = None
-    example_params = next(generate_param_grid(start_pose=dummy_pose, n_repeats=1), None)
+    example_params = next(
+        generate_param_grid(
+            start_pose=dummy_pose,
+            wheel_separation=wheel_separation,
+            n_repeats=1,
+        ),
+        None,
+    )
     example_params_json = (
         _to_jsonable(ScanMatchingOptimizer.generate_params_for_hash(example_params))
         if example_params is not None
@@ -377,6 +376,7 @@ def write_parameter_overview(
 
 def generate_param_grid(
     start_pose: Tuple[float, float, float],
+    wheel_separation: float,
     n_repeats: int = 1,
 ) -> Iterator[ExperimentParams]:
     if n_repeats < 1:
@@ -407,8 +407,6 @@ def generate_param_grid(
 
     if not occupancy_prob_pairs:
         raise ValueError("No occupancy probability pairs configured.")
-  
-    wheel_separation = _compute_wheel_separation()
 
     for repeat_idx in range(1, n_repeats + 1):
         for (
@@ -582,15 +580,9 @@ def scan_matcher_tuning_pipeline() -> None:
     result_aggregator = ResultAggregatorScanMatching()
     step_processor = StepProcessor()
 
-    # Store compact parameter overview (grid axes + one representative ExperimentParams)
-    write_parameter_overview(
-        path=PARAMETER_OVERVIEW_PATH,
-        n_repeats=N_OPTIMIZATION_REPEATS,
-        override=OVERRIDE_EXISTING_RESULTS,
-    )
-
     # Load each dataset and optimize with identical parameter/seed setup.
     optm_durations = []
+    parameter_overview_written = False
     for playback_ds in PLAYBACK_DATA_LIST:
         print(
             f"\nLoading playback data:\n"
@@ -606,7 +598,19 @@ def scan_matcher_tuning_pipeline() -> None:
         )
 
         start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+        wheel_separation = float(raw_playback_data.metadata["wheel_separation"])
         print(f"Using start pose for tuning: {start_pose}")
+        print(f"Using wheel separation for tuning: {wheel_separation}")
+
+        # Store compact parameter overview (grid axes + one representative ExperimentParams)
+        if not parameter_overview_written:
+            write_parameter_overview(
+                path=PARAMETER_OVERVIEW_PATH,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+                wheel_separation=wheel_separation,
+                override=OVERRIDE_EXISTING_RESULTS,
+            )
+            parameter_overview_written = True
 
         # Keep scans clean here. Measurement noise is injected per seed in the optimizer.
         playback_data = playback_conv.convert(
@@ -618,7 +622,11 @@ def scan_matcher_tuning_pipeline() -> None:
 
         ranked_runs, optm_duration_s = optimizer.optimize(
             playback_data=playback_data,
-            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
+            param_grid=generate_param_grid(
+                start_pose=start_pose,
+                wheel_separation=wheel_separation,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+            ),
             seeds=SEED_LIST,
             dataset_id=playback_ds.playback_suffix,
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),
@@ -715,15 +723,9 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
     result_aggregator = ResultAggregatorScanMatching()
     step_processor = StepProcessor()
 
-    # Store compact parameter overview (grid axes + one representative ExperimentParams)
-    write_parameter_overview(
-        path=PARAMETER_OVERVIEW_PATH,
-        n_repeats=N_OPTIMIZATION_REPEATS,
-        override=OVERRIDE_EXISTING_RESULTS,
-    )
-
     # Load each dataset and optimize with identical parameter/seed setup.
     optm_durations = []
+    parameter_overview_written = False
     for playback_ds in PLAYBACK_DATA_LIST:
         print(
             f"\nLoading playback data:\n"
@@ -739,7 +741,19 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
         )
 
         start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+        wheel_separation = float(raw_playback_data.metadata["wheel_separation"])
         print(f"Using start pose for tuning: {start_pose}")
+        print(f"Using wheel separation for tuning: {wheel_separation}")
+
+        # Store compact parameter overview (grid axes + one representative ExperimentParams)
+        if not parameter_overview_written:
+            write_parameter_overview(
+                path=PARAMETER_OVERVIEW_PATH,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+                wheel_separation=wheel_separation,
+                override=OVERRIDE_EXISTING_RESULTS,
+            )
+            parameter_overview_written = True
 
         # Keep scans clean here. Measurement noise is injected per seed in the optimizer.
         playback_data = playback_conv.convert(
@@ -752,7 +766,11 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
         # Run optimizer in parallel
         ranked_runs, optm_duration_s = optimizer.optimize_parallel(
             playback_data=playback_data,
-            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
+            param_grid=generate_param_grid(
+                start_pose=start_pose,
+                wheel_separation=wheel_separation,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+            ),
             seeds=SEED_LIST,
             dataset_id=playback_ds.playback_suffix,
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),

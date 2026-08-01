@@ -844,7 +844,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Switch between sequential and parallel optimization pipe
-USE_PARALLEL_OPTM_PIEP = False
+USE_PARALLEL_OPTM_PIEP = True
 
 
 # Number of workers to use for multiprocessing tuning pipe
@@ -1071,15 +1071,6 @@ def _to_jsonable(value):
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(v) for v in value]
     return value
-
-
-def _compute_wheel_separation() -> float:
-    h_chassis = 0.15
-    dist_chassis_to_ground = h_chassis / 5
-    r_wheel = h_chassis / 2 + dist_chassis_to_ground
-    w_wheel = 0.3 * r_wheel
-    r_chassis = 0.25
-    return 2 * r_chassis + w_wheel
 
 
 # # Grid axes for big param runs
@@ -2469,7 +2460,12 @@ def _grid_axes() -> dict:
 
 
 
-def write_parameter_overview(path: str, n_repeats: int, override: bool = False) -> None:
+def write_parameter_overview(
+    path: str,
+    n_repeats: int,
+    wheel_separation: float,
+    override: bool = False,
+) -> None:
     '''
     Write the experiment parameter overview to a JSON file for experiment reconstructability. 
     '''
@@ -2478,11 +2474,18 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
     file_exists = ResultWriter.create_path_and_check_if_file_exists(path=path)
 
     if file_exists and not override:
-        print("\nParameter overview has not been saved because file already exists and override is set to False!")
+        print(f"\nParameter overview has not been saved because file already exists and override is set to False!\n{path}")
         return
 
     axes = _grid_axes()
-    example_experiment_params = next(generate_param_grid(start_pose=dummy_pose, n_repeats=1), None)
+    example_experiment_params = next(
+        generate_param_grid(
+            start_pose=dummy_pose,
+            wheel_separation=wheel_separation,
+            n_repeats=1,
+        ),
+        None,
+    )
 
     payload = {
         # "used_meas_model": USED_MEAS_MODEL,
@@ -2502,7 +2505,7 @@ def write_parameter_overview(path: str, n_repeats: int, override: bool = False) 
     print(f"\nParameter overview has been saved to:\n{path}")
 
 
-def generate_param_grid(start_pose, n_repeats: int = 1):
+def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1):
     '''
     Defined the parameter grid for the RBPF SLAM optimization. This is a generator that yields ExperimentParams for
     each combination of parameters in the grid.
@@ -2576,9 +2579,6 @@ def generate_param_grid(start_pose, n_repeats: int = 1):
     min_free_ratio = axes.get("min_free_ratio", [0.25])
     max_translation_jump = axes.get("max_translation_jump", [0.7])
     max_rotation_jump_deg = axes.get("max_rotation_jump_deg", [45.0])
-
-    # Compute wheel separation
-    wheel_separation = _compute_wheel_separation()
 
     for repeat_idx in range(1, n_repeats + 1):
         for (
@@ -2786,16 +2786,10 @@ def rbpf_tuning_pipeline():
     result_aggregator = ResultAggregator()
     step_processor = StepProcessor()
 
-    # Store compact parameter overview (grid axes + one representative ExperimentParams)
-    write_parameter_overview(
-        path=PARAMETER_OVERVIEW_PATH,
-        n_repeats=N_OPTIMIZATION_REPEATS,
-        override=OVERRIDE_EXISTING_RESULTS,
-    )
-
     # Load dataset and run tuning pipline
     # TODO: Put for loop into optimizer. Then do tqdm bar over all -> Full progress bar !
     optm_durations = []
+    parameter_overview_written = False
     for playback_ds in PLAYBACK_DATA_LIST:
         # Load data
         print(f"\nLoading playback data:\nsuffix: {playback_ds.playback_suffix} \ndir: {playback_ds.playback_dir}")
@@ -2808,7 +2802,19 @@ def rbpf_tuning_pipeline():
         )
 
         start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+        wheel_separation = float(raw_playback_data.metadata["wheel_separation"])
         print(f"Using start pose for tuning: {start_pose}")
+        print(f"Using wheel separation for tuning: {wheel_separation}")
+
+        # Store compact parameter overview (grid axes + one representative ExperimentParams)
+        if not parameter_overview_written:
+            write_parameter_overview(
+                path=PARAMETER_OVERVIEW_PATH,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+                wheel_separation=wheel_separation,
+                override=OVERRIDE_EXISTING_RESULTS,
+            )
+            parameter_overview_written = True
     
         # Convert playback data
         playback_data = playback_conv.convert(
@@ -2821,7 +2827,11 @@ def rbpf_tuning_pipeline():
         # Run optimizer
         ranked_runs, optm_duration_s = rbpf_optimizer.optimize(
             playback_data=playback_data,
-            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
+            param_grid=generate_param_grid(
+                start_pose=start_pose,
+                wheel_separation=wheel_separation,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+            ),
             seeds=SEED_LIST,
             dataset_id=playback_ds.playback_suffix,
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),
@@ -2941,16 +2951,10 @@ def rbpf_tuning_pipeline_multiprocessing():
     result_aggregator = ResultAggregator()
     step_processor = StepProcessor()
 
-    # Store compact parameter overview (grid axes + one representative ExperimentParams)
-    write_parameter_overview(
-        path=PARAMETER_OVERVIEW_PATH,
-        n_repeats=N_OPTIMIZATION_REPEATS,
-        override=OVERRIDE_EXISTING_RESULTS,
-    )
-
     # Load dataset and run tuning pipline
     # TODO: Put for loop into optimizer. Then do tqdm bar over all -> Full progress bar !
     optm_durations = []
+    parameter_overview_written = False
     for playback_ds in PLAYBACK_DATA_LIST:
         # Load data
         print(f"\nLoading playback data:\nsuffix: {playback_ds.playback_suffix} \ndir: {playback_ds.playback_dir}")
@@ -2963,7 +2967,19 @@ def rbpf_tuning_pipeline_multiprocessing():
         )
 
         start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
+        wheel_separation = float(raw_playback_data.metadata["wheel_separation"])
         print(f"Using start pose for tuning: {start_pose}")
+        print(f"Using wheel separation for tuning: {wheel_separation}")
+
+        # Store compact parameter overview (grid axes + one representative ExperimentParams)
+        if not parameter_overview_written:
+            write_parameter_overview(
+                path=PARAMETER_OVERVIEW_PATH,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+                wheel_separation=wheel_separation,
+                override=OVERRIDE_EXISTING_RESULTS,
+            )
+            parameter_overview_written = True
     
         # Convert playback data
         playback_data = playback_conv.convert(
@@ -2976,7 +2992,11 @@ def rbpf_tuning_pipeline_multiprocessing():
         # Run optimizer in parallel
         ranked_runs, optm_duration = rbpf_optimizer.optimize_parallel(
             playback_data=playback_data,
-            param_grid=generate_param_grid(start_pose=start_pose, n_repeats=N_OPTIMIZATION_REPEATS),
+            param_grid=generate_param_grid(
+                start_pose=start_pose,
+                wheel_separation=wheel_separation,
+                n_repeats=N_OPTIMIZATION_REPEATS,
+            ),
             seeds=SEED_LIST,
             dataset_id=playback_ds.playback_suffix,
             map_name=raw_playback_data.metadata.get("map", "unknown_map"),
