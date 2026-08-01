@@ -13,7 +13,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from .playback_runner import PlaybackRunner, RawOdometryPropagator
+from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
 from .playback_defs import ExperimentParams, PlaybackData, StepData
 # from .evaluator import RBPFEvaluator
@@ -72,7 +72,6 @@ def _init_rbpf_worker(
     _WORKER_RUNNER = PlaybackRunner(
         factory=RBPFFactory(),
         evaluator=RBPFEvaluator(),
-        raw_odom_propagator=RawOdometryPropagator(),
     )
 
     _WORKER_SCORER = RunScorer()
@@ -424,7 +423,11 @@ class RBPFOptimizer:
 
                 # Run the rbpf filter on one parameter set and compute the rating score
                 # run_result = self.runner.run(run_playback_data, params)
-                run_result = self.runner.run_rbpf_parallel(run_playback_data, params)
+                run_result = self.runner.run_rbpf_parallel(
+                    run_playback_data,
+                    params,
+                    run_seed=run_seed,
+                )
                 score = self.scorer.score(run_result.summary)
 
                 # Store the particle history and final highest-weighted particle map.

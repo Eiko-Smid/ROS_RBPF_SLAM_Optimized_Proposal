@@ -13,7 +13,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from .playback_runner import PlaybackRunner, RawOdometryPropagator
+from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
 from .playback_defs import ExperimentParams, PlaybackData, StepData
 from .evaluator import RBPFEvaluator
@@ -71,7 +71,6 @@ def _init_rbpf_worker(
     _WORKER_RUNNER = PlaybackRunner(
         factory=RBPFFactory(),
         evaluator=RBPFEvaluator(),
-        raw_odom_propagator=RawOdometryPropagator(),
     )
 
     _WORKER_SCORER = RunScorer()

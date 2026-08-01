@@ -34,7 +34,7 @@ from ..rbpf.scan_match_factory import (
 from ..scan_matcher.icp_scan_matching import warmup_numba_functions
 
 from .evaluator import RBPFEvaluator
-from .playback_runner import PlaybackRunner, RawOdometryPropagator
+from .playback_runner import PlaybackRunner
 from .scorer import RunScorer
 from .optimizer import RBPFOptimizer
 from .result_writer import ResultWriter
@@ -832,7 +832,7 @@ Synchronized playback data
 
 # Test
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/"
-SUB_DIR = "proposal_test_3_old_pipe/"
+SUB_DIR = "proposal_test_5_new_raw_odom_est_rbpf_parallel/"
 OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
@@ -844,7 +844,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Switch between sequential and parallel optimization pipe
-USE_PARALLEL_OPTM_PIEP = True
+USE_PARALLEL_OPTM_PIEP = False
 
 
 # Number of workers to use for multiprocessing tuning pipe
@@ -2750,7 +2750,6 @@ def build_optimizer():
     scan_match_playback_run = PlaybackRunner(
         factory=scan_match_fac,
         evaluator=scan_match_eval,
-        raw_odom_propagator=RawOdometryPropagator(),
     )
 
     # Init optimizer

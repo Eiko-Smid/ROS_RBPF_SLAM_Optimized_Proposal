@@ -109,6 +109,7 @@ class ParticleUpdateTask:
     odom: Tuple[float, float]
     measurements_proposal: List[Tuple[float, float]]
     measurements_map_update: List[Tuple[float, float]]
+    random_seed: Optional[int] = None
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10
@@ -130,9 +131,27 @@ class ParticleUpdateResult:
     prop_metrics: Optional[dict] = None
 
 
+def _derive_particle_update_seed(
+    run_seed: Optional[int],
+    step_idx: int,
+    particle_index: int,
+) -> Optional[int]:
+    """Derive a stable task seed independent of worker-process scheduling."""
+    if run_seed is None:
+        return None
+
+    seed_sequence = np.random.SeedSequence(
+        [int(run_seed), int(step_idx), int(particle_index)]
+    )
+    return int(seed_sequence.generate_state(1)[0])
+
+
 def update_particle_worker(
     task: ParticleUpdateTask
 ) -> ParticleUpdateResult:
+    if task.random_seed is not None:
+        np.random.seed(task.random_seed)
+
     # Extract task
     particle: Particle = task.particle
     motion_model: MotionModel = task.motion_model
@@ -151,21 +170,6 @@ def update_particle_worker(
 
     # Init proposal
     proposal = ProposalEstimator()
-
-    # Init worker objs
-    # motion_model = worker_state._WORKER_MOTION_MODEL
-    # meas_model = worker_state._WORKER_MEAS_MODEL
-    # proposal = worker_state._WORKER_PROPOSAL
-    
-    # if motion_model is None:
-    #     raise RuntimeError("Worker motion model is not initialized. Therefore update_particle_worker cannot proceed.")
-    
-    # if meas_model is None:
-    #     raise RuntimeError("Worker measurement model is not initialized. Therefore update_particle_worker cannot proceed.")
-    
-    # if proposal is None:
-    #     raise RuntimeError("Worker proposal estimator is not initialized. Therefore update_particle_worker cannot proceed.")
-
 
     # Set metrics to None
     prop_metrics = None 
@@ -2111,6 +2115,7 @@ class RBPF:
         cov_max_std_theta: float = 0.02,
         min_std_xy: float = 0.0,
         min_std_theta: float = 0.0,
+        run_seed: Optional[int] = None,
     ) -> None:
         # Init measurement model counters
         self.meas_model_counters_fallback = {
@@ -2266,6 +2271,11 @@ class RBPF:
             task = ParticleUpdateTask(
                 particle_index=particle_index,
                 particle=particle,
+                random_seed=_derive_particle_update_seed(
+                    run_seed=run_seed,
+                    step_idx=step_idx,
+                    particle_index=particle_index,
+                ),
 
                 motion_model=self.motion_model,
                 measurement_model=self.measurement_model,   

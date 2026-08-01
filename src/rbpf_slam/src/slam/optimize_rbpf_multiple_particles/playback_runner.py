@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import time
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -11,27 +11,9 @@ from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
 from .evaluator_mult_part import RunResult
 
 from ..rbpf.rbpf import RBPFFactory
-from ..rbpf.motion_model import MotionModel
+from ..rbpf.raw_odom_estimator import RawOdomEstimator
 from ..rbpf.scan_match_factory import ScanMatchFactory
 from ..rbpf.particle_process_pool import ParticleProcessPool #_init_worker
-
-
-Pose2D = Tuple[float, float, float]
-
-
-class RawOdometryPropagator:
-    """Computes raw odometry poses using a fresh motion model per run."""
-
-    def estimate(self, steps, start_pose: Pose2D, wheel_separation: float) -> List[Pose2D]:
-        pose = (float(start_pose[0]), float(start_pose[1]), float(start_pose[2]))
-        odom_poses: List[Pose2D] = []
-        motion_model = MotionModel(wheel_separation=float(wheel_separation))
-
-        for step in steps:
-            pose = motion_model.predict_pose(pose=pose, dl=step.dl, dr=step.dr)
-            odom_poses.append((float(pose[0]), float(pose[1]), float(pose[2])))
-
-        return odom_poses
 
 
 class PlaybackRunner:
@@ -43,28 +25,9 @@ class PlaybackRunner:
         self,
         factory: RBPFFactory,
         evaluator: RBPFEvaluator,
-        raw_odom_propagator: Optional[RawOdometryPropagator] = None,
     ):
         self.factory = factory
         self.evaluator = evaluator
-        self.raw_odom_propagator = raw_odom_propagator or RawOdometryPropagator()
-        self._raw_odom_cache_key: Optional[Tuple[int, Optional[float], Optional[float], float, float, float, float]] = None
-        self._raw_odom_poses_cache: Optional[List[Pose2D]] = None
-
-
-    @staticmethod
-    def _build_raw_odom_cache_key(
-        playback_data: PlaybackData,
-        start_pose: Pose2D,
-        wheel_separation: float,
-    ) -> Tuple[int, Optional[float], Optional[float], float, float, float, float]:
-        steps = playback_data.step_data_list
-        n_steps = len(steps)
-        x0, y0, theta0 = float(start_pose[0]), float(start_pose[1]), float(start_pose[2])
-        wheel_sep = float(wheel_separation)
-        if n_steps == 0:
-            return (0, None, None, x0, y0, theta0, wheel_sep)
-        return (n_steps, float(steps[0].t), float(steps[-1].t), x0, y0, theta0, wheel_sep)
 
 
     @staticmethod
@@ -116,20 +79,10 @@ class PlaybackRunner:
         steps = playback_data.step_data_list
         run_result = RunResult(params=params)
 
-        # Compute raw-odometry baseline once per unique input set and reuse it.
-        wheel_separation = float(params.robot_params.wheel_separation)
-        cache_key = self._build_raw_odom_cache_key(
-            playback_data=playback_data,
+        raw_odom_estimator = RawOdomEstimator(
+            motion_model=rbpf.motion_model,
             start_pose=params.particle_params.start_pose,
-            wheel_separation=wheel_separation,
         )
-        if self._raw_odom_poses_cache is None or self._raw_odom_cache_key != cache_key:
-            self._raw_odom_poses_cache = self.raw_odom_propagator.estimate(
-                steps=steps,
-                start_pose=params.particle_params.start_pose,
-                wheel_separation=wheel_separation,
-            )
-            self._raw_odom_cache_key = cache_key
 
         # Ensure valid scan downsampling values for filter/proposal and map update.
         every_nth_filter = max(1, int(params.every_nth_scan_filter))
@@ -142,6 +95,11 @@ class PlaybackRunner:
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
             step_duration = None
+
+            raw_odom_pose = raw_odom_estimator.predict_pose(
+                dl=step.dl,
+                dr=step.dr,
+            )
 
             # Subsample and clean measurements
             measurements_proposal = (
@@ -198,11 +156,7 @@ class PlaybackRunner:
                 t=step.t,
                 
                 true_pose=step.true_pose,
-                raw_odom_pose=(
-                    self._raw_odom_poses_cache[step_idx]
-                    if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
-                    else None
-                ),
+                raw_odom_pose=raw_odom_pose,
 
                 scan_match_failed=scan_match_failed,
                 scan_match_fallback_failed=scan_match_fallback_failed,
@@ -370,11 +324,19 @@ class PlaybackRunner:
         return run_result
     
 
-    def run_rbpf_parallel(self, playback_data: PlaybackData, params: ExperimentParams) -> RunResult:
+    def run_rbpf_parallel(
+        self,
+        playback_data: PlaybackData,
+        params: ExperimentParams,
+        run_seed: Optional[int] = None,
+    ) -> RunResult:
         """
         Executes one full RBPF run over all playback steps and returns evaluated results. This version uses
         the RBPF parallel step method with a multiprocessing pool for parallel particle updates. 
         """
+        if run_seed is not None:
+            np.random.seed(run_seed)
+
         # Create rbpf instance for the current parameter set
         rbpf = self.factory.create(
             scan_match_fac=ScanMatchFactory(),
@@ -393,20 +355,10 @@ class PlaybackRunner:
         steps = playback_data.step_data_list
         run_result = RunResult(params=params)
 
-        # Compute raw-odometry baseline once per unique input set and reuse it.
-        wheel_separation = float(params.robot_params.wheel_separation)
-        cache_key = self._build_raw_odom_cache_key(
-            playback_data=playback_data,
+        raw_odom_estimator = RawOdomEstimator(
+            motion_model=rbpf.motion_model,
             start_pose=params.particle_params.start_pose,
-            wheel_separation=wheel_separation,
         )
-        if self._raw_odom_poses_cache is None or self._raw_odom_cache_key != cache_key:
-            self._raw_odom_poses_cache = self.raw_odom_propagator.estimate(
-                steps=steps,
-                start_pose=params.particle_params.start_pose,
-                wheel_separation=wheel_separation,
-            )
-            self._raw_odom_cache_key = cache_key
 
         # Ensure valid scan downsampling values for filter/proposal and map update.
         every_nth_filter = max(1, int(params.every_nth_scan_filter))
@@ -420,6 +372,11 @@ class PlaybackRunner:
             for step_idx, step in enumerate(steps):
                 step_start_time = time.time()
                 step_duration = None
+
+                raw_odom_pose = raw_odom_estimator.predict_pose(
+                    dl=step.dl,
+                    dr=step.dr,
+                )
 
                 # Subsample and clean measurements
                 measurements_proposal = (
@@ -454,6 +411,7 @@ class PlaybackRunner:
                     cov_max_std_theta=params.cov_max_std_theta,
                     min_std_xy=params.min_std_xy,
                     min_std_theta=params.min_std_theta,
+                    run_seed=run_seed,
                 )
 
                 # Measure step duration
@@ -483,11 +441,7 @@ class PlaybackRunner:
                     t=step.t,
 
                     true_pose=step.true_pose,
-                    raw_odom_pose=(
-                        self._raw_odom_poses_cache[step_idx]
-                        if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
-                        else None
-                    ),
+                    raw_odom_pose=raw_odom_pose,
 
                     scan_match_failed=scan_match_failed,
                     scan_match_fallback_failed=scan_match_fallback_failed,
@@ -616,20 +570,10 @@ class PlaybackRunner:
         steps = playback_data.step_data_list
         run_result = RunResult(params=params)
 
-        # Compute raw-odometry baseline once per unique input set and reuse it.
-        wheel_separation = float(params.robot_params.wheel_separation)
-        cache_key = self._build_raw_odom_cache_key(
-            playback_data=playback_data,
+        raw_odom_estimator = RawOdomEstimator(
+            motion_model=rbpf.motion_model,
             start_pose=params.particle_params.start_pose,
-            wheel_separation=wheel_separation,
         )
-        if self._raw_odom_poses_cache is None or self._raw_odom_cache_key != cache_key:
-            self._raw_odom_poses_cache = self.raw_odom_propagator.estimate(
-                steps=steps,
-                start_pose=params.particle_params.start_pose,
-                wheel_separation=wheel_separation,
-            )
-            self._raw_odom_cache_key = cache_key
 
         # Ensure valid scan downsampling values for filter/proposal and map update.
         every_nth_filter = max(1, int(params.every_nth_scan_filter))
@@ -642,6 +586,11 @@ class PlaybackRunner:
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
             step_duration = None
+
+            raw_odom_pose = raw_odom_estimator.predict_pose(
+                dl=step.dl,
+                dr=step.dr,
+            )
 
             # Subsample and clean measurements
             measurements_proposal = (
@@ -693,11 +642,7 @@ class PlaybackRunner:
                 step_idx=step_idx_logged if step_idx_logged is not None else step_idx,
                 t=step.t,
                 true_pose=step.true_pose,
-                raw_odom_pose=(
-                    self._raw_odom_poses_cache[step_idx]
-                    if self._raw_odom_poses_cache is not None and step_idx < len(self._raw_odom_poses_cache)
-                    else None
-                ),
+                raw_odom_pose=raw_odom_pose,
                 est_pose=est_pose,
                 best_particle_pose=best_particle_pose,
                 scan_match_failed=scan_match_failed,
