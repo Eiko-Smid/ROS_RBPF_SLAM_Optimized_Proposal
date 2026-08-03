@@ -2264,6 +2264,9 @@ class RBPF:
         prop_metrics_list = []
         log_particle_weights = []
 
+        # Update particles
+        self.particle_update_counter += 1
+
         # Define particle tasks
         start_time_creating_tasks = time.perf_counter()
         tasks = []

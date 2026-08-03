@@ -1593,10 +1593,10 @@ def main():
     warmup_numba_functions()
 
     if USE_PARALLEL_OPTM_PIPE:
-        # Scan matcher tuning pipe parallel
+        # SLAM optimization pipe parallel
         rbpf_tuning_pipeline_multiprocessing()
     else:
-        # Scan matcher unting pipe sequential
+        # SLAM optimization pipe sequential
         rbpf_tuning_pipeline()
 
 

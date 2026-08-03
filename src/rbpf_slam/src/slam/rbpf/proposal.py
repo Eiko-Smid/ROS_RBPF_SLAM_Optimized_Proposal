@@ -944,19 +944,6 @@ class ProposalEstimator:
 
         # Estimate new particle pose
         # new_p_pose = mu
-        # new_p_pose = self.sample_from_proposal(mu, cov)
-
-        # Sample from proposal and limit the standard deviation to avoid particle poses far away from proposal mu
-        # new_p_pose = self.sample_from_proposal_limit(
-        #     mu=mu,
-        #     cov=cov,
-        #     std_scale=cov_std_scale,
-        #     max_std_xy=cov_max_std_xy,
-        #     min_std_xy=min_std_xy,
-        #     max_std_theta=cov_max_std_theta,
-        #     min_std_theta=min_std_theta
-        # )
-
         new_p_pose = self.sample_from_proposal_limit_2(
             mu=mu,
             cov=cov,
