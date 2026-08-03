@@ -50,6 +50,8 @@ Delete the following methods:
 
 INVALID_LOG_LIKELIHOOD = -1.0e12
 FALLBACK_LOG_FLOOR = -80.0
+RNG_STREAM_PROPOSAL = 0
+RNG_STREAM_RESAMPLING = 1
 
 
 @dataclass(frozen=True)
@@ -109,7 +111,7 @@ class ParticleUpdateTask:
     odom: Tuple[float, float]
     measurements_proposal: List[Tuple[float, float]]
     measurements_map_update: List[Tuple[float, float]]
-    random_seed: Optional[int] = None
+    proposal_seed: Optional[int] = None
     proposal_sigma_xy: float = 1.0
     proposal_sigma_theta: float = 1.0
     proposal_n_samples: int = 10
@@ -131,17 +133,26 @@ class ParticleUpdateResult:
     prop_metrics: Optional[dict] = None
 
 
-def _derive_particle_update_seed(
+def _derive_operation_seed(
     run_seed: Optional[int],
     step_idx: int,
-    particle_index: int,
+    stream_id: int,
+    particle_index: int = 0,
 ) -> Optional[int]:
-    """Derive a stable task seed independent of worker-process scheduling."""
+    """Derive a stable seed for one logical random operation."""
     if run_seed is None:
         return None
 
+    if run_seed < 0:
+        raise ValueError(f"run_seed must be non-negative, got {run_seed}.")
+
     seed_sequence = np.random.SeedSequence(
-        [int(run_seed), int(step_idx), int(particle_index)]
+        [
+            int(run_seed),
+            int(step_idx),
+            int(stream_id),
+            int(particle_index),
+        ]
     )
     return int(seed_sequence.generate_state(1)[0])
 
@@ -149,8 +160,11 @@ def _derive_particle_update_seed(
 def update_particle_worker(
     task: ParticleUpdateTask
 ) -> ParticleUpdateResult:
-    if task.random_seed is not None:
-        np.random.seed(task.random_seed)
+    proposal_rng = (
+        np.random.default_rng(task.proposal_seed)
+        if task.proposal_seed is not None
+        else None
+    )
 
     # Extract task
     particle: Particle = task.particle
@@ -219,6 +233,7 @@ def update_particle_worker(
             cov_max_std_theta=cov_max_std_theta,
             min_std_xy=min_std_xy,
             min_std_theta=min_std_theta,
+            rng=proposal_rng,
         )
 
     # Fallback strategy if scan matching failed
@@ -1585,6 +1600,7 @@ class RBPF:
         cov_max_std_theta: float,
         min_std_xy: float,
         min_std_theta: float,
+        proposal_rng: Optional[np.random.Generator] = None,
     ):
         # Set metrics to None
         prop_metrics = None 
@@ -1626,6 +1642,7 @@ class RBPF:
                 cov_max_std_theta=cov_max_std_theta,
                 min_std_xy=min_std_xy,
                 min_std_theta=min_std_theta,
+                rng=proposal_rng,
             )
 
             t_prop_s = time.perf_counter() - t_prop_start
@@ -1763,7 +1780,11 @@ class RBPF:
         return weights / weight_sum
 
 
-    def resampling(self, norm_weights: np.ndarray):
+    def resampling(
+        self,
+        norm_weights: np.ndarray,
+        rng: Optional[np.random.Generator] = None,
+    ):
         '''
         Resample particles if Neff falls below the threshold.
 
@@ -1778,7 +1799,10 @@ class RBPF:
         if neff < self.neff_threshold:
             # t_resampling_start = time.perf_counter()
             # Get inidices of particles that have survived
-            indices = self.resampler.low_variance_sampler(norm_weights)
+            indices = self.resampler.low_variance_sampler(
+                norm_weights,
+                rng=rng,
+            )
 
             # Update particles
             new_partilces = []
@@ -1813,6 +1837,7 @@ class RBPF:
         cov_max_std_theta: float = 0.02,
         min_std_xy: float = 0.0,
         min_std_theta: float = 0.0,
+        run_seed: Optional[int] = None,
     ) -> None:
         '''
         Performs the update step of the particle filter for all particles. This includes the following steps:
@@ -1969,6 +1994,18 @@ class RBPF:
         # Update particles
         self.particle_update_counter += 1
         for i, p in enumerate(self.particles):
+            proposal_seed = _derive_operation_seed(
+                run_seed=run_seed,
+                step_idx=step_idx,
+                stream_id=RNG_STREAM_PROPOSAL,
+                particle_index=i,
+            )
+            proposal_rng = (
+                np.random.default_rng(proposal_seed)
+                if proposal_seed is not None
+                else None
+            )
+
             # Update particle
             (
                 self.particles[i], 
@@ -1992,6 +2029,7 @@ class RBPF:
                 cov_max_std_theta=cov_max_std_theta,
                 min_std_xy=min_std_xy,
                 min_std_theta=min_std_theta,
+                proposal_rng=proposal_rng,
             )
 
             log_particle_weights.append(log_p_weight)
@@ -2057,7 +2095,20 @@ class RBPF:
         }
 
         # Resampling step
-        indices = self.resampling(norm_weights)
+        resampling_seed = _derive_operation_seed(
+            run_seed=run_seed,
+            step_idx=step_idx,
+            stream_id=RNG_STREAM_RESAMPLING,
+        )
+        resampling_rng = (
+            np.random.default_rng(resampling_seed)
+            if resampling_seed is not None
+            else None
+        )
+        indices = self.resampling(
+            norm_weights=norm_weights,
+            rng=resampling_rng,
+        )
 
         # Add step info after resampling
         self._last_step_info["particle_poses"] = [p.pose for p in self.particles]
@@ -2274,9 +2325,10 @@ class RBPF:
             task = ParticleUpdateTask(
                 particle_index=particle_index,
                 particle=particle,
-                random_seed=_derive_particle_update_seed(
+                proposal_seed=_derive_operation_seed(
                     run_seed=run_seed,
                     step_idx=step_idx,
+                    stream_id=RNG_STREAM_PROPOSAL,
                     particle_index=particle_index,
                 ),
 
@@ -2371,7 +2423,20 @@ class RBPF:
         }
 
         # Resampling step
-        indices = self.resampling(norm_weights)
+        resampling_seed = _derive_operation_seed(
+            run_seed=run_seed,
+            step_idx=step_idx,
+            stream_id=RNG_STREAM_RESAMPLING,
+        )
+        resampling_rng = (
+            np.random.default_rng(resampling_seed)
+            if resampling_seed is not None
+            else None
+        )
+        indices = self.resampling(
+            norm_weights=norm_weights,
+            rng=resampling_rng,
+        )
 
         # Add step info after resampling
         self._last_step_info["particle_poses"] = [p.pose for p in self.particles]

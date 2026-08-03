@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import numpy as np
 
 
@@ -38,7 +38,10 @@ class Resampler:
         
 
     @staticmethod
-    def low_variance_sampler(weights) -> List[int]:
+    def low_variance_sampler(
+        weights,
+        rng: Optional[np.random.Generator] = None,
+    ) -> List[int]:
         '''
         Implementation of stochastic universal sampling (low variance resampling) for particle filters. 
         '''
@@ -48,7 +51,10 @@ class Resampler:
         particle_index= 0
         
         # Pick particles according to weight.
-        random_number= np.random.uniform(0.0, 1/number_of_weights)
+        if rng is None:
+            random_number = np.random.uniform(0.0, 1/number_of_weights)
+        else:
+            random_number = rng.uniform(0.0, 1/number_of_weights)
         
         for j in range(number_of_weights):
             u= random_number + j * (1/number_of_weights)

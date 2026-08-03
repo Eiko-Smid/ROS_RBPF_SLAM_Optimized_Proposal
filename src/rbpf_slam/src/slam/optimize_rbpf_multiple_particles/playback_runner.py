@@ -57,10 +57,18 @@ class PlaybackRunner:
         return totals
 
 
-    def run(self, playback_data: PlaybackData, params: ExperimentParams) -> RunResult:
+    def run(
+        self,
+        playback_data: PlaybackData,
+        params: ExperimentParams,
+        run_seed: Optional[int] = None,
+    ) -> RunResult:
         """
         Executes one full RBPF run over all playback steps and returns evaluated results.
         """
+        if run_seed is not None:
+            np.random.seed(run_seed)
+
         # Create rbpf instance for the current parameter set
         rbpf = self.factory.create(
             scan_match_fac=ScanMatchFactory(),
@@ -92,10 +100,12 @@ class PlaybackRunner:
         #     f"(every_nth_scan_filter={every_nth_filter}, every_nth_scan_map={every_nth_map})"
         # )        
         
+        # Run the RBPF over all playback steps
         for step_idx, step in enumerate(steps):
             step_start_time = time.time()
             step_duration = None
 
+            # Predict particle pose based on raw odom pose/trajectory
             raw_odom_pose = raw_odom_estimator.predict_pose(
                 dl=step.dl,
                 dr=step.dr,
@@ -115,6 +125,7 @@ class PlaybackRunner:
             if np.isnan(measurements_proposal).any():
                 print("\nPlayback runner: measurement model contains nan value after subsampling scans")
 
+            # Do one rbpf step
             rbpf.step_range_finder_model(
                 odom=(step.dl, step.dr),
                 measurements_proposal=measurements_proposal,
@@ -127,11 +138,11 @@ class PlaybackRunner:
                 cov_max_std_theta=params.cov_max_std_theta,
                 min_std_xy=params.min_std_xy,
                 min_std_theta=params.min_std_theta,
+                run_seed=run_seed,
             )
 
             # Measure step duration
-            step_duration = time.time() - step_start_time
-            
+            step_duration = time.time() - step_start_time            
 
             # Extract evaluation info from rbpf 
             info = rbpf.get_step_info()
@@ -151,6 +162,7 @@ class PlaybackRunner:
 
             particle_inherit_indices = info.get("resampled_indices", None)
 
+            # Evaluate step and store results
             step_result = self.evaluator.evaluate_step(
                 step_idx=step_idx_logged if step_idx_logged is not None else step_idx,                
                 t=step.t,
@@ -189,7 +201,8 @@ class PlaybackRunner:
             particle_update_counter=rbpf.particle_update_counter,
             params=params,
         )
-        
+
+        # Store into summary results
         run_result.summary.update(self._aggregate_icp_counters(rbpf))
         timing_summary = rbpf.timing_summary()
         run_result.summary.update(timing_summary)

@@ -138,7 +138,11 @@ def _run_rbpf_job(job: dict) -> RankedRun:
     param_hash = hashlib.sha256(param_json.encode()).hexdigest()[:12]
 
     # Run the runner and scorer for the job
-    run_result = _WORKER_RUNNER.run(run_playback_data, params)
+    run_result = _WORKER_RUNNER.run(
+        run_playback_data,
+        params,
+        run_seed=run_seed,
+    )
 
     # TODO: Update scorer to new pipeline goals
     score = _WORKER_SCORER.score(run_result.summary)

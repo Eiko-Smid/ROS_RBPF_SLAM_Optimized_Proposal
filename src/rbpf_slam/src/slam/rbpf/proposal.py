@@ -883,7 +883,8 @@ class ProposalEstimator:
         max_std_xy: Optional[float]=None,
         min_std_xy: Optional[float]=None,
         max_std_theta: Optional[float]=None,
-        min_std_theta: Optional[float]=None
+        min_std_theta: Optional[float]=None,
+        rng: Optional[np.random.Generator]=None,
     ):
         new_cov = self.shrink_and_limit_cov_v2(
             cov=cov,
@@ -894,7 +895,10 @@ class ProposalEstimator:
             min_std_theta=min_std_theta
         )
 
-        new_pose = np.random.multivariate_normal(mean=mu, cov=new_cov)
+        if rng is None:
+            new_pose = np.random.multivariate_normal(mean=mu, cov=new_cov)
+        else:
+            new_pose = rng.multivariate_normal(mean=mu, cov=new_cov)
         new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
 
         return new_pose
@@ -916,6 +920,7 @@ class ProposalEstimator:
         cov_max_std_theta: float=0.02,
         min_std_xy: float=0.0,
         min_std_theta: float=0.0,
+        rng: Optional[np.random.Generator]=None,
     ):
         # Rest proposal timings
         self.t_sample_poses = 0.0
@@ -951,7 +956,8 @@ class ProposalEstimator:
             max_std_xy=cov_max_std_xy,
             min_std_xy=min_std_xy,
             max_std_theta=cov_max_std_theta,
-            min_std_theta=min_std_theta
+            min_std_theta=min_std_theta,
+            rng=rng,
         )
 
 
