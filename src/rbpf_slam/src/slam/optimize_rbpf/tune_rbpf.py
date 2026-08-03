@@ -832,7 +832,8 @@ Synchronized playback data
 
 # Test
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/"
-SUB_DIR = "proposal_test_5_new_raw_odom_est_rbpf_parallel/"
+# SUB_DIR = "proposal_test_10_new_seed_rbpf_parallel/"
+SUB_DIR = "proposal_test_11_parallel_optm_pipe/"
 OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
@@ -844,8 +845,7 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "GMAPPING"
 
 # Switch between sequential and parallel optimization pipe
-USE_PARALLEL_OPTM_PIEP = False
-
+USE_PARALLEL_OPTM_PIPE = True
 
 # Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
@@ -3102,7 +3102,6 @@ def rbpf_tuning_pipeline_multiprocessing():
 
 
 
-
 def main():
     # Attatch debugger
     if DEBUG_CODE:
@@ -3111,11 +3110,11 @@ def main():
     # Initialize numba functions
     warmup_numba_functions()
 
-    if USE_PARALLEL_OPTM_PIEP:
-        # Scan matcher tuning pipe parallel
+    if USE_PARALLEL_OPTM_PIPE:
+        # BBPF slam tuning pipe parallel
         rbpf_tuning_pipeline_multiprocessing()
     else:
-        # Scan matcher unting pipe sequential
+        # RBPF slam tuning pipe sequential
         rbpf_tuning_pipeline()
     
     

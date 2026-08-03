@@ -731,7 +731,7 @@ class RBPF_ROS_Node:
         self.raw_odom_est.predict_pose(dl=dl, dr=dr)
 
         # Do rbpf update step
-        self.rbpf.step_range_finder_model(
+        self.rbpf.step(
             odom=(dl, dr),
             measurements_proposal=measurements_filter,
             measurements_map_update=measurements_map,

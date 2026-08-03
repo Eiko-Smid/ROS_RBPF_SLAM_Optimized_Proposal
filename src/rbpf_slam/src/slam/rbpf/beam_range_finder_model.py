@@ -13,14 +13,6 @@ from slam.infrastructure.defs import Pose2D
 from slam.scan_matcher.ogm_scan_matching import OGM
 
 
-# @njit
-# def _normal_cdf(x: float) -> float:
-#     """
-#     Standard normal CDF.
-#     Used for truncated Gaussian normalization.
-#     """
-#     return 0.5 * (1.0 + erf(x / sqrt(2.0)))
-
 
 @njit(cache=True, nogil=True)
 def _beam_model_prob(
@@ -945,12 +937,13 @@ class BeamRangeFinderModel(MeasurementModel):
         }
 
 
-    def likelihood_batch_numba(
+    def likelihood_batch(
         self,
         poses: np.ndarray,
         measurements: np.ndarray,
         ogm: OGM,
     ):
+        # COnvert measurements to numpy arr
         measurements_np = np.asarray(measurements, dtype=np.float64)
 
         # Empty scan -> neutral update.
@@ -1009,84 +1002,84 @@ class BeamRangeFinderModel(MeasurementModel):
         return results
 
 
-    def likelihood_batch(
-        self,
-        poses: np.ndarray,
-        measurements: List[Tuple[float, float]],
-        scan_matcher,
-        neighbor=None,
-    ) -> np.ndarray:
-        """
-        Compatibility helper.
+    # def likelihood_batch(
+    #     self,
+    #     poses: np.ndarray,
+    #     measurements: List[Tuple[float, float]],
+    #     scan_matcher,
+    #     neighbor=None,
+    # ) -> np.ndarray:
+    #     """
+    #     Compatibility helper.
 
-        Returns log likelihoods for all poses.
-        This is not used in your current range-finder proposal path,
-        but keeping it avoids interface surprises.
-        """
+    #     Returns log likelihoods for all poses.
+    #     This is not used in your current range-finder proposal path,
+    #     but keeping it avoids interface surprises.
+    #     """
 
-        values = np.empty(poses.shape[0], dtype=np.float64)
+    #     values = np.empty(poses.shape[0], dtype=np.float64)
 
-        for i in range(poses.shape[0]):
-            result = self.likelihood(
-                pose=(poses[i, 0], poses[i, 1], poses[i, 2]),
-                measurements=measurements,
-                ogm=scan_matcher.ogm,
-            )
-            values[i] = result["log_likelihood"]
+    #     for i in range(poses.shape[0]):
+    #         result = self.likelihood(
+    #             pose=(poses[i, 0], poses[i, 1], poses[i, 2]),
+    #             measurements=measurements,
+    #             ogm=scan_matcher.ogm,
+    #         )
+    #         values[i] = result["log_likelihood"]
 
-        return values
-
-
-    def likelihood_batch_copy(
-        self,
-        poses: np.ndarray,
-        measurements: List[Tuple[float, float]],
-        scan_matcher,
-        neighbor=None,
-    ) -> np.ndarray:
-        """
-        Compatibility wrapper.
-        """
-        return self.likelihood_batch(
-            poses=poses,
-            measurements=measurements,
-            scan_matcher=scan_matcher,
-            neighbor=neighbor,
-        )
+    #     return values
 
 
-    def gmapping_likelihood(
-        self,
-        pose: Pose2D,
-        measurements: Tuple[float, float],
-        ogm: OGM,
-        usable_range: float,
-        kernel_size: int = 1,
-        fullness_threshold: float = 1.2,
-        free_threshold: float = 1.2,
-        gaussian_sigma: float = 0.05,
-        free_cell_ratio: float = np.sqrt(2.0),
-    ) -> Tuple[float, float, int]:
-        """
-        Compatibility stub for older code paths.
+    # def likelihood_batch_copy(
+    #     self,
+    #     poses: np.ndarray,
+    #     measurements: List[Tuple[float, float]],
+    #     scan_matcher,
+    #     neighbor=None,
+    # ) -> np.ndarray:
+    #     """
+    #     Compatibility wrapper.
+    #     """
+    #     return self.likelihood_batch(
+    #         poses=poses,
+    #         measurements=measurements,
+    #         scan_matcher=scan_matcher,
+    #         neighbor=neighbor,
+    #     )
 
-        Returns
-        -------
-        score, log_likelihood, matched_count
-        """
 
-        result = self.likelihood(
-            pose=pose,
-            measurements=measurements,
-            ogm=ogm,
-        )
+    # def gmapping_likelihood(
+    #     self,
+    #     pose: Pose2D,
+    #     measurements: Tuple[float, float],
+    #     ogm: OGM,
+    #     usable_range: float,
+    #     kernel_size: int = 1,
+    #     fullness_threshold: float = 1.2,
+    #     free_threshold: float = 1.2,
+    #     gaussian_sigma: float = 0.05,
+    #     free_cell_ratio: float = np.sqrt(2.0),
+    # ) -> Tuple[float, float, int]:
+    #     """
+    #     Compatibility stub for older code paths.
 
-        log_likelihood = result["log_likelihood"]
-        matched_count = result["valid_beam_count"]
+    #     Returns
+    #     -------
+    #     score, log_likelihood, matched_count
+    #     """
 
-        # Score is not used meaningfully here; return exp only safely for small values.
-        score = 0.0
-        if log_likelihood > -700.0:
-            score = float(np.exp(log_likelihood))
+    #     result = self.likelihood(
+    #         pose=pose,
+    #         measurements=measurements,
+    #         ogm=ogm,
+    #     )
 
-        return score, log_likelihood, matched_count
+    #     log_likelihood = result["log_likelihood"]
+    #     matched_count = result["valid_beam_count"]
+
+    #     # Score is not used meaningfully here; return exp only safely for small values.
+    #     score = 0.0
+    #     if log_likelihood > -700.0:
+    #         score = float(np.exp(log_likelihood))
+
+    #     return score, log_likelihood, matched_count

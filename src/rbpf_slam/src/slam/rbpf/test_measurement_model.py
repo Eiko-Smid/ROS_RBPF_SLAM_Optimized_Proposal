@@ -14,7 +14,7 @@ from scipy.stats import spearmanr
 
 from ..scan_matcher.scan_matcher import ScanMatcher
 
-from .likelihood_filed_model import LikelihoodFiledModel
+from .likelihood_filed_model_gmapping import LikelihoodFiledModelGmapping
 from .proposal import ProposalEstimator
 from .scan_match_factory import (
     ICPParams,
@@ -163,8 +163,8 @@ def init_scan_matcher(exp_params: MeasurementExpParams = None) -> ScanMatcher:
     )
 
 
-def init_measurement_model(exp_params: MeasurementExpParams) -> LikelihoodFiledModel:
-    return LikelihoodFiledModel(sigma=exp_params.meas_model_params.sigma_measurement)
+def init_measurement_model(exp_params: MeasurementExpParams) -> LikelihoodFiledModelGmapping:
+    return LikelihoodFiledModelGmapping(sigma=exp_params.meas_model_params.sigma_measurement)
 
 
 def init_proposal() -> ProposalEstimator:
@@ -173,7 +173,7 @@ def init_proposal() -> ProposalEstimator:
 
 def init_test_components(
     exp_params: MeasurementExpParams,
-) -> Tuple[ScanMatchFactory, LikelihoodFiledModel, ProposalEstimator]:
+) -> Tuple[ScanMatchFactory, LikelihoodFiledModelGmapping, ProposalEstimator]:
     """Create only the components required for measurement-likelihood/proposal tests."""
     scan_matcher = init_scan_matcher(exp_params=exp_params)
     measurement_model = init_measurement_model(exp_params=exp_params)

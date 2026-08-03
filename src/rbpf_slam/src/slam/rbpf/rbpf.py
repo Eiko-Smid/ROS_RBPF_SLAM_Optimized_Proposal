@@ -11,7 +11,8 @@ from slam.infrastructure.defs import Pose2D
 from slam.rbpf.particle import Particle
 from slam.rbpf.motion_model import MotionModel
 from slam.rbpf.measurement_model import MeasurementModel
-from slam.rbpf.likelihood_filed_model import LikelihoodFiledModel
+# from rbpf_slam.src.slam.rbpf.likelihood_filed_model_gmapping import LikelihoodFiledModelGmapping
+from slam.rbpf.likelihood_filed_model_gmapping import LikelihoodFiledModelGmapping
 from slam.rbpf.beam_range_finder_model import BeamRangeFinderModel
 
 from slam.rbpf.proposal import ProposalEstimator
@@ -160,6 +161,10 @@ def _derive_operation_seed(
 def update_particle_worker(
     task: ParticleUpdateTask
 ) -> ParticleUpdateResult:
+    '''
+    Worker function for parallel particle update that processes a single particle update task. 
+    '''
+    # Init random number generator for proposal sampling
     proposal_rng = (
         np.random.default_rng(task.proposal_seed)
         if task.proposal_seed is not None
@@ -218,7 +223,7 @@ def update_particle_worker(
     # Compute proposal if scan matching was successful
     if corr_pose is not None:
         # Compute optimized proposal    
-        new_pose, log_p_weight, prop_metrics = proposal.estimate_proposal_range_finder(
+        new_pose, log_p_weight, prop_metrics = proposal.estimate_proposal(
             scan_match_pose=corr_pose,
             particle=particle,
             odom=odom,
@@ -362,7 +367,7 @@ class RBPFFactory():
         if isinstance(measurement_model_params, BeamRangeFinderMeasModelParams):
             measurement_model = BeamRangeFinderModel(**vars(measurement_model_params))
         else:
-            measurement_model = LikelihoodFiledModel(
+            measurement_model = LikelihoodFiledModelGmapping(
                 sigma=measurement_model_params.sigma_measurement
             )
 
@@ -675,437 +680,6 @@ class RBPF:
         return new_particle
 
 
-    def update_particle(
-        self,
-        particle: Particle,
-        motion_model: MotionModel,
-        measurement_model: MeasurementModel,
-        proposal: ProposalEstimator,
-        odom: Tuple[float, float],
-        measurements_proposal: List[Tuple[float, float]],
-        measurements_map_update: List[Tuple[float, float]],
-        proposal_sigma_xy: float,
-        proposal_sigma_theta: float,
-        proposal_n_samples: int,
-        meas_kernel_size: int,
-        gaussian_sigma: float,
-        proposal_alpha: float,
-        proposal_beta: float,
-    ) -> Tuple[Particle, bool, bool]:
-        '''
-        Update step for a single particle. Updates the particle pose, weight and map based on the given odometry
-        and measurements. Attention! Weights are not normalized!
-
-        Including the following steps:
-        1. Scan match particle pose with current measurements to get a corrected pose estimate.
-        2. Compute optimized proposal distribution based on scan match pose and map points.
-        3. If scan matching fails, fallback to motion model prediction and measurement model likelihood.
-        4. Update map with new measurements and particle pose.
-
-        Parameters:
-        --------
-        particle: Particle
-            The particle to be updated.
-        motion_model: MotionModel
-            The motion model used for prediction and sampling.
-        measurement_model: MeasurementModel
-            The measurement model used for measurement likelihood estimation.
-        proposal: ProposalEstimator
-            The proposal estimator used for computing the optimized proposal distribution.
-        odom: Tuple[float, float]
-            The odometry measurements (dl, dr) for the current time step.
-        measurements_proposal: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the proposal step.
-        measurements_map_update: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the map update step.
-
-        Returns:
-        --------        
-        Particle
-            The updated particle with new pose, weight (not normalized) and the updated map.
-        '''
-        # Set metrics to None
-        prop_metrics = None 
-        scan_match_failed = False
-        scan_match_fallback_failed = False
-
-        # Extract data
-        dl, dr = odom
-
-        # Scan match particle  
-        t_scan_match_start = time.perf_counter()
-        corr_pose, pred_pose = particle.scan_matcher.update_pose(
-            old_pose=particle.pose,
-            dl=dl,
-            dr=dr, 
-            measurements=measurements_proposal,
-        )
-        t_scan_match_s = time.perf_counter() - t_scan_match_start
-        self._timing_stats["scan_match_update_pose_sum_s"] += t_scan_match_s
-        self._timing_stats["scan_match_update_pose_count"] += 1
-
-        # Get trained map points
-        trained_nn_tree = particle.scan_matcher.get_trained_nn_tree()
-
-        if corr_pose is not None:
-            # Compute optimized proposal
-            t_prop_start = time.perf_counter()
-            new_pose, p_weight, prop_metrics = proposal.estimate_proposal(
-                scan_match_pose=corr_pose,
-                particle=particle,
-                odom=odom,
-                measurements=measurements_proposal,
-                neighbor=trained_nn_tree,
-                motion_model=motion_model,
-                measurement_model=measurement_model,
-                sigma_xy=proposal_sigma_xy,
-                sigma_theta=proposal_sigma_theta,
-                n_samples=proposal_n_samples,
-                meas_kernel_size=meas_kernel_size,
-                gaussian_sigma=gaussian_sigma,
-                alpha=proposal_alpha,
-                beta=proposal_beta,
-            )
-
-            # new_pose = corr_pose
-            # p_weight = 1.0
-            # prop_metrics = {
-            #     "prop_mu": None,
-            #     "prop_cov_matrix": None,
-            #     "scan_match_pose": np.asarray(corr_pose, dtype=float),
-            #     "pred_pose": np.asarray(pred_pose, dtype=float),
-            #     "xjs": None,
-            #     "xj_weights": None,
-            #     "motion_probs": None,
-            #     "meas_probs": None,
-            # }
-                
-
-            t_prop_s = time.perf_counter() - t_prop_start
-            self._timing_stats["proposal_estimation_sum_s"] += t_prop_s
-            self._timing_stats["proposal_estimation_count"] += 1
-        # Fallback strategy if scan matching fails
-        else:
-            t_fallback_start = time.perf_counter()
-
-            # Predict particle pose with motion model
-            # TODO: Check if noisy control needed or not. maybe simple run but with reduced noise
-            scan_match_failed = True
-            # dl_noisy, dr_noisy = motion_model.sample_noisy_ctrl(dl, dr)
-            new_pose = motion_model.predict_pose(
-                pose=particle.pose,
-                dl=dl,
-                dr=dr,
-            )
-
-            # Fallback to Measurement model with map points
-            if trained_nn_tree is not None:
-                # Compute particle weight
-                # TODO: Adapt measurement model here
-                p_weight = measurement_model.likelihood(
-                    pose=new_pose,
-                    measurements=measurements_proposal,
-                    scan_matcher= particle.scan_matcher,
-                    neighbor=trained_nn_tree,                    
-                )
-            
-            # Fallback strategy if scan matching fails
-            else:
-                scan_match_fallback_failed = True
-                # TODO: Maybe set the lower to punish particle if no prob could be computed 
-                p_weight = 1.0
-
-           
-            t_fallback_s = time.perf_counter() - t_fallback_start
-            self._timing_stats["scan_match_fallback_sum_s"] += t_fallback_s
-            self._timing_stats["scan_match_fallback_count"] += 1
-            
-        # Update map
-        # Extend map if necessary
-        t_map_ext_start = time.perf_counter()
-        extension_needed = True
-        while(extension_needed):
-            extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(new_pose)
-        t_map_ext_s = time.perf_counter() - t_map_ext_start
-        self._timing_stats["map_extension_sum_s"] += t_map_ext_s
-        self._timing_stats["map_extension_count"] += 1
-            
-        # Update map
-        t_map_update_start = time.perf_counter()
-        particle.scan_matcher.ogm.update_map(
-            measurements=measurements_map_update,
-            pose=new_pose
-        )
-        t_map_update_s = time.perf_counter() - t_map_update_start
-        self._timing_stats["map_update_sum_s"] += t_map_update_s
-        self._timing_stats["map_update_count"] += 1
-
-        new_particle = Particle(
-            pose=new_pose,
-            weight=particle.weight * p_weight,
-            scan_matcher=particle.scan_matcher,
-        )
-
-        # Pass through raw scan matcher diagnostics; evaluator owns metric computation.
-        if prop_metrics is None:
-            prop_metrics = {}
-        prop_metrics["scan_matcher_info"] = particle.scan_matcher.get_info()
-
-        return new_particle, scan_match_failed, scan_match_fallback_failed, prop_metrics
-
-
-    def step(
-        self,
-        odom: Tuple[float, float],
-        measurements_proposal: List[Tuple[float, float]],
-        measurements_map_update: List[Tuple[float, float]],
-        proposal_sigma_xy: float = 1.0,
-        proposal_sigma_theta: float = 1.0,
-        proposal_n_samples: int = 10,
-        meas_kernel_size: int = 1,
-        gaussian_sigma: float = 0.05,
-        proposal_alpha: float = 0.5,
-        proposal_beta: float = 2.0,
-    ) -> Tuple[float, Pose2D]:
-        '''
-        Performs the update step of the particle filter for all particles. This includes the following steps:
-        1. Update each particle pose, weight and map based on the given odometry and measurements.
-        2. Normalize particle weights.
-        3. Resample particles if necessary based on the effective number of particles (neff).
-
-        We got to different values for the measurements. measurements_proposal is used for the scan matching and 
-        proposal distribution estimation, while measurements_map_update is used for updating the map. 
-        This allows to use different measurement subsets for the different steps, e.g. using a subsampled scan for 
-        the scan matching and proposal estimation, while using the full scan for the map update.
-
-        Parameters:
-        --------
-        odom: Tuple[float, float]
-            The odometry measurements (dl, dr) for the current time step.
-        measurements_proposal: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the proposal step.
-        measurements_map_update: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the map update step.
-        proposal_sigma_xy: float
-            The standard deviation in x and y direction for the optimized proposal distribution.
-        proposal_sigma_theta: float
-            The standard deviation for the orientation for the optimized proposal distribution.
-        proposal_n_samples: int
-            The number of samples to draw from the optimized proposal distribution for each particle.
-        
-        Returns:
-        --------
-        Tuple[float, Pose2D]
-            The effective number of particles (neff) and the weighted mean pose before resampling.
-        '''
-        # Init
-        scan_match_failed_any = False
-        scan_match_fallback_failed_any = False
-        particle0_prop_metrics = None
-        self._step_counter += 1
-        step_idx = self._step_counter
-
-        # Run initialization process of rbpf
-        if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
-            if self._stop_init_process(odom):
-                dl, dr = odom
-                self.init_status = InitStatus.FAILED_ODOM_THRESHOLD
-                self.init_failure_reason = (
-                    f"Initialization skipped at step {step_idx}: "
-                    f"abs(dl)={abs(dl):.6f}, abs(dr)={abs(dr):.6f}, "
-                    f"threshold={self.odom_threshold:.6f}"
-                )
-            elif self.init_counter < self.init_count_threshold:
-                self.init_status = InitStatus.INITIALIZING
-
-                # Run init process for each particle
-                t_init_process = time.perf_counter()
-                for i, p in enumerate(self.particles):
-                    # Do init process
-                    self.particles[i] = self.init_process(
-                        particle=p,
-                        measurements_map_update=measurements_map_update,
-                    )
-                # Measure time
-                t_init_process_s = time.perf_counter() - t_init_process
-                self._timing_stats_scan_match_only["t_init_process_sum_s"] += t_init_process_s
-                self._timing_stats_scan_match_only["t_init_process_count"] += 1
-
-                self.init_counter += 1
-
-                if self.init_counter >= self.init_count_threshold:
-                    self.init_status = InitStatus.SUCCESS
-
-                # Keep step outputs structurally compatible during initialization
-                # without generating pose metrics in map-only init mode.
-                weights = np.array([p.weight for p in self.particles])
-                norm = np.sum(weights)
-                if norm == 0:
-                    norm_weights = np.ones(len(weights)) / len(weights)
-                else:
-                    norm_weights = weights / norm
-
-                for i in range(len(self.particles)):
-                    self.particles[i].weight = norm_weights[i]
-
-                neff = float(self.resampler.compute_neff(norm_weights))
-
-                # Store step info
-                self._last_step_info = {
-                    "step": step_idx,
-                    "mode": "initialization",
-                    "init_status": self.init_status.value,
-                    "init_counter": self.init_counter,
-                    "init_count_threshold": self.init_count_threshold,
-                    "odom_threshold": self.odom_threshold,
-                    "init_failure_reason": self.init_failure_reason,
-                    "neff": neff,
-                    "scan_match_failed_any": None,
-                    "scan_match_fallback_failed_any": None,
-                    "best_particle_idx": None,
-                    "best_particle_pose": None,
-                    "best_particle_map": None,
-                    "weighted_mean_pose": None,
-                    "particle_weight_min": None,
-                    "particle_weight_max": None,
-                    "particle_weight_mean": None,
-                    "timing_update_particles_s": None,
-                    "timing_normalize_neff_s": None,
-                    "timing_metrics_s": None,
-                    "timing_resampling_s": None,
-                    "proposal_metrics": None,
-                    "resampled_indices": None,
-                }
-
-                return neff, self.particles[0].pose
-
-        # Process each particle
-        t_update_start = time.perf_counter()
-        for i, p in enumerate(self.particles):
-            self.particles[i], scan_match_failed, scan_match_fallback_failed, prop_metrics = self.update_particle(
-                particle=p,
-                motion_model=self.motion_model,
-                measurement_model=self.measurement_model,
-                proposal=self.proposal,
-                odom=odom,
-                measurements_proposal=measurements_proposal,
-                measurements_map_update=measurements_map_update,
-                proposal_sigma_xy=proposal_sigma_xy,
-                proposal_sigma_theta=proposal_sigma_theta,
-                proposal_n_samples=proposal_n_samples,
-                meas_kernel_size=meas_kernel_size,
-                gaussian_sigma=gaussian_sigma,
-                proposal_alpha=proposal_alpha,
-                proposal_beta=proposal_beta,
-            )
-            scan_match_failed_any = scan_match_failed_any or scan_match_failed
-            scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
-            if i == 0:
-                particle0_prop_metrics = prop_metrics
-
-        
-            scan_match_failed_any = scan_match_failed_any or scan_match_failed
-            scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
-            if i == 0:
-                particle0_prop_metrics = prop_metrics
-        # t_update_s = time.perf_counter() - t_update_start
-        # self._timing_stats["update_particles_sum_s"] += t_update_s
-        # self._timing_stats["update_particles_count"] += 1
-        t_update_s = None
-
-        # Normalize particle weights
-        # Normalize weights
-        # t_norm_start = time.perf_counter()
-        weights = np.array([p.weight for p in self.particles])
-        norm = np.sum(weights)
-
-        if norm == 0:
-            # fallback: avoid division by zero
-            norm_weights = np.ones(len(weights)) / len(weights)
-        else:
-            norm_weights = weights/norm
-
-        # Update weights
-        for i in range(len(self.particles)):
-            self.particles[i].weight = norm_weights[i]
-
-        # Compute live neff from current normalized weights before resampling.
-        neff = float(self.resampler.compute_neff(norm_weights))
-        # t_norm_s = time.perf_counter() - t_norm_start
-        # self._timing_stats["normalize_neff_sum_s"] += t_norm_s
-        # self._timing_stats["normalize_neff_count"] += 1
-        t_norm_s = None
-
-        # Compute metrics
-        # t_metrics_start = time.perf_counter()
-        # Weighted mean pose before optional resampling.
-        weighted_mean_pose = self._compute_weighted_mean_pose_from_particles(self.particles)
-        # Get best particle pose before resampling
-        best_idx = int(np.argmax(norm_weights))
-        best_particle_pose = self.particles[best_idx].pose
-        # Weight statistics before optional resampling.
-        particle_weight_min = float(np.min(norm_weights))
-        particle_weight_max = float(np.max(norm_weights))
-        particle_weight_mean = float(np.mean(norm_weights))
-        # t_metrics_s = time.perf_counter() - t_metrics_start
-        # self._timing_stats["metrics_sum_s"] += t_metrics_s
-        # self._timing_stats["metrics_count"] += 1
-        t_metrics_s = None
-
-        t_resampling_s = None
-
-        # Store step metrics before any potential resampling mutates particle set.
-        self._last_step_info = {
-            "step": step_idx,
-            "neff": neff,
-            "scan_match_failed_any": scan_match_failed_any,
-            "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
-            "best_particle_idx": best_idx,
-            "best_particle_pose": best_particle_pose,
-            "best_particle_map": self.particles[best_idx].scan_matcher.ogm.get_log_odds_map(),
-            "weighted_mean_pose": weighted_mean_pose,
-            "particle_weight_min": particle_weight_min,
-            "particle_weight_max": particle_weight_max,
-            "particle_weight_mean": particle_weight_mean,
-            "timing_update_particles_s": t_update_s,
-            "timing_normalize_neff_s": t_norm_s,
-            "timing_metrics_s": t_metrics_s,
-            "timing_resampling_s": t_resampling_s,
-            "proposal_metrics": particle0_prop_metrics,
-        }
-
-        # Resampling
-        # Check if resampling is necessary
-        if neff < self.neff_threshold:
-            t_resampling_start = time.perf_counter()
-            # Get inidices of particles that have survived
-            indices = self.resampler.low_variance_sampler(norm_weights)
-
-            # Update particles
-            new_partilces = []
-            n_particles = len(self.particles)
-            
-            # Deep copy and update weight
-            for idx in indices:
-                p = self.particles[idx].copy()
-
-                p.weight = 1.0 / n_particles
-
-                new_partilces.append(p)
-
-            # Replace old particle set by new set
-            self.particles = new_partilces
-
-            t_resampling_s = time.perf_counter() - t_resampling_start
-            self._timing_stats["resampling_sum_s"] += t_resampling_s
-            self._timing_stats["resampling_count"] += 1
-
-            # Fill resampling timings after optional resampling.
-            self._last_step_info["timing_resampling_s"] = t_resampling_s
-
-        return neff, weighted_mean_pose
-
-
     def update_particle_scan_match_only(
         self,
         particle: Particle,
@@ -1270,305 +844,6 @@ class RBPF:
         return 1.0, self.particles[0].pose
 
     
-    def update_particle_without_proposal_pose(
-        self,
-        particle: Particle,
-        motion_model: MotionModel,
-        measurement_model: MeasurementModel,
-        proposal: ProposalEstimator,
-        odom: Tuple[float, float],
-        measurements_proposal: List[Tuple[float, float]],
-        measurements_map_update: List[Tuple[float, float]],
-        proposal_sigma_xy: float,
-        proposal_sigma_theta: float,
-        proposal_n_samples: int,
-        meas_kernel_size: int,
-        gaussian_sigma: float,
-        proposal_alpha: float,
-        proposal_beta: float,
-    ) -> Tuple[Particle, bool, bool]:
-        '''
-        Update step for a single particle. Updates the particle pose, weight and map based on the given odometry
-        and measurements. Attention! Weights are not normalized!
-        This variant doesn't use the sampled pose from the Proposal, it uses the scan matcher pose instead. However 
-        the  
-
-        Including the following steps:
-        1. Scan match particle pose with current measurements to get a corrected pose estimate.
-        2. Compute optimized proposal distribution based on scan match pose and map points.
-        3. If scan matching fails, fallback to motion model prediction and measurement model likelihood.
-        4. Update map with new measurements and particle pose.
-
-        Parameters:
-        --------
-        particle: Particle
-            The particle to be updated.
-        motion_model: MotionModel
-            The motion model used for prediction and sampling.
-        measurement_model: MeasurementModel
-            The measurement model used for measurement likelihood estimation.
-        proposal: ProposalEstimator
-            The proposal estimator used for computing the optimized proposal distribution.
-        odom: Tuple[float, float]
-            The odometry measurements (dl, dr) for the current time step.
-        measurements_proposal: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the proposal step.
-        measurements_map_update: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the map update step.
-
-        Returns:
-        --------        
-        Particle
-            The updated particle with new pose, weight (not normalized) and the updated map.
-        '''
-        # Information for debugging
-        scan_match_failed = False
-        scan_match_fallback_failed = False
-
-        # Extract data
-        dl, dr = odom
-
-        # Scan match particle  
-        t_scan_match_start = time.perf_counter()
-        corr_pose, pred_pose = particle.scan_matcher.update_pose(
-            old_pose=particle.pose,
-            dl=dl,
-            dr=dr, 
-            measurements=measurements_proposal,
-        )
-
-        t_scan_match_s = time.perf_counter() - t_scan_match_start
-        self._timing_stats["scan_match_update_pose_sum_s"] += t_scan_match_s
-        self._timing_stats["scan_match_update_pose_count"] += 1
-
-        # Get trained map points
-        trained_nn_tree = particle.scan_matcher.get_trained_nn_tree()
-
-        if corr_pose is not None:
-            # Compute optimized proposal
-            t_prop_start = time.perf_counter()
-            _, p_weight = proposal.estimate_proposal(
-                scan_match_pose=corr_pose,
-                particle=particle,
-                odom=odom,
-                measurements=measurements_proposal,
-                neighbor=trained_nn_tree,
-                motion_model=motion_model,
-                measurement_model=measurement_model,
-                sigma_xy=proposal_sigma_xy,
-                sigma_theta=proposal_sigma_theta,
-                n_samples=proposal_n_samples,
-                meas_kernel_size=meas_kernel_size,
-                gaussian_sigma=gaussian_sigma,
-                alpha=proposal_alpha,
-                beta=proposal_beta,
-            )
-
-            new_pose = corr_pose
-
-            t_prop_s = time.perf_counter() - t_prop_start
-            self._timing_stats["proposal_estimation_sum_s"] += t_prop_s
-            self._timing_stats["proposal_estimation_count"] += 1
-        # Fallback strategy if scan matching fails
-        else:
-            t_fallback_start = time.perf_counter()
-
-            # Predict particle pose with motion model
-            scan_match_failed = True
-            # dl_noisy, dr_noisy = motion_model.sample_noisy_ctrl(dl, dr)
-            new_pose = motion_model.predict_pose(
-                pose=particle.pose,
-                dl=dl,
-                dr=dr,
-            )
-
-            # Fallback to Measurement model with map points
-            if trained_nn_tree is not None:
-                # Compute particle weight
-                p_weight = measurement_model.likelihood(
-                    pose=new_pose,
-                    measurements=measurements_proposal,
-                    scan_matcher= particle.scan_matcher,
-                    neighbor=trained_nn_tree,                    
-                )
-            # Fallback strategy if scan matching fails
-            else:
-                scan_match_fallback_failed = True
-                # TODO: Maybe set the lower to punish particle if no prob could be computed 
-                p_weight = 1.0
-
-            t_fallback_s = time.perf_counter() - t_fallback_start
-            self._timing_stats["scan_match_fallback_sum_s"] += t_fallback_s
-            self._timing_stats["scan_match_fallback_count"] += 1
-            
-        # Update map
-        # Extend map if necessary
-        t_map_ext_start = time.perf_counter()
-        extension_needed = True
-
-        while(extension_needed):
-            extension_needed = particle.scan_matcher.ogm.map_extension_if_necessary(new_pose)
-
-        t_map_ext_s = time.perf_counter() - t_map_ext_start
-        self._timing_stats["map_extension_sum_s"] += t_map_ext_s
-        self._timing_stats["map_extension_count"] += 1
-            
-        # Update map
-        t_map_update_start = time.perf_counter()
-        particle.scan_matcher.ogm.update_map(
-            measurements=measurements_map_update,
-            pose=new_pose
-        )
-        t_map_update_s = time.perf_counter() - t_map_update_start
-        self._timing_stats["map_update_sum_s"] += t_map_update_s
-        self._timing_stats["map_update_count"] += 1
-
-        new_particle = Particle(
-            pose=new_pose,
-            weight=particle.weight * p_weight,
-            scan_matcher=particle.scan_matcher,
-        )
-
-        return new_particle, scan_match_failed, scan_match_fallback_failed
-
-    
-    def step_rbpf_without_proposal_pose(
-        self,
-        odom: Tuple[float, float],
-        measurements_proposal: List[Tuple[float, float]],
-        measurements_map_update: List[Tuple[float, float]],
-        proposal_sigma_xy: float = 1.0,
-        proposal_sigma_theta: float = 1.0,
-        proposal_n_samples: int = 10,
-        meas_kernel_size: int = 1,
-        gaussian_sigma: float = 0.05,
-        proposal_alpha: float = 0.5,
-        proposal_beta: float = 2.0,
-    ):
-        # Init
-        scan_match_failed_any = False
-        scan_match_fallback_failed_any = False
-        self._step_counter += 1
-        step_idx = self._step_counter
-
-        # Process each particle
-        # t_update_start = time.perf_counter()
-        for i, p in enumerate(self.particles):
-            self.particles[i], scan_match_failed, scan_match_fallback_failed = self.update_particle_without_proposal_pose(
-                particle=p,
-                motion_model=self.motion_model,
-                measurement_model=self.measurement_model,
-                proposal=self.proposal,
-                odom=odom,
-                measurements_proposal=measurements_proposal,
-                measurements_map_update=measurements_map_update,
-                proposal_sigma_xy=proposal_sigma_xy,
-                proposal_sigma_theta=proposal_sigma_theta,
-                proposal_n_samples=proposal_n_samples,
-                meas_kernel_size=meas_kernel_size,
-                gaussian_sigma=gaussian_sigma,
-                proposal_alpha=proposal_alpha,
-                proposal_beta=proposal_beta,
-            )
-            scan_match_failed_any = scan_match_failed_any or scan_match_failed
-            scan_match_fallback_failed_any = scan_match_fallback_failed_any or scan_match_fallback_failed
-
-        t_update_s = None
-
-        # Normalize particle weights
-        # Normalize weights
-        # t_norm_start = time.perf_counter()
-        weights = np.array([p.weight for p in self.particles])
-        norm = np.sum(weights)
-
-        if norm == 0:
-            # fallback: avoid division by zero
-            norm_weights = np.ones(len(weights)) / len(weights)
-        else:
-            norm_weights = weights/norm
-
-        # Update weights
-        for i in range(len(self.particles)):
-            self.particles[i].weight = norm_weights[i]
-
-        # Compute live neff from current normalized weights before resampling.
-        neff = float(self.resampler.compute_neff(norm_weights))
-        # t_norm_s = time.perf_counter() - t_norm_start
-        # self._timing_stats["normalize_neff_sum_s"] += t_norm_s
-        # self._timing_stats["normalize_neff_count"] += 1
-        t_norm_s = None
-
-        # Compute metrics
-        # t_metrics_start = time.perf_counter()
-        # Weighted mean pose before optional resampling.
-        weighted_mean_pose = self._compute_weighted_mean_pose_from_particles(self.particles)
-        # Get best particle pose before resampling
-        best_idx = int(np.argmax(norm_weights))
-        best_particle_pose = self.particles[best_idx].pose
-        # Weight statistics before optional resampling.
-        particle_weight_min = float(np.min(norm_weights))
-        particle_weight_max = float(np.max(norm_weights))
-        particle_weight_mean = float(np.mean(norm_weights))
-        # t_metrics_s = time.perf_counter() - t_metrics_start
-        # self._timing_stats["metrics_sum_s"] += t_metrics_s
-        # self._timing_stats["metrics_count"] += 1
-        t_metrics_s = None
-
-        t_resampling_s = None
-
-        # Store step metrics before any potential resampling mutates particle set.
-        self._last_step_info = {
-            "step": step_idx,
-            "neff": neff,
-            "scan_match_failed_any": scan_match_failed_any,
-            "scan_match_fallback_failed_any": scan_match_fallback_failed_any,
-            "best_particle_idx": best_idx,
-            "best_particle_pose": best_particle_pose,
-            "best_particle_map": self.particles[best_idx].scan_matcher.ogm.get_log_odds_map(),
-            "weighted_mean_pose": weighted_mean_pose,
-            "particle_weight_min": particle_weight_min,
-            "particle_weight_max": particle_weight_max,
-            "particle_weight_mean": particle_weight_mean,
-            "timing_update_particles_s": t_update_s,
-            "timing_normalize_neff_s": t_norm_s,
-            "timing_metrics_s": t_metrics_s,
-            "timing_resampling_s": t_resampling_s,
-        }
-
-        # Resampling
-        # Check if resampling is necessary
-        if neff < self.neff_threshold:
-            # t_resampling_start = time.perf_counter()
-            # Get inidices of particles that have survived
-            indices = self.resampler.low_variance_sampler(norm_weights)
-
-            # Update particles
-            new_partilces = []
-            n_particles = len(self.particles)
-            
-            # Deep copy and update weight
-            for idx in indices:
-                p = self.particles[idx].copy()
-
-                p.weight = 1.0 / n_particles
-
-                new_partilces.append(p)
-
-            # Replace old particle set by new set
-            self.particles = new_partilces
-
-            # t_resampling_s = time.perf_counter() - t_resampling_start
-            # self._timing_stats["resampling_sum_s"] += t_resampling_s
-            # self._timing_stats["resampling_count"] += 1
-
-            # Fill resampling timings after optional resampling.
-            self._last_step_info["timing_resampling_s"] = t_resampling_s
-        else: 
-            self._last_step_info["timing_resampling_s"] = 0.0
-
-        return neff, weighted_mean_pose
-
-    
     def update_measurement_model_counters_fallback(self, result: dict):
         '''
         Update measurement model counters for proposal diagnostics. 
@@ -1583,7 +858,7 @@ class RBPF:
         self.meas_model_counters_fallback["unexpected_known_free_count"] += result.get("unexpected_known_free_count", 0)
 
 
-    def update_particle_range_finder_model(
+    def update_particle(
         self,
         particle: Particle,
         motion_model: MotionModel,
@@ -1627,7 +902,7 @@ class RBPF:
             # Compute optimized proposal
             t_prop_start = time.perf_counter()
             
-            new_pose, log_p_weight, prop_metrics = proposal.estimate_proposal_range_finder(
+            new_pose, log_p_weight, prop_metrics = proposal.estimate_proposal(
                 scan_match_pose=corr_pose,
                 particle=particle,
                 odom=odom,
@@ -1824,7 +1099,7 @@ class RBPF:
         return None 
 
 
-    def step_range_finder_model(
+    def step(
         self,
         odom: Tuple[float, float],
         measurements_proposal: List[Tuple[float, float]],
@@ -2013,7 +1288,7 @@ class RBPF:
                 scan_match_failed, 
                 scan_match_fallback_failed, 
                 prop_metrics 
-            ) = self.update_particle_range_finder_model(
+            ) = self.update_particle(
                 particle=p,
                 motion_model=self.motion_model,
                 measurement_model=self.measurement_model,
@@ -2241,37 +1516,6 @@ class RBPF:
                     self.particles[i].weight = norm_weights[i]
 
                 neff = float(self.resampler.compute_neff(norm_weights))
-
-                # Store step info
-                # particle_poses = [p.pose for p in self.particles]
-                # particle_weights = [p.weight for p in self.particles]
-                # self._last_step_info = {
-                #     "step": step_idx,
-                #     "mode": "initialization",
-                #     "init_status": self.init_status.value,
-                #     "init_counter": self.init_counter,
-                #     "init_count_threshold": self.init_count_threshold,
-                #     "odom_threshold": self.odom_threshold,
-                #     "init_failure_reason": self.init_failure_reason,
-                #     "neff": neff,
-                #     "scan_match_failed_any": None,
-                #     "scan_match_fallback_failed_any": None,
-                #     "best_particle_idx": None,
-                #     "best_particle_pose": None,
-                #     "best_particle_map": None,
-                #     "weighted_mean_pose": None,
-                #     "particle_weight_min": None,
-                #     "particle_weight_max": None,
-                #     "particle_weight_mean": None,
-                #     "timing_update_particles_s": None,
-                #     "timing_normalize_neff_s": None,
-                #     "timing_metrics_s": None,
-                #     "timing_resampling_s": None,
-                #     "proposal_metrics": None,
-                #     "measurement_model_counters_fallback": None
-                # }
-
-                # return neff, self.particles[0].pose
 
                 # Update rbpf info
                 particle_poses = [p.pose for p in self.particles]

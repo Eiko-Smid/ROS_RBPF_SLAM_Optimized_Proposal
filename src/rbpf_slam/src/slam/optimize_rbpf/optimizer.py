@@ -398,9 +398,8 @@ class RBPFOptimizer:
                     max_range=params.sensor_params.max_sensor_range,
                 )
 
-                # Run the rbpf filter on one parameter set and compute the rating score
-                # run_result = self.runner.run(run_playback_data, params)
-                run_result = self.runner.run_rbpf_parallel(run_playback_data, params)
+                # Run the rbpf filter on one parameter set and compute the rating score                
+                run_result = self.runner.run(run_playback_data, params)
                 score = self.scorer.score(run_result.summary)
 
                 # Store the final highest-weighted particle map for this run.

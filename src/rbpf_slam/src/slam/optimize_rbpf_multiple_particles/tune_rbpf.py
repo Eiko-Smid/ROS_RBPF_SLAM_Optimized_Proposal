@@ -132,10 +132,8 @@ STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/op
 # RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
 # # Test storage
-# SUB_DIR = "proposal_optm_test_3_tune_pipe_parallel/"
-# SUB_DIR = "proposal_optm_test_4_tune_pipe_parallel/"
-# SUB_DIR = "proposal_optm_test_5_rbpf_parallel/"
-SUB_DIR = "proposal_optm_test_6_rbpf_parallel/"
+# SUB_DIR = "proposal_optm_test_7_tune_pipe_parallel/"
+SUB_DIR = "proposal_optm_test_8_rbpf_parallel/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
