@@ -57,53 +57,78 @@ RNG_STREAM_RESAMPLING = 1
 
 @dataclass(frozen=True)
 class ParticleParams:
+    '''
+    General particle filter init params.
+    '''
     start_pose: Tuple[float, float, float]
     n_particles: int
 
 
 @dataclass(frozen=True)
 class MotionModelParams:
-    sigma_x: float
-    sigma_y: float
-    sigma_theta: float
-    wheel_separation: float
-    ctrl_motion_fac: float
-    ctrl_turn_fac: float
+    '''
+    Motion model params for DDMR robot.
+    '''
+    sigma_x: float              # Standard deviation of the motion in x direction (meters). 
+    sigma_y: float              # Standard deviation of the motion in y direction (meters).
+    sigma_theta: float          # Standard deviation of the motion in theta direction (angular uncertainty) (radians).
+    wheel_separation: float     # Distance between the left and right wheels of the robot (meters).
+    ctrl_motion_fac: float      # Scaling value to punish translational motion 
+    ctrl_turn_fac: float        # Scaling value to punish rotational motion
 
 
 @dataclass(frozen=True)
 class MeasurementModelParams:
-    sigma_measurement: float
+    sigma_measurement: float    # Measurement model standard deviation (meters). Used for Likelihood Field Models.
 
 
 @dataclass(frozen=True)
 class BeamRangeFinderMeasModelParams:
-    occ_thresh: float = 1.4
-    free_thresh: float = -1.4
-    unknown_ratio_thresh: float = 0.30
-    known_free_ratio_thresh: float = 0.70
+    '''
+    Params used to model the beam range finder model.
+    '''
+    occ_thresh: float = 1.4                 # The threshold for considering a cell as occupied in ogm
+    free_thresh: float = -1.4               # The threshold for considering a cell as free in ogm
+    unknown_ratio_thresh: float = 0.30      # When this % of traversed cells is unknown and no beam endpoint cell has been 
+                                            # detected, then the measurement model will punish the measurement likelihood 
+                                            # with p_unknown instead of a strong mismatch penalty.
+    known_free_ratio_thresh: float = 0.70   # When this % of traversed cells is known to be free, then the measurement model
+                                            # will punish if no endpoint cell has been found.
 
-    sigma_hit: float = 0.15
-    w_hit: float = 0.70   
+    sigma_hit: float = 0.15                 #  Standard deviation [m] of the Gaussian hit model. Controls how strongly
+                                            # a measured range is penalized when it differs from the excpected meas.
+    w_hit: float = 0.70                     
     w_short: float = 0.10
     lambda_short: float = 0.20
     w_max: float = 0.10
     w_rand: float = 0.10
     
-    p_unknown: float = 0.20
-    p_out_of_map: float = 0.10
-    p_unexpected_known_free: float = 0.03
-    p_pred_below_min: float = 0.02
-
+    p_unknown: float = 0.20                 # Fixed per-beam likelihood used when no occupied map cell is predicted and 
+                                            # a sufficiently large fraction of the traversed ray is unknown.
+    p_out_of_map: float = 0.10              # Fixed per-beam likelihood used when the ray leaves the current map before
+                                            # a useful occupied-cell prediction can be made.
+    p_unexpected_known_free: float = 0.03   # Fixed per-beam likelihood used when:
+                                            #   1. no occupied map cell is predicted,
+                                            #   2. the ray passes mainly through known-free cells, and
+                                            #   3. the real sensor nevertheless reports a finite obstacle.
+                                            # not found in the map
+    p_pred_below_min: float = 0.02          # Fixed per-beam likelihood used when the map-predicted obstacle distance
+                                            # lies below the sensor's minimum usable range.
+                                            # This normally indicates an implausible pose, such as the laser origin
+                                            # being inside or extremely close to an occupied map cell.
+     
     # Numerical / scaling
-    alpha_meas: float = 0.10
-    beam_step: int = 2  
-    eps: float = 1e-12
+    alpha_meas: float = 0.10                # Scaling value to enable downscaling of the estimated log-likelihoods 
+    beam_step: int = 2                      # Every nth beam will be processed, all others will be skipped.
+    eps: float = 1e-12                      # Numerical probability floor applied before taking the logarithm.
+                                            # Prevents log(0), -inf log-likelihoods, and invalid particle weights.
 
 
-# Dataclass including the task load for the process pool in order to process partciles in parallel
 @dataclass(frozen=True)
 class ParticleUpdateTask:
+    '''
+    Dataclass including the task load for the process pool in order to process particles in parallel
+    '''
     particle_index: int
     particle: Particle
     motion_model: MotionModel
@@ -125,6 +150,10 @@ class ParticleUpdateTask:
 
 @dataclass(frozen=True)
 class ParticleUpdateResult:
+    '''
+    Dataclass including the result of the particle update task. This is used to return the updated particle and
+    other information.
+    '''
     particle_index: int
     updated_particle: Particle
     log_p_weight: float
@@ -162,7 +191,23 @@ def update_particle_worker(
     task: ParticleUpdateTask
 ) -> ParticleUpdateResult:
     '''
-    Worker function for parallel particle update that processes a single particle update task. 
+    Updates the particle pose and map based on the given taks. Update includes the following steps:
+
+        1) Initialization process to only update the map for the first N steps. 
+        2) Predict and corrects the particle pose based on odometry and scan matching. 
+        3) Approximates the optimal proposal distribution near scan matcher maxima based on motion and measurement model,
+            if scan matching was successful. Otherwise fallback to motion model prediction and measurement model likelihood.
+        4) Updates the particle map based on the corrected particle pose or predicted particle pose if scan matching failed.
+    
+    Parameters
+    ----------
+    task : ParticleUpdateTask
+        The task containing the particle and all necessary data for the update.
+
+    Returns
+    -------
+    ParticleUpdateResult
+        The result of the particle update, including the updated particle and other information.
     '''
     # Init random number generator for proposal sampling
     proposal_rng = (
@@ -307,6 +352,9 @@ def update_particle_worker(
 
     
 class RBPFFactory():
+    '''
+    Factory class to create an RBPF instance with the given parameters.
+    '''
     IDX_x=0
     IDX_y=1
     IDX_THETA=2
@@ -325,11 +373,12 @@ class RBPFFactory():
             measurement_model_params: Union[MeasurementModelParams, BeamRangeFinderMeasModelParams],
             neff_threshold: Optional[float] = None,
     ):
-        # Init particle class
+        # Init particles
         particles = []
         w = 1/particle_params.n_particles
 
         for _ in range(particle_params.n_particles):
+            # Build scan matcher instance per particle
             scan_matcher = scan_match_fac.build(
                 occ_param=occ_param,
                 sens_params=sens_params,
@@ -339,6 +388,7 @@ class RBPFFactory():
                 sm_params=scan_matcher_params,
             )
 
+            # Define particle start pose    
             pose: Pose2D = (
                 particle_params.start_pose[self.IDX_x],
                 particle_params.start_pose[self.IDX_y],
@@ -363,6 +413,7 @@ class RBPFFactory():
             ctrl_turn_fac=motion_model_params.ctrl_turn_fac,
         )
 
+        # Init measurement model
         # Backward-compatible dispatch for both measurement-model parameter types.
         if isinstance(measurement_model_params, BeamRangeFinderMeasModelParams):
             measurement_model = BeamRangeFinderModel(**vars(measurement_model_params))
@@ -388,6 +439,14 @@ class RBPFFactory():
 
 
 class InitStatus(Enum):
+    '''
+    class to define the initialization status of the RBPF. This is used to determine if the RBPF is in:
+        1) waiting for initialization state:
+        2) initialization in progress
+        3) initialization successful
+        4) initialization failed/skipped because dl or dr exceeded the odometry threshold. Initialization will never
+           be executed again.
+    '''
     WAITING = "waiting for initialization"
     INITIALIZING = "Initialization in progress"
     SUCCESS = "Init successful"
@@ -399,6 +458,9 @@ class InitStatus(Enum):
 
 
 class RBPF:
+    '''
+    Rao Blackwellized Particle Filter (RBPF) SLAM class with optimized proposal distribution. 
+    '''
     def __init__(
             self,
             motion_model: MotionModel,
@@ -509,6 +571,19 @@ class RBPF:
 
     @staticmethod
     def _compute_weighted_mean_pose_from_particles(particles: List[Particle]) -> Pose2D:
+        '''
+        Computes the weighted mean pose from a list of particles.
+
+        Parameters
+        ----------
+        particles : List[Particle]
+            The list of particles to compute the weighted mean pose from.
+
+        Returns
+        -------
+        Pose2D
+            The weighted mean pose of the given particles.
+        '''
         x = 0.0
         y = 0.0
         cos_theta = 0.0
@@ -629,6 +704,9 @@ class RBPF:
 
     @staticmethod
     def _safe_mean(sum_value: float, count: int) -> Optional[float]:
+        '''
+        Computes the means while checking if count > 0.
+        '''
         if count <= 0:
             return None
         return float(sum_value) / float(count)
@@ -650,6 +728,21 @@ class RBPF:
         particle: Particle,
         measurements_map_update: List[Tuple[float, float]],
     ) -> Particle:        
+        '''
+        Updates the map of the given particle based on the given measurements. 
+
+        Parameters
+        ----------
+        particle : Particle
+            The particle which map will to be updated.
+        measurements_map_update : List[Tuple[float, float]]
+            The measurements used to update the map.
+
+        Returns
+        -------
+        Particle
+            The particle with the updated map.
+        '''
         # Extend map if necessary
         t_map_ext_start = time.perf_counter()
         extension_needed = True
@@ -687,13 +780,28 @@ class RBPF:
         measurements_filter: List[Tuple[float, float]],
         measurements_map_update: List[Tuple[float, float]],
     ) -> Tuple[Particle, bool]:
-        """
-        Scan-matching-only update for a single particle.
+        '''
+        Updates the particle pose based on odom and corrects it with scan matching. Uses the updated particle to 
+        update the map. If scan matching failed than the predicted particle pose based on odometry is used to update the map.
 
-        This path does not perform proposal estimation or measurement-model weighting.
-        It predicts/corrects pose with the scan matcher and updates the map only when
-        a corrected pose is available.
-        """
+        Parameters
+        ----------
+        particle : Particle
+            The particle to be updated.
+        odom : Tuple[float, float]
+            The odometry measurements (dl, dr).
+        measurements_filter : List[Tuple[float, float]]
+            The measurements used to perform scan matching.
+        measurements_map_update : List[Tuple[float, float]]
+            The measurements used to update the map.
+
+        Returns
+        -------
+        new_particle : Particle
+            The updated particle.
+        scan_match_failed : bool
+            Boolean indicator that indicates if scan matching failed or not (True if scan matching failed, False otherwise).
+        '''
         scan_match_failed = False
 
         dl, dr = odom
@@ -756,8 +864,27 @@ class RBPF:
         """
         Runs one RBPF step in scan-matching-only mode.
 
-        This mode skips proposal and measurement model updates and is intended for
-        focused scan matcher diagnostics.
+        Runs initialization process where only map update takes place. After init process the particle update
+        is performed. This does:
+            1) predict new particle pose based on odom
+            2) correct particle pose based on scan matching
+            3) update map based on corrected particle pose or predicted particle pose if scan matching failed
+        
+        Parameters
+        ----------
+        odom : Tuple[float, float]
+            The odometry measurements (dl, dr).
+        measurements_filter : List[Tuple[float, float]]
+            The measurements used to perform scan matching.
+        measurements_map_update : List[Tuple[float, float]]
+            The measurements used to update the map.
+
+        Returns
+        -------
+        float
+            The weight of the updated particle.
+        Pose2D
+            The pose of the updated particle.
         """
         # Increase step counter
         self._step_counter += 1
@@ -765,6 +892,7 @@ class RBPF:
 
         # Initialization process
         if self.init_status not in (InitStatus.SUCCESS, InitStatus.FAILED_ODOM_THRESHOLD):
+            # Check if robot moved > threshold -> skip initialization
             if self._stop_init_process(odom):
                 dl, dr = odom
                 self.init_status = InitStatus.FAILED_ODOM_THRESHOLD
@@ -776,6 +904,7 @@ class RBPF:
             elif self.init_counter < self.init_count_threshold:
                 self.init_status = InitStatus.INITIALIZING
 
+                # Run init process -> map update only
                 t_init_process = time.perf_counter()
                 self.particles[0] = self.init_process(
                     particle=self.particles[0],
@@ -787,9 +916,11 @@ class RBPF:
 
                 self.init_counter += 1
 
+                # Update status if initialization is complete
                 if self.init_counter >= self.init_count_threshold:
                     self.init_status = InitStatus.SUCCESS
 
+                # Store step info 
                 self._last_step_info_scan_match_only = {
                     "step": step_idx,
                     "mode": "initialization",
@@ -808,10 +939,9 @@ class RBPF:
                 # Keep compatibility for callers still using get_step_info().
                 self._last_step_info = dict(self._last_step_info_scan_match_only)
 
-                return 1.0, self.particles[0].pose
-                    
+                return 1.0, self.particles[0].pose                    
 
-        # Update particle based on scan matcher
+        # Scan Match SLAM
         t_start_particle_update = time.perf_counter()
         self.particles[0], scan_match_failed = self.update_particle_scan_match_only(
             particle=self.particles[0],
@@ -846,7 +976,7 @@ class RBPF:
     
     def update_measurement_model_counters_fallback(self, result: dict):
         '''
-        Update measurement model counters for proposal diagnostics. 
+        Update measurement model counters for proposal diagnostics. Adds them to given result.
         '''
         self.meas_model_counters_fallback["call_count"] += 1
         self.meas_model_counters_fallback["valid_beam_count"] += result.get("valid_beam_count", 0)
@@ -877,6 +1007,70 @@ class RBPF:
         min_std_theta: float,
         proposal_rng: Optional[np.random.Generator] = None,
     ):
+        '''    
+        Updates the particle pose and map based on the given data. Update includes the following steps:
+
+        1) Initialization process to only update the map for the first N steps. 
+        2) Predict and corrects the particle pose based on odometry and scan matching. 
+        3) Approximates the optimal proposal distribution near scan matcher maxima based on motion and measurement model,
+           if scan matching was successful. Otherwise fallback to motion model prediction and measurement model likelihood.
+        4) Updates the particle map based on the corrected particle pose or predicted particle pose if scan matching failed.
+        
+        Parameters
+        ----------
+        particle : Particle
+            The particle to be updated.
+        motion_model : MotionModel
+            The motion model used to predict the particle pose based on odometry and computing the motion prob for the
+            sampled xjs around the scan matcher maxima to approximate the optimal proposal distribution.
+        measurement_model : MeasurementModel
+            The measurement model used to compute the measurement likelihood for the sampled xjs around the scan matcher
+            maxima to approximate the optimal proposal distribution. Also used as a fallback if scan matching failed.
+        proposal : ProposalEstimator
+            The proposal estimator used to approximate the optimal proposal distribution.
+        odom: Tuple[float, float]
+            The odometry measurements (dl, dr) for the current time step.
+        measurements_proposal: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the particle pose estimation.
+        measurements_map_update: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the map update step.
+        proposal_sigma_xy: float
+            Defines the quadratic sampling area around the scan matching from which the xj samples, to compute the proposal 
+            distribution, are drawn.
+        proposal_sigma_theta: float
+            Defines the angular sampling area around the scan matching from which the xj samples, to compute the proposal
+            distribution, are drawn.
+        proposal_n_samples: int
+            Defines the number of xj samples per direction (x, y, theta) from which the proposal distribution approximated. 
+        cov_std_scale: float
+            Defines the scaling factor to scale the covariance matrix of the estimated proposal.
+        cov_max_std_xy: float
+            Defines the maximum standard deviation in x and y direction of the estimated proposal distribution.
+        cov_max_std_theta: float
+            Defines the maximum standard deviation in theta direction of the estimated proposal distribution.
+        min_std_xy: float
+            Defines the minimum standard deviation in x and y direction of the estimated proposal distribution.
+        min_std_theta: float
+            Defines the minimum standard deviation in theta direction of the estimated proposal distribution.
+        proposal_rng: Optional[np.random.Generator]
+            Optional random number generator for reproducibility of the proposal distribution sampling. If None,
+            a new random number generator will be created. 
+        
+        Returns
+        -------
+        new_particle : Particle
+            The updated particle.
+        log_p_weight : float
+            The log weight increment of the updated particle.
+        scan_match_failed : bool
+            Boolean indicator that indicates if scan matching failed or not (True if scan matching failed, False otherwise).
+        scan_match_fallback_failed : bool
+            Boolean indicator that indicates if scan matching fallback to measurement model failed or not (True if scan
+            matching fallback failed, False otherwise).
+        prop_metrics : dict
+            A dictionary containing metrics from the proposal estimation step. If scan matching failed, this will be an
+            empty dictionary.
+        '''
         # Set metrics to None
         prop_metrics = None 
         scan_match_failed = False
@@ -1061,12 +1255,19 @@ class RBPF:
         rng: Optional[np.random.Generator] = None,
     ):
         '''
-        Resample particles if Neff falls below the threshold.
+        Resample particles if Neff falls below the neff threshold.
 
         Parameters
         ----------
         norm_weights : np.ndarray
             Normalized weights of the particles before resampling.
+        rng : Optional[np.random.Generator]
+            Random number generator for resampling. If None, a new random generator is created.
+        
+        Returns
+        -------
+        indices : Optional[np.ndarray]
+            The indices of the resampled particles if resampling occurred, otherwise None.
         '''
         # Compute neff from current normalized weights before resampling.
         neff = float(self.resampler.compute_neff(norm_weights))
@@ -1115,39 +1316,43 @@ class RBPF:
         run_seed: Optional[int] = None,
     ) -> None:
         '''
-        Performs the update step of the particle filter for all particles. This includes the following steps:
-        Steps:
-            1. Initialize map if initialization is still active.
-            2. Update each particle pose and map.
-            3. Collect log weight increments.
-            4. Normalize particle weights safely in log-space.
-            5. Compute metrics before resampling.
-            6. Resample if Neff falls below threshold.
-
-        We got to different values for the measurements. measurements_proposal is used for the scan matching and 
-        proposal distribution estimation, while measurements_map_update is used for updating the map. 
-        This allows to use different measurement subsets for the different steps, e.g. using a subsampled scan for 
-        the scan matching and proposal estimation, while using the full scan for the map update.
-
-        Parameters:
-        --------
+        Performs the update step of the RBPF SLAM algorithm for all particles. This includes the following steps:
+            1) Initialization process to only update the map for the first N steps. 
+            2) Predict and corrects the particle pose based on odometry and scan matching. 
+            3) Approximates the optimal proposal distribution near scan matcher maxima based on motion and measurement model,
+               if scan matching was successful. Otherwise fallback to motion model prediction and measurement model likelihood.
+            4) Updates the particle map based on the corrected particle pose or predicted particle pose if scan matching failed.
+            5) Normalizes the particle weights and computes the effective number of particles (neff).
+            6) Resamples the particles if neff < neff_threshold.
+        
+        Parameters
+        ----------
         odom: Tuple[float, float]
             The odometry measurements (dl, dr) for the current time step.
         measurements_proposal: List[Tuple[float, float]]
-            The range measurements (range, bearing) for the proposal step.
+            The range measurements (range, bearing) for the particle pose estimation.
         measurements_map_update: List[Tuple[float, float]]
             The range measurements (range, bearing) for the map update step.
         proposal_sigma_xy: float
-            The standard deviation in x and y direction for the optimized proposal distribution.
+            Defines the quadratic sampling area around the scan matching from which the xj samples, to compute the proposal 
+            distribution, are drawn.
         proposal_sigma_theta: float
-            The standard deviation for the orientation for the optimized proposal distribution.
+            Defines the angular sampling area around the scan matching from which the xj samples, to compute the proposal
+            distribution, are drawn.
         proposal_n_samples: int
-            The number of samples to draw from the optimized proposal distribution for each particle.
-        
-        Returns:
-        --------
-        Tuple[float, Pose2D]
-            The effective number of particles (neff) and the weighted mean pose before resampling.
+            Defines the number of xj samples per direction (x, y, theta) from which the proposal distribution approximated. 
+        cov_std_scale: float
+            Defines the scaling factor to scale the covariance matrix of the estimated proposal.
+        cov_max_std_xy: float
+            Defines the maximum standard deviation in x and y direction of the estimated proposal distribution.
+        cov_max_std_theta: float
+            Defines the maximum standard deviation in theta direction of the estimated proposal distribution.
+        min_std_xy: float
+            Defines the minimum standard deviation in x and y direction of the estimated proposal distribution.
+        min_std_theta: float
+            Defines the minimum standard deviation in theta direction of the estimated proposal distribution.
+        run_seed: Optional[int]
+            The seed for the random number generator. If None, a random seed is used.
         '''
         
         # Init measurement model counters
@@ -1397,6 +1602,23 @@ class RBPF:
         self,
         results: List[ParticleUpdateResult]
     ) -> Tuple[np.ndarray, bool, bool]:
+        '''
+        Processes the results of the particle update step.
+
+        Parameters
+        ----------
+        results : List[ParticleUpdateResult]
+            The list of results from updating each particle.
+
+        Returns
+        -------
+        log_p_weights : np.ndarray
+            The log weights of the updated particles.
+        scan_match_failed_any : bool
+            True if any particle's scan matching failed, False otherwise.
+        scan_match_fallback_failed_any : bool
+            True if any particle's scan matching fallback failed, False otherwise.
+        '''
         # Init
         scan_match_failed_any = False
         scan_match_fallback_failed_any = False
@@ -1443,6 +1665,53 @@ class RBPF:
         min_std_theta: float = 0.0,
         run_seed: Optional[int] = None,
     ) -> None:
+        '''
+        Performs the update step of the RBPF SLAM algorithm for all particles, in parallel. Each particle update is defined 
+        by a task. The taks are handeled in parallel by the created worker processes. Each worker does the following task:
+        
+            1) Initialization process to only update the map for the first N steps. 
+            2) Predict and corrects the particle pose based on odometry and scan matching. 
+            3) Approximates the optimal proposal distribution near scan matcher maxima based on motion and measurement model,
+               if scan matching was successful. Otherwise fallback to motion model prediction and measurement model likelihood.
+            4) Updates the particle map based on the corrected particle pose or predicted particle pose if scan matching failed.
+            
+        After all taks have been processed, the main process collects the results and performs the following steps:
+            
+            1) Normalizes the particle weights and computes the effective number of particles (neff).
+            2) Resamples the particles if neff < neff_threshold.
+        
+        Parameters
+        ----------
+        particle_process_pool : ParticleProcessPool
+            The process pool that performs the particle update tasks in parallel.
+        odom: Tuple[float, float]
+            The odometry measurements (dl, dr) for the current time step.
+        measurements_proposal: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the particle pose estimation.
+        measurements_map_update: List[Tuple[float, float]]
+            The range measurements (range, bearing) for the map update step.
+        proposal_sigma_xy: float
+            Defines the quadratic sampling area around the scan matching from which the xj samples, to compute the proposal 
+            distribution, are drawn.
+        proposal_sigma_theta: float
+            Defines the angular sampling area around the scan matching from which the xj samples, to compute the proposal
+            distribution, are drawn.
+        proposal_n_samples: int
+            Defines the number of xj samples per direction (x, y, theta) from which the proposal distribution approximated. 
+        cov_std_scale: float
+            Defines the scaling factor to scale the covariance matrix of the estimated proposal.
+        cov_max_std_xy: float
+            Defines the maximum standard deviation in x and y direction of the estimated proposal distribution.
+        cov_max_std_theta: float
+            Defines the maximum standard deviation in theta direction of the estimated proposal distribution.
+        min_std_xy: float
+            Defines the minimum standard deviation in x and y direction of the estimated proposal distribution.
+        min_std_theta: float
+            Defines the minimum standard deviation in theta direction of the estimated proposal distribution.
+        run_seed: Optional[int]
+            The seed for the random number generator. If None, a random seed is used.
+
+        '''
         # Init measurement model counters
         self.meas_model_counters_fallback = {
             "call_count": 0,
@@ -1667,16 +1936,21 @@ class RBPF:
         }
 
         # Resampling step
+        # Derive a seed for the resampling operation based on the run seed
         resampling_seed = _derive_operation_seed(
             run_seed=run_seed,
             step_idx=step_idx,
             stream_id=RNG_STREAM_RESAMPLING,
         )
+
+        # Create a random number generator for resampling using the derived seed
         resampling_rng = (
             np.random.default_rng(resampling_seed)
             if resampling_seed is not None
             else None
         )
+
+        # Perform resampling if necessary and get the indices of the resampled particles
         indices = self.resampling(
             norm_weights=norm_weights,
             rng=resampling_rng,
@@ -1692,4 +1966,4 @@ class RBPF:
         # print(f"  updating particles: {duration_t_updating_particles_ms:.6f} ms")
         # print(f"  processing results: {duration_t_processing_results_ms:.6f} ms")
 
-        return neff, weighted_mean_pose
+        return None

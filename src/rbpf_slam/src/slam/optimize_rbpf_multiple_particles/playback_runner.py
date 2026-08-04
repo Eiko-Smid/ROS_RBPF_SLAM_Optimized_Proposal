@@ -18,7 +18,8 @@ from ..rbpf.particle_process_pool import ParticleProcessPool #_init_worker
 
 class PlaybackRunner:
     """
-    Runs one RBPF playback experiment for a single parameter set.
+    Playback runner which methods run a full RBPF run over one parameter set, seed and all playback steps. Returns
+    evaluated results for the run.
     """
 
     def __init__(
@@ -65,6 +66,20 @@ class PlaybackRunner:
     ) -> RunResult:
         """
         Executes one full RBPF run over all playback steps and returns evaluated results.
+
+        Parameters
+        ----------
+        playback_data : PlaybackData
+            The playback data containing the step data (odom, measurements, etc.) for the experiment.
+        params : ExperimentParams
+            The parameters for the RBPF experiment, including RBPF parameters etc.
+        run_seed : Optional[int], optional
+            An optional random seed for reproducibility. If provided, it will be used to seed the random number generator.
+        
+        Returns
+        -------
+        RunResult
+            The result of the RBPF run, including step results and summary statistics.
         """
         if run_seed is not None:
             np.random.seed(run_seed)
@@ -346,6 +361,20 @@ class PlaybackRunner:
         """
         Executes one full RBPF run over all playback steps and returns evaluated results. This version uses
         the RBPF parallel step method with a multiprocessing pool for parallel particle updates. 
+
+        Parameters
+        ----------
+        playback_data : PlaybackData
+            The playback data containing the step data (odom, measurements, etc.) for the experiment.
+        params : ExperimentParams
+            The parameters for the RBPF experiment, including RBPF parameters etc.
+        run_seed : Optional[int], optional
+            An optional random seed for reproducibility. If provided, it will be used to seed the random number generator.
+
+        Returns
+        -------
+        RunResult
+            The result of the RBPF run, including step results and summary statistics.
         """
         if run_seed is not None:
             np.random.seed(run_seed)
