@@ -29,17 +29,51 @@ def _beam_model_prob(
     eps: float,
 ) -> float:
     """
-    Probabilistic Robotics beam model:
+    Probabilistic Robotics beam model that estimates the likelihood of measuring the distance z given the expected
+    the range z_exp and the mixture weights for the different components. 
 
-        p(z | x, m) =
+        p(z | x, m) = p(z | z_exp) =
             w_hit   * p_hit
           + w_short * p_short
           + w_max   * p_max
           + w_rand  * p_rand
 
+    The pose x and the map m were used to compute the expected range z_exp. 
+
     Important naming:
         max_sensor_range = physical laser max range
         w_max            = mixture weight for max-range component
+
+    Parameters
+    ----------
+    z : float
+        The measured range.
+    z_exp : float
+        The expected range based on the map and the pose.
+    measured_max : bool
+        True if the measured range is max range, else False.
+    max_sensor_range : float
+        The maximum range of the sensor.
+    sigma_hit : float
+        The standard deviation of the Gaussian for the hit component.
+    lambda_short : float
+        Scaling factor to flatten the exponential distribution for the case that an unexpected object corrupted the
+        measurement (object between laser and beam endpoint).
+    w_hit : float
+        The mixture weight for the hit component.
+    w_short : float
+        The mixture weight for the short component.
+    w_max : float
+        The mixture weight for the max component.
+    w_rand : float
+        The mixture weight for the random component.
+    eps : float
+        Small value to avoid division by zero and log(0).
+
+    Returns
+    -------
+    prob : float
+        The likelihood of the measurement z given the expected range z_exp and the mixture weights.
     """
 
     # Safety
@@ -117,8 +151,21 @@ def _raytrace_first_occupied_cell(
     free_thresh: float,
 ):
     """
-    Bresenham raytracing from robot cell to beam endpoint. The goalis to find the first pccupied cell in a straight line
-    between the given pose and the end cell.
+    Bresenham raytracing from robot cell to beam endpoint. Estimates the first occupied cell along the ray.
+    Also gives other diagnostic information, see param descriptions below.
+
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        The occupancy grid map in log odds representation.
+    pose_i, pose_j : int
+        The robot cell coordinates in the occupancy grid map.
+    end_i, end_j : int
+        The endpoint cell coordinates in the occupancy grid map.
+    occ_thresh : float
+        The log odds threshold for a cell to be considered occupied.
+    free_thresh : float
+        The log odds threshold for a cell to be considered free.
 
     Returns
     -------
@@ -255,17 +302,76 @@ def raytracing_log_likelihood_numba(
     eps: float,
 ):
     """
-    Beam Range Finder Model based on Probabilistic Robotics,
-    extended for occupancy-grid SLAM cases:
+    Beam Range Finder Model based on Probabilistic Robotics. Computes the likelihood of obtaining the measurements given
+    the robots pose and the estimated map.
 
-    - pose outside map
-    - invalid measurements
-    - max-range measurements
-    - expected map hit
-    - known-free no-hit rays
-    - unknown rays
-    - out-of-map rays
+    Extends the book model with special cases for occupancy grid maps:
+        - pose outside map
+        - invalid measurements
+        - max-range measurements
+        - expected map hit
+        - known-free no-hit rays
+        - unknown rays
+        - out-of-map rays
 
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        The occupancy grid map in log odds representation.
+    shift_x, shift_y : float
+        The shift of the occupancy grid map in meters.
+    occ_thresh, free_thresh : float
+        The log odds thresholds for a cell to be considered occupied or free.
+    grid_resolution : float
+        The resolution of the occupancy grid map in meters.
+    min_sensor_range, max_sensor_range : float
+        The minimum and maximum range of the sensor in meters.
+    measurements : np.ndarray
+        The range and bearing measurements from the sensor, shape (N, 2): [range, bearing].
+    x, y, heading : float
+        The pose of the robot in meters and radians.
+    unknown_ratio_thresh: float
+        When this % of traversed cells is unknown and no beam endpoint cell has been detected, then the measurement
+        model will punish the measurement likelihood with p_unknown instead of a strong mismatch penalty.
+    known_free_ratio_thresh : float
+        When this % of traversed cells is known to be free, then the measurement model will punish if no endpoint
+        cell has been found.
+    sigma_hit : float
+        The standard deviation of the Gaussian for the hit component.
+    lambda_short : float
+        Scaling factor to flatten the exponential distribution for the case that an unexpected object corrupted the
+        measurement (object between laser and beam endpoint).
+    w_hit : float
+        The mixture weight for the hit component.
+    w_short : float
+        The mixture weight for the short component.
+    w_max : float
+        The mixture weight for the max component.
+    w_rand : float
+        The mixture weight for the random component.
+    p_unknown : float
+        The fixed per-beam likelihood used when no occupied map cell is predicted and a sufficiently large fraction of
+        the traversed ray is unknown.
+    p_out_of_map : float
+        Fixed per-beam likelihood used when the ray leaves the current map before a useful occupied-cell prediction can
+        be made.
+    p_unexpected_known_free: float
+        Fixed per-beam likelihood used when:
+            1. no occupied map cell is predicted,
+            2. the ray passes mainly through known-free cells, and
+            3. the real sensor nevertheless reports a finite obstacle.
+            not found in the map
+    p_pred_below_min : float
+        Fixed per-beam likelihood used when the map-predicted obstacle distance lies below the sensor's minimum usable range.
+        This normally indicates an implausible pose, such as the laser origin being inside or extremely close to an occupied
+        map cell.
+    alpha_meas : float
+        Scaling value to enable downscaling of the estimated log-likelihoods 
+    beam_step: int
+        Every nth beam will be processed, all others will be skipped.
+    eps : float
+        Small value to avoid division by zero and log(0).
+    
     Returns
     -------
     log_likelihood : float
@@ -639,17 +745,6 @@ def meas_model_likelihood_numba(
     unexpected_known_free_count = 0
     skipped_beam_count = 0
 
-    # call_count = 0
-    # valid_beam_counts = 0
-    # map_hit_counts = 0
-    # no_map_hit_counts = 0
-    # out_of_map_counts = 0
-    # unknown_ray_counts = 0
-    # known_free_ray_counts = 0
-    # unexpected_known_free_counts = 0
-    # skipped_beam_counts = 0
-
-
     for i in range(n_poses):
         # Compute raytracing likelihood
         (
@@ -711,15 +806,6 @@ def meas_model_likelihood_numba(
         known_free_ray_count += known_free_ray_counts[i]
         unexpected_known_free_count += unexpected_known_free_counts[i]
         skipped_beam_count += skipped_beam_counts[i]
-
-        # call_count += 1
-        # valid_beam_counts += valid_beam_count
-        # map_hit_counts += map_hit_count
-        # no_map_hit_counts += no_map_hit_count
-        # out_of_map_counts += out_of_map_count
-        # unknown_ray_counts += unknown_ray_count
-        # known_free_ray_counts += known_free_ray_count
-        # unexpected_known_free_counts += unexpected_known_free_count
 
 
     return (
@@ -821,20 +907,18 @@ class BeamRangeFinderModel(MeasurementModel):
         ogm: OGM,
     ) -> dict:
         """
-        Get's a 2D pose, the range, bearing measruements and an ogm object to compute the likelihood 
-        for the robot being in teh given pose, based on teh given data. 
-        The method filters nan values from the measruements. If u want them to count as max range measurements, then 
+        Get's a 2D pose, the range, bearing measurements and an ogm object to compute the likelihood 
+        for the robot being in the given pose, based on the given data. 
+        The method filters nan values from the measurements. If you want them to count as max range measurements, then 
         set all nan to max range before.
 
         Parameters
         ----------
-        pose:
+        pose: Pose2D
             (x, y, theta)
-
-        measurements:
+        measurements: List[Tuple[float, float]]
             List/array of (range, bearing)
-
-        ogm:
+        ogm: OGM
             Occupancy grid map.
 
         Returns
@@ -943,6 +1027,35 @@ class BeamRangeFinderModel(MeasurementModel):
         measurements: np.ndarray,
         ogm: OGM,
     ):
+        """
+        Get's an array of 2D poses, the range, bearing measurements and an ogm object to compute the measurement 
+        likelihood for all given poses. 
+        The method filters nan values from the measurements. If you want them to count as max range measurements, then 
+        set all nan to max range before.
+
+        Parameters
+        ----------
+        poses: numpy array of shape (N, 3)
+            Array of poses, where each pose is represented as (x, y, theta).
+        measurements : np.ndarray of shape (M, 2)
+            List/array of (range, bearing) measurements
+        ogm : OGM
+            Occupancy grid map.
+
+        Returns
+        -------
+        dict with:
+            log_likelihood
+            mean_abs_error
+            valid_beam_count
+            map_hit_count
+            no_map_hit_count
+            out_of_map_count
+            unknown_ray_count
+            known_free_ray_count
+            unexpected_known_free_count
+            skipped_beam_count
+        """
         # COnvert measurements to numpy arr
         measurements_np = np.asarray(measurements, dtype=np.float64)
 
@@ -1000,86 +1113,3 @@ class BeamRangeFinderModel(MeasurementModel):
         )
 
         return results
-
-
-    # def likelihood_batch(
-    #     self,
-    #     poses: np.ndarray,
-    #     measurements: List[Tuple[float, float]],
-    #     scan_matcher,
-    #     neighbor=None,
-    # ) -> np.ndarray:
-    #     """
-    #     Compatibility helper.
-
-    #     Returns log likelihoods for all poses.
-    #     This is not used in your current range-finder proposal path,
-    #     but keeping it avoids interface surprises.
-    #     """
-
-    #     values = np.empty(poses.shape[0], dtype=np.float64)
-
-    #     for i in range(poses.shape[0]):
-    #         result = self.likelihood(
-    #             pose=(poses[i, 0], poses[i, 1], poses[i, 2]),
-    #             measurements=measurements,
-    #             ogm=scan_matcher.ogm,
-    #         )
-    #         values[i] = result["log_likelihood"]
-
-    #     return values
-
-
-    # def likelihood_batch_copy(
-    #     self,
-    #     poses: np.ndarray,
-    #     measurements: List[Tuple[float, float]],
-    #     scan_matcher,
-    #     neighbor=None,
-    # ) -> np.ndarray:
-    #     """
-    #     Compatibility wrapper.
-    #     """
-    #     return self.likelihood_batch(
-    #         poses=poses,
-    #         measurements=measurements,
-    #         scan_matcher=scan_matcher,
-    #         neighbor=neighbor,
-    #     )
-
-
-    # def gmapping_likelihood(
-    #     self,
-    #     pose: Pose2D,
-    #     measurements: Tuple[float, float],
-    #     ogm: OGM,
-    #     usable_range: float,
-    #     kernel_size: int = 1,
-    #     fullness_threshold: float = 1.2,
-    #     free_threshold: float = 1.2,
-    #     gaussian_sigma: float = 0.05,
-    #     free_cell_ratio: float = np.sqrt(2.0),
-    # ) -> Tuple[float, float, int]:
-    #     """
-    #     Compatibility stub for older code paths.
-
-    #     Returns
-    #     -------
-    #     score, log_likelihood, matched_count
-    #     """
-
-    #     result = self.likelihood(
-    #         pose=pose,
-    #         measurements=measurements,
-    #         ogm=ogm,
-    #     )
-
-    #     log_likelihood = result["log_likelihood"]
-    #     matched_count = result["valid_beam_count"]
-
-    #     # Score is not used meaningfully here; return exp only safely for small values.
-    #     score = 0.0
-    #     if log_likelihood > -700.0:
-    #         score = float(np.exp(log_likelihood))
-
-    #     return score, log_likelihood, matched_count

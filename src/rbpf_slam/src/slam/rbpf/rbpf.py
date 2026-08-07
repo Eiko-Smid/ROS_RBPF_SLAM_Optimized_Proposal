@@ -96,12 +96,20 @@ class BeamRangeFinderMeasModelParams:
                                             # will punish if no endpoint cell has been found.
 
     sigma_hit: float = 0.15                 #  Standard deviation [m] of the Gaussian hit model. Controls how strongly
-                                            # a measured range is penalized when it differs from the excpected meas.
-    w_hit: float = 0.70                     
-    w_short: float = 0.10
-    lambda_short: float = 0.20
-    w_max: float = 0.10
-    w_rand: float = 0.10
+                                            # a measured range is penalized when it differs from the expected measurement.
+    
+    # Measurement model mixture weights. Must sum to 1.0!!!
+    
+    w_hit: float = 0.70                     # Weights the measurement likelihood for the case that a actual hit occured.
+    w_short: float = 0.10                   # Wights the measurement likelihood for the case that an unexpected object 
+                                            # corrupted the measurement (object between laser and beam endpoint).
+    lambda_short: float = 0.20              # Scaling factor to flatten the exponential distribution for the case that
+                                            # an unexpected object corrupted the measurement (object between laser and
+                                            # beam endpoint).
+    w_max: float = 0.10                     # Weights the measurement likelihood for the case that the laser returned a
+                                            # max range reading.
+    w_rand: float = 0.10                    # Weights the measurement likelihood for the case that a random measurement
+                                            # occures.
     
     p_unknown: float = 0.20                 # Fixed per-beam likelihood used when no occupied map cell is predicted and 
                                             # a sufficiently large fraction of the traversed ray is unknown.
@@ -116,7 +124,7 @@ class BeamRangeFinderMeasModelParams:
                                             # lies below the sensor's minimum usable range.
                                             # This normally indicates an implausible pose, such as the laser origin
                                             # being inside or extremely close to an occupied map cell.
-     
+    
     # Numerical / scaling
     alpha_meas: float = 0.10                # Scaling value to enable downscaling of the estimated log-likelihoods 
     beam_step: int = 2                      # Every nth beam will be processed, all others will be skipped.
@@ -1317,8 +1325,10 @@ class RBPF:
     ) -> None:
         '''
         Performs the update step of the RBPF SLAM algorithm for all particles. This includes the following steps:
-            1) Initialization process to only update the map for the first N steps. 
-            2) Predict and corrects the particle pose based on odometry and scan matching. 
+
+            1) Initialization process to only update the map for the first N steps. Init process is skipped if robot traveled 
+               more than odom_threshold according to wheel odom.
+            2) Predict and corrects the particle pose based on odom and scan matching. 
             3) Approximates the optimal proposal distribution near scan matcher maxima based on motion and measurement model,
                if scan matching was successful. Otherwise fallback to motion model prediction and measurement model likelihood.
             4) Updates the particle map based on the corrected particle pose or predicted particle pose if scan matching failed.
@@ -1603,7 +1613,9 @@ class RBPF:
         results: List[ParticleUpdateResult]
     ) -> Tuple[np.ndarray, bool, bool]:
         '''
-        Processes the results of the particle update step.
+        Processes the results of the particle update step. Updates the particles with the particles from the results in the 
+        correct order. Stores and returns the log p weights in correct order. Also estimates if scan matching or the fallback 
+        failed and updates the meas_model_counters_fallback if scan matching failed for any particle.
 
         Parameters
         ----------
@@ -1642,7 +1654,7 @@ class RBPF:
             scan_match_failed_any = scan_match_failed_any or res.scan_match_failed
             scan_match_fallback_failed_any = scan_match_fallback_failed_any or res.scan_match_fallback_failed
 
-            # Accumulate measurement fallback counters
+            # Accumulate measurement fallback counters if fallback path was used
             if res.scan_match_failed is True:
                 self.update_measurement_model_counters_fallback(res.meas_model_fallback_res)           
 
