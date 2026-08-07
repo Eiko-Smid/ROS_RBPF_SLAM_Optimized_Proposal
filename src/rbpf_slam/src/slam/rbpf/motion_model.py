@@ -5,6 +5,9 @@ from slam.infrastructure.defs import Pose2D
 
 
 class MotionModel:
+    '''
+    Class for doing kinematic pose estimation under uncertainty. 
+    '''
     def __init__(
             self,
             sigma_x: float = 0.1,

@@ -18,6 +18,10 @@ INVALID_LOG_LIKELIHOOD = -1.0e12
 
 
 class ProposalEstimator:
+    '''
+    Class for estiating/approximating the proposal distribution by a gaussian distribution. The estimation is done
+    based on initial pose, odometry and measurements. 
+    '''
     IDX_x=0
     IDX_y=1
     IDX_THETA=2
@@ -188,7 +192,7 @@ class ProposalEstimator:
         self.meas_model_counters["unexpected_known_free_count"] += result.get("unexpected_known_free_count", 0)
         
 
-    def compute_proposal_params(
+    def _compute_proposal_params(
         self,
         scan_match_pose: Pose2D,
         particle: Particle,
@@ -201,8 +205,50 @@ class ProposalEstimator:
         n_samples: int=3,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, Pose2D, float]:
         '''
-        Proposal computation with deterministic sampling around scan match pose. Motion and measurement probabilities are 
-        computed in batch to speedup process. The old NN based measurment model is used here with clipped distances!
+        Estimates the parameters of the proposal distribution (approximated by a Gaussian distribution) based on the
+        scan match pose, odometry, and measurements. 
+
+        Parameters
+        ----------
+        scan_match_pose: Pose2D
+            The pose obtained from scan matching.
+        particle: Particle
+            The particle for which the proposal is being estimated.
+        odom: Tuple[float, float]
+            The odometry readings (dl, dr) for the particle.
+        measurements: List[Tuple[float, float]]
+            The measurements (e.g., laser scans) associated with the particle.
+        motion_model: MotionModel
+            The motion model used to predict the particle's pose.
+        measurement_model: MeasurementModel
+            The measurement model used to compute the likelihood of the measurements.
+        sigma_xy: float
+            The standard deviation in x,y-direction used for the sampling area.
+        sigma_theta: float
+            The standard deviation in theta-direction used for the sampling area.
+        n_samples: int
+            The number of samples to draw for estimating the proposal distribution.
+
+        Returns
+        -------
+        mu: np.ndarray
+            The mean of the proposal distribution.
+        cov: np.ndarray
+            The covariance matrix of the proposal distribution.
+        norm: float
+            The normalization constant for the proposal distribution.
+        samples: np.ndarray
+            The sampled poses used for estimating the proposal distribution.
+        weights: np.ndarray
+            The weights that correspond to the sampled poses.
+        meas_probs: np.ndarray
+            The measurement probabilities for each sampled pose.
+        motion_probs: np.ndarray
+            The motion probabilities for each sampled pose.
+        pred_pose: Pose2D
+            The predicted pose based on odometry.
+        log_eta: float
+            The log measurement likelihood of the given particle.
         '''
         # Define vars
         norm = 0.0
@@ -343,68 +389,10 @@ class ProposalEstimator:
         self.t_compute_prop_params = time.perf_counter() - t_compute_proposal_start
 
         return mu, cov, norm, samples, weights, meas_probs, motion_probs, pred_pose, log_eta
-
-    
-    @staticmethod
-    def shrink_and_limit_cov(
-        cov: np.ndarray,
-        std_scale: float=0.5,
-        max_std_xy: Optional[float]=None,
-        min_std_xy: Optional[float]=None,
-        max_std_theta: Optional[float]=None,
-        min_std_theta: Optional[float]=None
-    ):
-        cov = np.asarray(cov, dtype=float)
-
-        # Extract std
-        old_var = np.maximum(np.diag(cov), 1e-12)
-        old_std = np.sqrt(old_var)
-
-        # Scale std
-        new_std = std_scale * old_std
-
-        # Clip std
-        if max_std_xy is not None and min_std_xy is not None:
-            new_std[0] = np.clip(new_std[0], min_std_xy, max_std_xy)
-            new_std[1] = np.clip(new_std[1], min_std_xy, max_std_xy)
-        
-        if max_std_theta is not None and min_std_theta is not None:
-            new_std[2] = np.clip(new_std[2], min_std_theta, max_std_theta)
-
-        new_cov = np.diag(new_std**2)
-        new_cov += 1e-9 * np.eye(3) 
-
-        return new_cov
-
-
-    def sample_from_proposal_limit(
-        self,
-        mu: np.ndarray,
-        cov: np.ndarray,
-        std_scale: float=0.5,
-        max_std_xy: Optional[float]=None,
-        min_std_xy: Optional[float]=None,
-        max_std_theta: Optional[float]=None,
-        min_std_theta: Optional[float]=None
-    ):
-    # Chrink and limit the std in the cov variance to sample closer to estimated mean of proposal
-        new_cov = self.shrink_and_limit_cov(
-            cov=cov,
-            std_scale=std_scale,
-            max_std_xy=max_std_xy,
-            min_std_xy=min_std_xy,
-            max_std_theta=max_std_theta,
-            min_std_theta=min_std_theta
-        )       
-
-        new_pose = np.random.multivariate_normal(mean=mu, cov=new_cov)
-        new_pose[self.IDX_THETA] = np.arctan2(np.sin(new_pose[self.IDX_THETA]), np.cos(new_pose[self.IDX_THETA]))
-        
-        return new_pose
     
 
     @staticmethod
-    def shrink_and_limit_cov_v2(
+    def __shrink_and_limit_cov(
         cov: np.ndarray,
         std_scale: float=0.5,
         max_std_xy: Optional[float]=None,
@@ -412,6 +400,10 @@ class ProposalEstimator:
         max_std_theta: Optional[float]=None,
         min_std_theta: Optional[float]=None
     ):
+        '''
+        Shrinks the given covariance matrix based on the given scale parameter, while ensuring that the resulting standard deviations
+        are within the specified limits. Returns the modified covariance matrix.
+        '''
         cov = np.asarray(cov, dtype=float)
         cov = 0.5 * (cov + cov.T)
 
@@ -435,7 +427,7 @@ class ProposalEstimator:
         return new_cov
 
 
-    def sample_from_proposal_limit_2(
+    def _sample_from_proposal_limit(
         self,
         mu: np.ndarray,
         cov: np.ndarray,
@@ -446,7 +438,11 @@ class ProposalEstimator:
         min_std_theta: Optional[float]=None,
         rng: Optional[np.random.Generator]=None,
     ):
-        new_cov = self.shrink_and_limit_cov_v2(
+        '''
+        Shrinks the given cov based in the given scale param, while ensuring the limits. Returns the pose sampled from that
+        proposal with the shrunk and limited covariance.
+        '''
+        new_cov = self.__shrink_and_limit_cov(
             cov=cov,
             std_scale=std_scale,
             max_std_xy=max_std_xy,
@@ -482,6 +478,63 @@ class ProposalEstimator:
         min_std_theta: float=0.0,
         rng: Optional[np.random.Generator]=None,
     ):
+        '''
+        Estimates the new pose of the given particle by sampling from the estimated proposal distribution. The estimated proposal
+        distribution is approximated by a Gaussian distribution with mean and covariance. Its parameters are computed based on
+        the scan match pose, odometry, and measurements. 
+
+        Parameters
+        ----------
+        scan_match_pose: Pose2D
+            The pose obtained from scan matching.
+        particle: Particle
+            The particle for which the proposal is being estimated.
+        odom: Tuple[float, float]
+            The odometry readings (dl, dr) for the particle.
+        measurements: List[Tuple[float, float]]
+            The measurements (e.g., laser scans) associated with the particle.
+        motion_model: MotionModel
+            The motion model used to predict the particle's pose.
+        measurement_model: MeasurementModel
+            The measurement model used to compute the likelihood of the measurements.
+        sigma_xy: float
+            The standard deviation in x,y-direction used for the sampling area.
+        sigma_theta: float
+            The standard deviation in theta-direction used for the sampling area.
+        n_samples: int
+            The number of samples to draw for estimating the proposal distribution.
+        cov_std_scale: float
+            Scaling factor to downscale the var/cov of the cov matrix.
+        cov_max_std_xy: float
+            Maximum standard deviation in x,y-direction for the proposal distribution.
+        cov_max_std_theta: float
+            Maximum standard deviation in theta-direction for the proposal distribution.
+        min_std_xy: float
+            Minimum standard deviation in x,y-direction for the proposal distribution.
+        min_std_theta: float
+            Minimum standard deviation in theta-direction for the proposal distribution.
+        rng: Optional[np.random.Generator]
+            Optional random number generator for reproducibility.  
+
+        Returns
+        -------
+        new_p_pose: Pose2D
+            The newly estimated pose for the particle.
+        log_eta: float
+            The log measurement likelihood of the given particle.
+        info: Dict[str, Any]
+            Dictionary containing additional information about the proposal estimation, including:
+                - "prop_mu": The mean of the proposal distribution.
+                - "prop_cov_matrix": The covariance matrix of the proposal distribution.
+                - "scan_match_pose": The scan match pose used for estimation.
+                - "pred_pose": The predicted pose based on odometry.
+                - "xjs": The sampled poses used for estimating the proposal distribution.
+                - "xj_weights": The weights that correspond to the sampled poses.
+                - "motion_probs": The motion probabilities for each sampled pose.
+                - "meas_probs": The measurement probabilities for each sampled pose.
+                - "measurement_model_counters": Counters related to the measurement model evaluation.
+                - "prop_timings": Timings related to the proposal estimation.
+        '''
         # Rest proposal timings
         self.t_sample_poses = 0.0
         self.t_pred_poses = 0.0
@@ -491,7 +544,7 @@ class ProposalEstimator:
         self.t_sample_from_prop = 0.0
 
         # Compute proposal parameter with ray tracing 
-        mu, cov, norm, xjs, xj_weights, meas_probs, motion_probs, pred_pose, log_eta = self.compute_proposal_params(
+        mu, cov, norm, xjs, xj_weights, meas_probs, motion_probs, pred_pose, log_eta = self._compute_proposal_params(
             scan_match_pose=scan_match_pose,
             particle=particle,
             odom=odom,
@@ -509,7 +562,7 @@ class ProposalEstimator:
 
         # Estimate new particle pose
         # new_p_pose = mu
-        new_p_pose = self.sample_from_proposal_limit_2(
+        new_p_pose = self._sample_from_proposal_limit(
             mu=mu,
             cov=cov,
             std_scale=cov_std_scale,
@@ -560,6 +613,49 @@ class ProposalEstimator:
         sigma_theta: float=1.0,
         n_samples: int=3,
     ):
+        '''
+        Approximates the proposal distribution by a Gaussian distribution with mean and covariance. Its 
+        parameters are computed based on the scan match pose, odometry, and measurements. The new particle
+        pose will be the mean if the proposal distribution. 
+
+        scan_match_pose: Pose2D
+            The pose obtained from scan matching.
+        particle: Particle
+            The particle for which the proposal is being estimated.
+        odom: Tuple[float, float]
+            The odometry readings (dl, dr) for the particle.
+        measurements: List[Tuple[float, float]]
+            The measurements (e.g., laser scans) associated with the particle.
+        motion_model: MotionModel
+            The motion model used to predict the particle's pose.
+        measurement_model: MeasurementModel
+            The measurement model used to compute the likelihood of the measurements.
+        sigma_xy: float
+            The standard deviation in x,y-direction used for the sampling area.
+        sigma_theta: float
+            The standard deviation in theta-direction used for the sampling area.
+        n_samples: int
+            The number of samples to draw for estimating the proposal distribution.
+
+        Returns
+        -------
+        new_p_pose: Pose2D
+            The newly estimated pose for the particle.
+        log_eta: float
+            The log measurement likelihood of the given particle.
+        info: Dict[str, Any]
+            Dictionary containing additional information about the proposal estimation, including:
+                - "prop_mu": The mean of the proposal distribution.
+                - "prop_cov_matrix": The covariance matrix of the proposal distribution.
+                - "scan_match_pose": The scan match pose used for estimation.
+                - "pred_pose": The predicted pose based on odometry.
+                - "xjs": The sampled poses used for estimating the proposal distribution.
+                - "xj_weights": The weights that correspond to the sampled poses.
+                - "motion_probs": The motion probabilities for each sampled pose.
+                - "meas_probs": The measurement probabilities for each sampled pose.
+                - "measurement_model_counters": Counters related to the measurement model evaluation.
+                - "prop_timings": Timings related to the proposal estimation.
+        '''
         # Rest proposal timings
         self.t_sample_poses = 0.0
         self.t_pred_poses = 0.0
@@ -569,7 +665,7 @@ class ProposalEstimator:
         self.t_sample_from_prop = 0.0
 
         # Compute proposal parameter with ray tracing 
-        mu, cov, norm, xjs, xj_weights, meas_probs, motion_probs, pred_pose, log_eta = self.compute_proposal_params(
+        mu, cov, norm, xjs, xj_weights, meas_probs, motion_probs, pred_pose, log_eta = self._compute_proposal_params(
             scan_match_pose=scan_match_pose,
             particle=particle,
             odom=odom,
