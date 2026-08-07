@@ -138,9 +138,7 @@ from .step_processor import StepProcessor
 
     7.1 Ref 1 (Full n playbacks)
         - After every code change that can influence the results, compare the results against this reference (score)
-    
-
-    
+        
 
 '''
 
@@ -193,6 +191,7 @@ ICP_CTRL_PARAMS = [True]
 
 POSE_APPENDIX = ("x", "y", "theta_deg")
 
+# Defines the columns of the step data that will be written to csv. All others in df will be skipped
 STEP_COLS_TO_USE = [
     # General run information
     "rank",
@@ -266,6 +265,7 @@ class PlaybackDataset:
     playback_suffix: str
 
 
+# Defines the playback data that is being used in the tuning pipe.
 PLAYBACK_DATA_LIST = [
     # turtle bot map
     PlaybackDataset(
@@ -285,6 +285,7 @@ PLAYBACK_DATA_LIST = [
 
 
 def debug():
+    '''Starts debugpy and waits for debugger to attach.'''
     debugpy.listen(("localhost", 5678))
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()  
@@ -292,6 +293,7 @@ def debug():
 
 
 def _to_jsonable(value: Any) -> Any:
+    '''Converts a value to a JSON-serializable format.'''
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, np.generic):
@@ -307,6 +309,9 @@ def _to_jsonable(value: Any) -> Any:
 
 # Define params for big grid search after newly implemented grid based subsampling
 def _grid_axes():
+    '''
+    Defines the parameter grid to use.
+    '''
     return {
         "every_nth_beam_filter": [2],
         "every_nth_beam_map": [2],
@@ -343,6 +348,9 @@ def write_parameter_overview(
     wheel_separation: float,
     override: bool = False,
 ) -> None:
+    '''
+    Writes the parameter grid together with all other experiment parameters to a JSON file for later reference
+    '''
     file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
 
     if file_exists and not override:
@@ -387,6 +395,9 @@ def generate_param_grid(
     wheel_separation: float,
     n_repeats: int = 1,
 ) -> Iterator[ExperimentParams]:
+    '''
+    Generates one instance of te experiment parameters for each parameter combination defined in grid axes. 
+    '''
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
 
@@ -560,6 +571,12 @@ def generate_param_grid(
 
 
 def build_optimizer() -> ScanMatchingOptimizer:
+    '''
+    Builds the ScanMatchingOptimizer with the required components: 
+    - PlaybackRunnerScanMatching
+    - ScanMatchingEvaluator
+    - ScanMatchingScorer
+    '''
     runner = PlaybackRunnerScanMatching(
         factory=RBPFFactory(),
         evaluator=ScanMatchingEvaluator(),
@@ -573,12 +590,27 @@ def build_optimizer() -> ScanMatchingOptimizer:
 
 
 def scan_matcher_tuning_pipeline() -> None:
+    '''
+    Tuning pipe to find the best possbile scan matcher parameter based on the defined parameter grid inside _grid_axes(). 
+    Process:
+        1) Defines storage
+        2) initialize pipeline components
+        3) Load each dataset and converts the loaded playback data
+        4) Runs the optimizer that runs the scan matcher on all datasets with all parameter combinations and all seeds.
+           Computes the metrics for each run and stores the results in a ranked list of runs.
+        5) Sorts the estimated resutls by score
+        6) Processes the ranked runs 
+        7) Aggregates the summary results by dataset and parameter/seed combinations. 
+        8) Stores the results of the pipeline
+    '''
+    # Define storage paths for results
     ranked_run_list = []
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
     agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
     agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
     ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
 
+    # Initialize tuning pipe components
     playback_loader = PlaybackLoader()
     playback_conv = PlaybackConverter()
     optimizer = build_optimizer()
@@ -604,6 +636,7 @@ def scan_matcher_tuning_pipeline() -> None:
             prompt_for_missing_start_pose=True,
         )
 
+        # Extract start pose and wheel separation from playback metadata 
         start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
         wheel_separation = float(raw_playback_data.metadata["wheel_separation"])
         print(f"Using start pose for tuning: {start_pose}")
@@ -627,6 +660,7 @@ def scan_matcher_tuning_pipeline() -> None:
             max_range=MAX_SENSOR_RANGE,
         )
 
+        # Run optimizer in sequential mode -> optimization results
         ranked_runs, optm_duration_s = optimizer.optimize(
             playback_data=playback_data,
             param_grid=generate_param_grid(
@@ -651,7 +685,7 @@ def scan_matcher_tuning_pipeline() -> None:
         overall_optm_duration_s = sum(cleaned_optm_duratios)
         print(f"\n\nFinished overall scan matching optimization in {overall_optm_duration_s} s")
 
-    # Process step data into one flat DataFrame row per stored step.
+    # Process step data into one flat DataFrame row per stored step if needed
     if KEEP_STEP_RESULTS:
         step_trace_df = step_processor.process_ranked_runs(
             ranked_runs=ranked_run_list,
@@ -667,6 +701,8 @@ def scan_matcher_tuning_pipeline() -> None:
         score_col="score",
         ascending=True,
     )
+
+    # Aggregate the summary results
     agg_dataset_seed_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
     agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_seed_df)
     ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
@@ -700,7 +736,7 @@ def scan_matcher_tuning_pipeline() -> None:
         float_decimals=CSV_FLOAT_DECIMALS,
     )
 
-    # Save independent per-step diagnostic traces for each ranked run.
+    # Save step data if needed
     if KEEP_STEP_RESULTS:
         writer.write_dataframe_csv(
             path=SCAN_MATCHING_STEP_TRACE_PATH,
@@ -716,12 +752,28 @@ def scan_matcher_tuning_pipeline() -> None:
 
 
 def scan_matcher_tuning_pipeline_multiprocessing() -> None:
+    '''
+    Parallel tuning pipe to find the best possible scan matcher parameters based on the parameter grid defined in
+    _grid_axes().
+    Process:
+        1) Defines storage
+        2) Initializes pipeline components
+        3) Loads each dataset and converts the loaded playback data
+        4) Runs the optimizer in parallel on all datasets with all parameter combinations and all seeds.
+           Computes the metrics for each run and stores the results in a ranked list of runs.
+        5) Sorts the estimated results by score
+        6) Processes the ranked runs
+        7) Aggregates the summary results by dataset and parameter/seed combinations
+        8) Stores the results of the pipeline
+    '''
+    # Define storage paths for results
     ranked_run_list = []
     ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
     agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
     agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
     ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
 
+    # Initialize tuning pipe components
     playback_loader = PlaybackLoader()
     playback_conv = PlaybackConverter()
     optimizer = build_optimizer()
@@ -747,6 +799,7 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
             prompt_for_missing_start_pose=True,
         )
 
+        # Extract start pose and wheel separation from playback metadata
         start_pose = tuple(raw_playback_data.metadata["robot_start_pose"])
         wheel_separation = float(raw_playback_data.metadata["wheel_separation"])
         print(f"Using start pose for tuning: {start_pose}")
@@ -797,7 +850,7 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
         overall_optm_duration_s = sum(cleaned_optm_duratios)
         print(f"\n\nFinished overall scan matching optimization in {overall_optm_duration_s} s")
 
-    # Process step data into one flat DataFrame row per stored step.
+    # Process step data into one flat DataFrame row per stored step if needed
     if KEEP_STEP_RESULTS:
         step_trace_df = step_processor.process_ranked_runs(
             ranked_runs=ranked_run_list,
@@ -813,6 +866,8 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
         score_col="score",
         ascending=True,
     )
+
+    # Aggregate the summary results
     agg_dataset_seed_df = result_aggregator.aggregate_by_dataset_and_param(ranked_run_df)
     agg_param_df = result_aggregator.aggregate_by_params(agg_dataset_seed_df)
     ranked_param_overview_df = result_aggregator.build_ranked_parameter_overview(
@@ -846,7 +901,7 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
         float_decimals=CSV_FLOAT_DECIMALS,
     )
     
-    # Save step data only when needed
+    # Save step data if needed
     if KEEP_STEP_RESULTS:
         writer.write_dataframe_csv(
             path=SCAN_MATCHING_STEP_TRACE_PATH,
