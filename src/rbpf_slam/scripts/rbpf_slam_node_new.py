@@ -205,8 +205,6 @@ def load_experiment_params(start_pose: Pose2D) -> ExperimentParams:
 
     try:
         icp_config = dict(config["icp_params"])
-        downsample_grid_size = icp_config.pop("downsample_grid_size")
-
         exp_params = ExperimentParams(
             measurement_model_params=BeamRangeFinderMeasModelParams(
                 **config["measurement_model_params"]
@@ -221,7 +219,6 @@ def load_experiment_params(start_pose: Pose2D) -> ExperimentParams:
                 **config["map_params"]
             ),
             icp_params=ICPParams(
-                downssample_grid_size=downsample_grid_size,
                 **icp_config,
             ),
             robot_params=RobotParams(

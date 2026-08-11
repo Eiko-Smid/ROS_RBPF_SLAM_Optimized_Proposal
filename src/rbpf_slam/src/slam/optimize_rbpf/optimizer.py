@@ -310,7 +310,7 @@ class RBPFOptimizer:
             ranges = [r for r, _ in step.scan]
             bearings = [b for _, b in step.scan]
 
-            noisy_ranges = PlaybackConverter.add_measurement_noise(
+            noisy_ranges = PlaybackConverter._add_measurement_noise(
                 ranges=ranges,
                 stddev=measurement_stddev,
                 min_range=min_range,

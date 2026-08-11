@@ -55,7 +55,7 @@ class RankedRunConverterScanMatching:
 
                     # Grid parameters: ICPParams
                     "max_n_points": params.icp_params.max_n_points,
-                    "downssample_grid_size": params.icp_params.downssample_grid_size,
+                    "downsample_grid_size": params.icp_params.downsample_grid_size,
 
                     "neighbors_pca": params.icp_params.neighbors_pca,
                     "max_iterations": params.icp_params.max_iterations,

@@ -1905,7 +1905,7 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
                 ),
                 icp_params=ICPParams(
                     max_n_points=1200,
-                    downssample_grid_size=0.1,
+                    downsample_grid_size=0.1,
                     max_correspondence_distance=0.4,
                     neighbors_pca=6,
                     max_iterations=5,

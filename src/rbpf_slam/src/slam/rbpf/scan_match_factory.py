@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import List
+from dataclasses import dataclass
 
 from ..scan_matcher.scan_matcher import ScanMatcher
 from ..scan_matcher.ogm_scan_matching import OGM
@@ -8,24 +7,43 @@ from ..scan_matcher.icp_scan_matching import IterativeClosestPoint
 
 @dataclass(frozen=True)
 class OccupancyParams:
+    '''
+    Parameters for the occupancy grid map (OGM).
+    '''
+    # Min distance to keep to the border in meters. If distance is below -> extend map
     min_distance_to_border: float = 10.0
+    # The prior probability of the ogm
     prior_probability: float = 0.5
-    increasing_probability: float = 0.65
-    decreasing_probability: float = 0.35
-    min_log_odds: float = -100
-    max_log_odds: float = 100
+    # The increasing probability of the ogm
+    increasing_probability: float = 0.85
+    # The decreasing probability of the ogm
+    decreasing_probability: float = 0.15
+    # The minimum log odds of the ogm
+    min_log_odds: float = -5.0
+    # The maximum log odds of the ogm
+    max_log_odds: float = 5.0
 
 
 @dataclass(frozen=True)
 class SensorParams:
+    '''
+    Parameters for the sensor.'''
+    # The minimum sensor range of the robot
     min_sensor_range: float = 0.1
+    # The maximum sensor range of the robot
     max_sensor_range: float = 10.0
 
 
 @dataclass(frozen=True)
 class MapParameter:
+    '''
+    Parameters for the map.
+    '''
+    # The width of the map in meters
     map_width: float
+    # The height of the map in meters
     map_height: float
+    # The resolution of the map in meters per cell
     grid_resolution_m: float = 0.5
 
 
@@ -34,9 +52,13 @@ class ICPParams:
     '''
     Parameters for ICP algorithm
     '''
+    # The first downsample stage divides the distances into discrete cells. Only one point in each cell is kept.
+    # grid size in meters.
+    downsample_grid_size: float = 0.1
+    # The max number of points to use for ICP. If more points left they will be downsampled.
     max_n_points: int = 400
-    downssample_grid_size: float = 0.1
-    ctrl_params: List[bool] = field(default_factory=lambda: [False]) 
+
+    skip_subsampling: bool = False
     max_correspondence_distance: float = 0.6
     neighbors_pca: int = 10
     max_iterations: int = 5
@@ -59,6 +81,7 @@ class ScanMatcherParams:
     '''
     Parameters for the scan matcher.
     '''
+
     occ_thres: float
     delta_r: float
     surface_radius_m: float = 0.1
@@ -119,12 +142,12 @@ class ScanMatchFactory:
                 "max_translation_jump": icp_params.max_translation_jump,
                 "max_rotation_jump": icp_params.max_rotation_jump,
                 "max_acceptable_mean_error": icp_params.max_acceptable_mean_error,
-                "downssample_grid_size": icp_params.downssample_grid_size,
+                "downsample_grid_size": icp_params.downsample_grid_size,
             },
             max_n_points=icp_params.max_n_points,
             max_correspondence_distance=icp_params.max_correspondence_distance,
             n_neighbors=icp_params.neighbors_pca,
-            ctrl_params=icp_params.ctrl_params,
+            skip_subsampling=icp_params.skip_subsampling,
         )
 
         # Init scan matcher
