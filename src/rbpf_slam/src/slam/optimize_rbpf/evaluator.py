@@ -390,7 +390,45 @@ class RBPFEvaluator:
         measurement_model_counters_fallback: Optional[dict] = None,
     ) -> StepResult:
         """
-        Evaluates one RBPF step and returns per-step errors.
+        Evaluates one RBPF step and returns per-step metrics and information.
+
+        Parameters
+        ----------
+        step_idx : int
+            The index of the current step.
+        t : float
+            The timestamp of the current step.
+        true_pose : Any
+            The true pose of the robot at the current step.
+        raw_odom_pose : Any
+            The raw odometry pose of the robot at the current step.
+        est_pose : Any
+            The estimated pose of the robot at the current step.
+        best_particle_pose : Any
+            The pose of the best particle at the current step.
+        scan_match_failed : Optional[bool]
+            Indicates whether scan matching failed at the current step.
+        scan_match_fallback_failed : Optional[bool]
+            Indicates whether scan matching fallback failed at the current step.
+        neff : Optional[float]
+            The effective number of particles at the current step.
+        particle_weight_min : Optional[float]
+            The minimum particle weight at the current step.
+        particle_weight_max : Optional[float]
+            The maximum particle weight at the current step.
+        particle_weight_mean : Optional[float]
+            The mean particle weight at the current step.
+        step_duration : Optional[float]
+            The duration of the current step.
+        proposal_metrics : Optional[dict], optional
+            A dictionary containing proposal metrics for the current step. Default is None.
+        measurement_model_counters_fallback : Optional[dict], optional
+            A dictionary containing measurement model counters for the fallback model at the current step. Default is None.
+
+        Returns
+        -------
+        StepResult
+            An object containing the evaluation results for the current step.
         """
         true_pose_t = self._to_pose_tuple(true_pose)
         raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
@@ -1158,9 +1196,21 @@ class RBPFEvaluator:
         )
 
 
-    def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> dict:
+    def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> Dict:
         """
-        Computes run-level metrics for optimization and reporting.
+        Summarizes the step results of entire run into metrics that can be used for reporting and analysis.
+
+        Parameters
+        ----------
+        step_results : List[StepResult]
+            List of StepResult objects containing per-step metrics.
+        params : Optional[ExperimentParams], optional
+            Optional experiment parameters for context, by default None.
+        
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing summarized run-level metrics.
         """
         # Filter out infinite values form data before computing summary metrics
         trans_err = self._finite_values([s.translation_error for s in step_results if s.translation_error is not None])

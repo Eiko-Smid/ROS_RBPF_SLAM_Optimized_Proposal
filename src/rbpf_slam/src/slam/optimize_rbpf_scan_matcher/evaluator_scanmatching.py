@@ -225,6 +225,69 @@ class ScanMatchingEvaluator:
         step_duration: Optional[float],
         t_update_particle: Optional[float],
     ) -> StepResultScanMatching:
+        '''
+        Evaluates one Scan matcher step and returns per-step metrics and information.
+
+        Parameters
+        ----------
+        step_idx : int
+            The index of the current step in the run.
+        t : float
+            The timestamp of the current step.
+        true_pose : Any
+            The ground truth pose of the robot at the current step.
+        raw_odom_pose : Any
+            The raw odometry pose of the robot at the current step.
+        pred_pose : Any
+            The predicted pose of the robot at the current step.
+        corr_pose : Any
+            The corrected pose of the robot at the current step.
+        best_transformation : Any
+            The best transformation found by the ICP algorithm at the current step.
+        icp_iterations : Optional[int]
+            The number of iterations performed by the ICP algorithm at the current step.
+        icp_mean_error : Optional[float]
+            The mean error of the ICP algorithm at the current step.
+        n_correspondences : Optional[int]
+            The number of correspondences found by the ICP algorithm at the current step.
+        use_transformation : Optional[bool]
+            Whether the ICP transformation was used to correct the pose at the current step.
+        stop_reason : Optional[str]
+            The reason why the ICP algorithm stopped at the current step.
+        n_measurements_total : Optional[int]
+            The total number of measurements used in the scan matching at the current step.
+        n_valid_measurements_filter : Optional[int]
+            The number of valid measurements after filtering at the current step.
+        n_valid_measurements_map_update : Optional[int]
+            The number of valid measurements used for map update at the current step.
+        n_map_points_extracted : Optional[int]
+            The number of map points extracted for scan matching at the current step.
+        n_map_points_spartial_downsampling : Optional[int]
+            The number of map points after partial downsampling at the current step.
+        n_map_points_used : Optional[int]
+            The number of map points used for scan matching at the current step.
+        t_ogm : Optional[float]
+            The time taken for occupancy grid map update at the current step.
+        t_scan_matching : Optional[float]
+            The time taken for scan matching at the current step.
+        t_prediction : Optional[float]
+            The time taken for pose prediction at the current step.
+        t_map_extraction : Optional[float]
+            The time taken for map extraction at the current step.
+        t_correct_pose : Optional[float]
+            The time taken for pose correction at the current step.
+        scan_match_failed : Optional[bool]
+            Whether the scan matching failed at the current step.
+        step_duration : Optional[float]
+            The duration of the current step.
+        t_update_particle : Optional[float]
+            The time taken for particle update at the current step.
+
+        Returns
+        -------
+        StepResultScanMatching
+            An instance of StepResultScanMatching containing the evaluated metrics and information for the current step.
+        '''
         # Converts the given poses to a Pose2D tuple format
         true_pose_t = self._to_pose_tuple(true_pose)
         raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
@@ -335,6 +398,21 @@ class ScanMatchingEvaluator:
 
 
     def summarize_run(self, step_results: List[StepResultScanMatching], params: ExperimentParams) -> RunSummaryScanMatching:
+        '''
+        Summarizes the step results of entire run into metrics that can be used for reporting and analysis.
+        
+        Parameters
+        ----------
+        step_results : List[StepResultScanMatching]
+            A list of StepResultScanMatching objects containing the results of each step in the run.
+        params : ExperimentParams
+            The parameters used for the experiment/run.
+        
+        Returns
+        -------
+        RunSummaryScanMatching
+            An instance of RunSummaryScanMatching containing summarized metrics for the entire run.
+        '''
         # Test: map points to summary lists
         # n_map_points_extracted_list = [s.n_map_points_extracted for s in step_results if s.n_map_points_extracted is not None]
         n_map_points_used_list = [s.n_map_points_used for s in step_results if s.n_map_points_used is not None]

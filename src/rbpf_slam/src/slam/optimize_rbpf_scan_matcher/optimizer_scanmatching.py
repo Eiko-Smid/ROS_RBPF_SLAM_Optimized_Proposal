@@ -270,6 +270,32 @@ class ScanMatchingOptimizer:
         map_name: Optional[str] = None,
         use_seed_list_for_measurement_noise: bool = True,
     ) -> List[RankedRunScanMatching]:
+        '''
+        Runs the Scan matcher once per parameter set and ranks all runs by score (lower is better).
+
+        Parameters
+        ----------
+        playback_data : PlaybackData
+            The playback data to use for the optimization.
+        param_grid : Iterable[ExperimentParams]
+            An iterable of ExperimentParams objects representing the parameter sets to evaluate.
+        seeds : Iterable[int], optional
+            An iterable of random seeds to use for the optimization. If None, a single run without a seed is performed.
+        dataset_id : Optional[int], optional
+            An optional identifier for the dataset being used. This can be useful for logging or tracking purposes.
+        map_name : Optional[str], optional
+            An optional name for the map being used. This can be useful for logging or tracking purposes.
+        use_seed_list_for_measurement_noise : bool, optional
+            If True, the provided seeds will be used to generate measurement noise. If False, no measurement noise
+            will be applied. Default is True.
+        
+        Returns
+        -------
+        List[RankedRunScanMatching]
+            A list of RankedRunScanMatching objects, sorted by score in ascending order (best score first).
+        optm_duration_s : float
+            The total duration of the optimization process in seconds.
+        '''
         # Convert params and seeds
         params_list = list(param_grid)
         seed_list = [int(s) for s in seeds] if seeds is not None else [None]
@@ -359,6 +385,38 @@ class ScanMatchingOptimizer:
         max_workers: Optional[int] = None,
         keep_step_results: bool = False,
     ) -> List[RankedRunScanMatching]:
+        '''
+        Runs the Scan matcher once per parameter set and ranks all runs by score (lower is better).
+
+        Parameters
+        ----------
+        playback_data : PlaybackData
+            The playback data to use for the optimization.
+        param_grid : Iterable[ExperimentParams]
+            An iterable of ExperimentParams objects representing the parameter sets to evaluate.
+        seeds : Iterable[int], optional
+            An iterable of random seeds to use for the optimization. If None, a single run without a seed is performed.
+        dataset_id : Optional[int], optional
+            An optional identifier for the dataset being used. This can be useful for logging or tracking purposes.
+        map_name : Optional[str], optional
+            An optional name for the map being used. This can be useful for logging or tracking purposes.
+        use_seed_list_for_measurement_noise : bool, optional
+            If True, the provided seeds will be used to generate measurement noise. If False, no measurement noise
+            will be applied. Default is True.
+        max_workers : Optional[int], optional
+            The maximum number of worker processes to use for parallel execution. If None, it will default to the number of
+            available CPU cores minus one. Default is None.
+        keep_step_results : bool, optional
+            If True, the step-by-step results of each run will be kept in the RankedRun objects. This can be useful
+            for detailed analysis but may consume more memory. Default is False.
+        
+        Returns
+        -------
+        List[RankedRunScanMatching]
+            A list of RankedRunScanMatching objects, sorted by score in ascending order (best score first).
+        optm_duration_s : float
+            The total duration of the optimization process in seconds.
+        '''
         # Convert params and seeds
         params_list = list(param_grid)
         seed_list = [int(s) for s in seeds] if seeds is not None else [None]

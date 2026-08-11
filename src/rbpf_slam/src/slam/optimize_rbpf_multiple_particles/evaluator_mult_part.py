@@ -1162,6 +1162,26 @@ class RBPFEValMultParticles:
             particle_update_counter: int,
             params: Optional[ExperimentParams] = None
     ) -> Dict:
+        '''
+        Summarizes the results of a run of the RBPF over multiple steps. This method computes seevral metrics
+        and returns the computed metrics as a Dict.
+
+        Parameters
+        ----------
+        step_res : List[StepResult]
+            A list of StepResult objects containing the evaluation results for each step of the run.
+        init_counter : int
+            The number of times the RBPF was initialized during the run.
+        particle_update_counter : int
+            The number of times the particles were updated during the run.
+        params : Optional[ExperimentParams], optional
+            The experiment parameters used for the run, by default None.
+
+        Returns
+        -------
+        Dict
+            A dictionary containing the summarized metrics of the run.
+        '''
         # Summarize and filter
         # ________________________________________________________________________________________
 
