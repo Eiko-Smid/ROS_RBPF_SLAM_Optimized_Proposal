@@ -121,9 +121,6 @@ experiment:
     meas_kernel_size: 1
     gaussian_sigma: 0.05
 
-    proposal_alpha: 1.0
-    proposal_beta: 1.0
-
     measurement_noise_stddev: 0.03
     used_meas_model: "LaserRangeFinderModel"
 

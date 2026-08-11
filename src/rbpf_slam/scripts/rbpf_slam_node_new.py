@@ -189,7 +189,7 @@ def _initialize_experiment_tag(exp_params: ExperimentParams) -> ExperimentParams
         f"bwm{mm.w_max}_bwr{mm.w_rand}_"
         f"bpun{mm.p_unknown}_bpoom{mm.p_out_of_map}_bpukf{mm.p_unexpected_known_free}_bppbm{mm.p_pred_below_min}_"
         f"bam{mm.alpha_meas}_bs{mm.beam_step}_"
-        f"pa{exp_params.proposal_alpha}_pb{exp_params.proposal_beta}_surf{scan_match.surface_radius_m}_mfr{scan_match.min_free_ratio}"
+        f"surf{scan_match.surface_radius_m}_mfr{scan_match.min_free_ratio}"
     )
 
     return exp_params

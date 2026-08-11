@@ -51,7 +51,5 @@ class ExperimentParams:
     proposal_n_samples: int = 10
     meas_kernel_size: int = 1
     gaussian_sigma: float = 0.05
-    proposal_alpha: float = 0.5
-    proposal_beta: float = 2.0
     measurement_noise_stddev: Optional[float] = None
     used_meas_model: str = "Unknown"

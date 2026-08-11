@@ -111,8 +111,6 @@ class ScanMatchingOptimizer:
             "proposal_n_samples": exp_params.proposal_n_samples,
             "meas_kernel_size": exp_params.meas_kernel_size,
             "gaussian_sigma": exp_params.gaussian_sigma,
-            "proposal_alpha": exp_params.proposal_alpha,
-            "proposal_beta": exp_params.proposal_beta,
             "measurement_noise_stddev": exp_params.measurement_noise_stddev,
         }
 

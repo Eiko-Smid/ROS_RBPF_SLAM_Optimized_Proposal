@@ -42,83 +42,6 @@ from .aggregator import RankedRunConverter, ResultAggregator
 from .step_processor import StepProcessor
 
 
-'''
-
-1. Analyze RBPF with multiple particles on new tuning pipeline
-
-
-    1.1 Weight corr for particle poes = mu
-
-
-    1.2 Weight corr for particle pose = sample from proposal
-
-
-    1.3 same as 1.2 but with limited proposal uncertainty
-
-
-    1.4 Grid run with different scale and fixed limit values of cov
-
-    1.5 Same as 46_4 but with 30 particles
-
-        -   This is the max number of particles I can use to be fast enough for real time slam
-        -
-
-    1.6 run with best 3 obtained scales and max values and adapting limit here
-
-        Goal: See if different min values can fix our problem
-
-        Result:
-            - Seems like this really worked
-            - Because we ensure enough particle diversity when we don't scale the values too low! 
-
-
-    1.7 Test best configurations on all maps/seeds
-
-        -   Now we wanne test if the configurtaions we found are stabel on all maps and seeds
-        -   If not we can't use them!
-
-
-    1.8 Adapt scaling again without changing min/max limits of proposal downscaling
-        -   We now only test it with different scaling and different neff thresholds on two different maps and seeds
-
-
-    1.9 do same experiemnt as 1.8 but dont ignore the cov in cov-matrix downsampling 
-        - Before we only extracted the std values of the cov and scaled this
-        - THis time we scaled the whole cov matrix including the cov values of the off-diagonal elements
-        - These define the shape by the mahalanobis distance and therefore the shape of the proposal distribution
-        - So we also take care of teh orientation of the proposal distribution 
-
-        
-    1.10 Same computation as before but this time we used valid angles in mu of optimized proposal
-
-
-    1.11 Delete valid angles verify new candidate from 1.9 on all maps
-    
-        -   Since the valid angle in the proposal mu changed the results we deleted it for the moment
-        -   Candidate's:
-                n_particles = 30
-                cov_std_scale = [0.5, 0.6]
-                neff_thres_ratio = [0.3]
-                cov_max_std_xy = 0.02
-                cov_max_std_theta = np.deg2rad(1.15)
-                min_std_xy = [0.0, 0.001]
-                min_std_theta = [0.0, np.deg2rad(0.03)]
-
-        - This time we added max and min limits for proposal again
-
-
-    1.12 Also validation run but this time without min/max limits for proposal downscaling
-
-
-    1.13 Same validation run as 1.12 but maps are getting stored
-
-
-    
-    1.1N Same as 1.12 but with higher max trans jump (TODO)
-        - Not done yet!
-
-'''
-
 
 # Playback data path defs
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
@@ -133,7 +56,7 @@ STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/op
 
 # # Test storage
 # SUB_DIR = "proposal_optm_test_7_tune_pipe_parallel/"
-SUB_DIR = "proposal_optm_test_8_rbpf_parallel/"
+SUB_DIR = "proposal_optm_test_9_deleted_alpha_beta/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
@@ -371,22 +294,10 @@ PLAYBACK_DATA_LIST = [
 ]
 
 
-
-# Bookstore map
-# PLAYBACK_DATA_LIST = [
-#     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
-#         playback_suffix="1782917349",
-#     )
-# ]
-
-
-
 def debug():
     debugpy.listen(("localhost", 5678))
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()  
-
 
 
 def _to_jsonable(value):
@@ -403,416 +314,13 @@ def _to_jsonable(value):
     return value
 
 
-# def _grid_axes() -> dict:
-#     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [30],                    # number of particles in the RBPF
-#         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
-
-#         # Measurement model params
-#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-#         # Beam range finder measurement model params
-#         "beam_occ_thresh": [1.4],
-#         "beam_free_thresh": [-1.4],
-#         "beam_unknown_thresh": [0.3],
-#         "beam_known_free_ratio_thresh": [0.7],
-
-#         "beam_model_param_sets": [
-#             {
-#                 "beam_w_hit": 0.50,
-#                 "beam_w_short": 0.30,
-#                 "beam_lambda_short": 0.20,
-#                 "beam_w_max": 0.10,
-#                 "beam_w_rand": 0.10,
-#             },
-#         ],
-
-#         "beam_extra_param_sets": [
-#                # Candidate B measurement region
-#             {
-#                 "beam_sigma_hit": 0.07,
-#                 "beam_alpha_meas": 0.075,
-#                 "beam_p_unknown": 0.10,
-#                 "beam_p_out_of_map": 0.15,
-#                 "beam_p_unexpected_known_free": 0.00,
-#                 "beam_p_pred_below_min": 0.02,
-#                 "beam_step": 2,
-#             },       
-#         ],
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
-#             {
-#                 "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             }
-#         ],
-#         # Proposal covariance scale/limit params (bound sets).
-#         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
-#         "scale_limit_cov": [
-#             {
-#                 "cov_std_scale": 0.25,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.0,
-#                 "min_std_theta": 0.0,
-#             },
-#             {
-#                 "cov_std_scale": 0.35,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.0,
-#                 "min_std_theta": 0.0,
-#             },
-#             {
-#                 "cov_std_scale": 0.50,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.0,
-#                 "min_std_theta": 0.0,
-#             },
-#             {
-#                 "cov_std_scale": 0.75,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.0,
-#                 "min_std_theta": 0.0,
-#             },
-#         ],
-#         # TODO: Delete proposal values when no longer needed later on
-#         "proposal_alpha": [1.0],
-#         "proposal_beta": [1.0],
-
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-#         "min_free_ratio": [0.4],
-
-#         # ICP jump thresholds
-#         "max_translation_jump": [0.7],
-#         "max_rotation_jump_deg": [45.0],
-#     }
-
-
-
-# Estimate good min values
-# def _grid_axes() -> dict:
-#     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         # "n_particles": [15, 25, 30],                    # number of particles in the RBPF
-#         "neff_threshold": [None],                     # Number of effective particles threshold for resampling
-
-#         # Measurement model params
-#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-#         # Beam range finder measurement model params
-#         "beam_occ_thresh": [1.4],
-#         "beam_free_thresh": [-1.4],
-#         "beam_unknown_thresh": [0.3],
-#         "beam_known_free_ratio_thresh": [0.7],
-
-#         "beam_model_param_sets": [
-#             {
-#                 "beam_w_hit": 0.50,
-#                 "beam_w_short": 0.30,
-#                 "beam_lambda_short": 0.20,
-#                 "beam_w_max": 0.10,
-#                 "beam_w_rand": 0.10,
-#             },
-#         ],
-
-#         "beam_extra_param_sets": [
-#                # Candidate B measurement region
-#             {
-#                 "beam_sigma_hit": 0.07,
-#                 "beam_alpha_meas": 0.075,
-#                 "beam_p_unknown": 0.10,
-#                 "beam_p_out_of_map": 0.15,
-#                 "beam_p_unexpected_known_free": 0.00,
-#                 "beam_p_pred_below_min": 0.02,
-#                 "beam_step": 2,
-#             },       
-#         ],
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.12],            # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
-#             {
-#                 "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             }
-#         ],
-#         # Proposal covariance scale/limit params (bound sets).
-#         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
-
-#         "scale_limit_cov": [
-#             # ============================================================
-#             # cov_std_scale = 0.35
-#             # ============================================================
-#             {
-#                 "n_particles": 30,
-#                 "cov_std_scale": 0.35,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.001,
-#                 "min_std_theta": np.deg2rad(0.03),
-#             },
-#             {
-#                 "n_particles": 30,
-#                 "cov_std_scale": 0.35,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.002,
-#                 "min_std_theta": np.deg2rad(0.05),
-#             },
-#             {
-#                 "n_particles": 30,
-#                 "cov_std_scale": 0.35,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.003,
-#                 "min_std_theta": np.deg2rad(0.08),
-#             },
-#             {
-#                 "n_particles": 30,
-#                 "cov_std_scale": 0.35,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.005,
-#                 "min_std_theta": np.deg2rad(0.10),
-#             },
-
-#             # ============================================================
-#             # cov_std_scale = 0.50
-#             # ============================================================
-#             {
-#                 "n_particles": 25,
-#                 "cov_std_scale": 0.50,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.001,
-#                 "min_std_theta": np.deg2rad(0.03),
-#             },
-#             {
-#                 "n_particles": 25,
-#                 "cov_std_scale": 0.50,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.002,
-#                 "min_std_theta": np.deg2rad(0.05),
-#             },
-#             {
-#                 "n_particles": 25,
-#                 "cov_std_scale": 0.50,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.003,
-#                 "min_std_theta": np.deg2rad(0.08),
-#             },
-#             {
-#                 "n_particles": 25,
-#                 "cov_std_scale": 0.50,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.005,
-#                 "min_std_theta": np.deg2rad(0.10),
-#             },
-
-#             # ============================================================
-#             # cov_std_scale = 0.25
-#             # ============================================================
-#             {
-#                 "n_particles": 15,
-#                 "cov_std_scale": 0.25,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.001,
-#                 "min_std_theta": np.deg2rad(0.03),
-#             },
-#             {
-#                 "n_particles": 15,
-#                 "cov_std_scale": 0.25,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.002,
-#                 "min_std_theta": np.deg2rad(0.05),
-#             },
-#             {
-#                 "n_particles": 15,
-#                 "cov_std_scale": 0.25,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.003,
-#                 "min_std_theta": np.deg2rad(0.08),
-#             },
-#             {
-#                 "n_particles": 15,
-#                 "cov_std_scale": 0.25,
-#                 "cov_max_std_xy": 0.020,
-#                 "cov_max_std_theta": np.deg2rad(1.15),
-#                 "min_std_xy": 0.005,
-#                 "min_std_theta": np.deg2rad(0.10),
-#             },
-#         ],
-#         # TODO: Delete proposal values when no longer needed later on
-#         "proposal_alpha": [1.0],
-#         "proposal_beta": [1.0],
-
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-#         "min_free_ratio": [0.4],
-
-#         # ICP jump thresholds
-#         "max_translation_jump": [0.7],
-#         "max_rotation_jump_deg": [45.0],
-#     }
-
-# Validate best candidates against all maps
-# def _grid_axes() -> dict:
-#     return {
-#         # General rbpf params
-#         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
-#         "every_nth_beam_map": [2],                  # use every nth beam for map update
-#         "n_particles": [30],                    # number of particles in the RBPF
-#         "neff_thres_ratio": [0.3],             # neff threshold as ratio of n_particles
-
-#         # Measurement model params
-#         "sigma_measurement": [0.06],                # measurement uncertainty [m]
-#         "meas_kernel_size": [1],                    # Define search space size around beam endpoint for gmapping like measurement likelihood
-        
-#         # Beam range finder measurement model params
-#         "beam_occ_thresh": [1.4],
-#         "beam_free_thresh": [-1.4],
-#         "beam_unknown_thresh": [0.3],
-#         "beam_known_free_ratio_thresh": [0.7],
-
-#         "beam_model_param_sets": [
-#             {
-#                 "beam_w_hit": 0.50,
-#                 "beam_w_short": 0.30,
-#                 "beam_lambda_short": 0.20,
-#                 "beam_w_max": 0.10,
-#                 "beam_w_rand": 0.10,
-#             },
-#         ],
-
-#         "beam_extra_param_sets": [
-#                # Candidate B measurement region
-#             {
-#                 "beam_sigma_hit": 0.07,
-#                 "beam_alpha_meas": 0.075,
-#                 "beam_p_unknown": 0.10,
-#                 "beam_p_out_of_map": 0.15,
-#                 "beam_p_unexpected_known_free": 0.00,
-#                 "beam_p_pred_below_min": 0.02,
-#                 "beam_step": 2,
-#             },       
-#         ],
-        
-#         # Motion model params
-#         "sigma_xy_motion": [0.12],                  # motion model uncertainty in x and y direction [m]
-#         "sigma_theta": [0.11],                      # motion model uncertainty in theta direction [rad]
-#         "ctrl_motion_fac": [0.1],                   # control motion factor for translational movement under uncertainty
-#         "ctrl_turn_fac": [0.15],                    # control turn factor for rotational movement under uncertainty
-        
-#         # Proposal params (bound sets).
-#         # Each dict is one fixed combination of:
-#         # proposal_sigma_xy, proposal_sigma_theta, n_samples_dir
-#         # so these three values are sampled together (no Cartesian product among them).
-#         "proposal_param_sets": [
-#             {
-#                 "proposal_sigma_xy": 0.06,      # Proposal window size in x/y direction [m]
-#                 "proposal_sigma_theta": 0.025,   # proposal window size in theta direction [rad]
-#                 "n_samples_dir": 3,             # samples per direction for proposal sampling (total samples = n_samples_dir^3)
-#             }
-#         ],
-#         # Proposal covariance scale/limit params (bound sets).
-#         # Each dict is one fixed combination propagated to sample_from_proposal_limit.
-
-#         "scale_limit_cov": [
-#             # {
-#             #     "cov_std_scale": 0.9,
-#             #     "cov_max_std_xy": 1.0,
-#             #     "cov_max_std_theta": np.deg2rad(10),
-#             #     "min_std_xy": 0.0,
-#             #     "min_std_theta": np.deg2rad(0.0),
-#             # },
-#             # {
-#             #     "cov_std_scale": 0.8,
-#             #     "cov_max_std_xy": 1.0,
-#             #     "cov_max_std_theta": np.deg2rad(10),
-#             #     "min_std_xy": 0.0,
-#             #     "min_std_theta": np.deg2rad(0.0),
-#             # },
-#             # {
-#             #     "cov_std_scale": 0.7,
-#             #     "cov_max_std_xy": 1.0,
-#             #     "cov_max_std_theta": np.deg2rad(10),
-#             #     "min_std_xy": 0.0,
-#             #     "min_std_theta": np.deg2rad(0.0),
-#             # },
-#             {
-#                 "cov_std_scale": 0.5,
-#                 "cov_max_std_xy": 1.0,
-#                 "cov_max_std_theta": np.deg2rad(10),
-#                 "min_std_xy": 0.0,
-#                 "min_std_theta": np.deg2rad(0.0),
-#             },
-#             {
-#                 "cov_std_scale": 0.6,
-#                 "cov_max_std_xy": 1.0,
-#                 "cov_max_std_theta": np.deg2rad(10),
-#                 "min_std_xy": 0.0,
-#                 "min_std_theta": np.deg2rad(0.0),
-#             },
-
-#         ],
-#         # TODO: Delete proposal values when no longer needed later on
-#         "proposal_alpha": [1.0],
-#         "proposal_beta": [1.0],
-
-#         # ScanMatcherParams (map extraction)
-#         "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
-#         "min_free_ratio": [0.4],
-
-#         # ICP jump thresholds
-#         "max_translation_jump": [0.7],
-#         "max_rotation_jump_deg": [45.0],
-#     }
-
-
 def _grid_axes() -> dict:
     return {
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
         "every_nth_beam_map": [2],                  # use every nth beam for map update
-        "n_particles": [20],                    # number of particles in the RBPF
-        "neff_thres_ratio": [0.3],             # neff threshold as ratio of n_particles
+        "n_particles": [20],                        # number of particles in the RBPF
+        "neff_thres_ratio": [0.3],                  # neff threshold as a ratio (% of n_particles)
 
         # Measurement model params
         "sigma_measurement": [0.06],                # measurement uncertainty [m]
@@ -875,21 +383,9 @@ def _grid_axes() -> dict:
                 "min_std_xy": 0.0,
                 "min_std_theta": np.deg2rad(0.0),
             },
-            # {
-            #     "cov_std_scale": 0.6,
-            #     "cov_max_std_xy": 1.0,
-            #     "cov_max_std_theta": np.deg2rad(10),
-            #     "min_std_xy": 0.0,
-            #     "min_std_theta": np.deg2rad(0.0),
-            # },
-
         ],
-        # TODO: Delete proposal values when no longer needed later on
-        "proposal_alpha": [1.0],
-        "proposal_beta": [1.0],
-
         # ScanMatcherParams (map extraction)
-        "surface_radius_m": [0.2],      # TODO: Later change the name cause we search in a quadratic window not in circle
+        "surface_radius_m": [0.2],
         "min_free_ratio": [0.4],
 
         # ICP jump thresholds
@@ -1041,8 +537,6 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
                 f"beam_extra_param_sets[{i}] must be a dict, got {type(beam_extra_set)}"
             )
 
-    proposal_alpha = axes.get("proposal_alpha", [1.0])
-    proposal_beta = axes.get("proposal_beta", [1.0])
     surface_radius_m = axes.get("surface_radius_m", [0.1])
     min_free_ratio = axes.get("min_free_ratio", [0.25])
     max_translation_jump = axes.get("max_translation_jump", [0.7])
@@ -1068,8 +562,6 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
             beam_known_free_ratio_th,
             beam_model_set,
             beam_extra_set,
-            alpha,
-            beta,
             surface_r,
             min_free,
             max_trans_jump,
@@ -1093,8 +585,6 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
             beam_known_free_ratio_thresh,
             beam_model_param_sets,
             beam_extra_param_sets,
-            proposal_alpha,
-            proposal_beta,
             surface_radius_m,
             min_free_ratio,
             max_translation_jump,
@@ -1200,8 +690,6 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
                 min_std_theta=min_std_theta,
                 meas_kernel_size=kernel_size,
                 gaussian_sigma=0.05,
-                proposal_alpha=alpha,
-                proposal_beta=beta,
                 measurement_noise_stddev=MEASUREMENT_STDDEV,
                 used_meas_model=USED_MEAS_MODEL,
                 tag=(
@@ -1217,7 +705,7 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
                     f"bpun{beam_extra_set['beam_p_unknown']}_bpoom{beam_extra_set['beam_p_out_of_map']}_"
                     f"bpukf{beam_extra_set['beam_p_unexpected_known_free']}_bppbm{beam_extra_set['beam_p_pred_below_min']}_"
                     f"bam{beam_extra_set['beam_alpha_meas']}_bs{beam_extra_set['beam_step']}_"
-                    f"pa{alpha}_pb{beta}_surf{surface_r}_mfr{min_free}"
+                    f"surf{surface_r}_mfr{min_free}"
                 ),
             )
 

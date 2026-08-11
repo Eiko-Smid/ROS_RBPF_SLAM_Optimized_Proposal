@@ -91,8 +91,6 @@ class RankedRunConverter:
                 # TODO: Adapt measurement model here!
                 # "sigma_measurement": params.measurement_model_params.sigma_measurement,
                 # "sigma_measurement":params.measurement_model_params.sigma_hit,
-                # "proposal_alpha": params.proposal_alpha,
-                # "proposal_beta": params.proposal_beta,
                 "occ_thresh": params.measurement_model_params.occ_thresh,
                 "free_thresh": params.measurement_model_params.free_thresh,
                 "unknown_ratio_thresh": params.measurement_model_params.unknown_ratio_thresh,
