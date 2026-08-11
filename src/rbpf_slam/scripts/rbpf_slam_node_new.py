@@ -500,13 +500,13 @@ class RBPF_ROS_Node:
         origin_x: float,
         origin_y: float,
         orient_yaw: float=0.0,
-    ):
+    ) -> OccupancyGrid:
         '''
         Creates a ROS OccupancyGrid message from the given flattened map and it's metadata.
 
         Parameters
         ----------
-        map : np.ndarray
+        map_raveled : np.ndarray
             A 1D numpy array representing the the map.
         timestamp : Union[rospy.Time, float]
             The timestamp for the OccupancyGrid message. Can be a rospy.Time object or a float representing seconds since epoch.
@@ -578,6 +578,9 @@ class RBPF_ROS_Node:
 
 
     def _rbpf_input_cb(self, msg: RBPFInput) -> None:
+        '''
+        Stores the RBPF input msg into the input queue for later processing in correct order. 
+        '''
         # Store message into queue for processing in the main loop       
         try:
             self.rbpf_input_queue.put_nowait(msg)
@@ -595,6 +598,20 @@ class RBPF_ROS_Node:
         frame_id: str,
         stamp: Optional[rospy.Time] = None
     ) -> None:
+        '''
+        Publishes the given pose on the given topic into the the specified frame. 
+
+        Parameters
+        ----------
+        topic_key : str
+            The key of the topic to publish the pose on. Must be one of the keys in self.pose_pub. 
+        pose : Tuple[float, float, float]
+            The pose to publish, represented as a tuple (x, y, theta) where theta is the orientation in radians.
+        frame_id : str
+            The frame ID for the PoseStamped message.
+        stamp : Optional[rospy.Time], optional
+            The timestamp for the PoseStamped message. If None, the current time will be used which is not recommended!.
+        '''
         msg = self._pose_into_pose_stamped_msg(
             pose=pose,
             frame=frame_id,
@@ -610,7 +627,23 @@ class RBPF_ROS_Node:
         timestamp: Optional[rospy.Time] = None,
     ):
         '''
-        Methods that handles the overall publishing of data to ROS topics. 
+        General publish method for for publishing the TFs, poses and the map. 
+
+        Details:
+            1. Computes the TFs and publishes them.
+            2. Publishes the true pose, the weighted mean particle pose and the best particle pose.
+            3. Converts the logOdds map to discretized color map and publishes it.
+
+        Parameters
+        ----------
+        step_res : StepResult
+            The result of the current RBPF step containing the true pose, weighted mean particle pose, best
+            particle pose, and other relevant information.
+        info : Dict
+            The info dictionary from the RBPF filter containing various information about the current step,
+            including the best particle map and its metadata.
+        timestamp : Optional[rospy.Time], optional
+            The timestamp to use for the published messages. If None, the current time will be used.
         '''
         # Define one time stamp for all messages to be published 
         timestamp = timestamp if timestamp is not None else rospy.Time.now()
@@ -695,7 +728,7 @@ class RBPF_ROS_Node:
     ):
         '''
         Runs the rbpf filter with the given input data. Transforms the given input data into the required format and calls 
-        the rbpf filter's step method to precit the robot pose and estimate the map. 
+        the rbpf filter's step method to estimates the robot pose and the map. 
 
         Parameters
         ----------
@@ -748,6 +781,23 @@ class RBPF_ROS_Node:
         best_p_map: np.ndarray,
         best_p_map_meta: Dict,
     ) -> np.ndarray:
+        '''
+        Converts the log odds map of the best particle into a discretized color value map suitable for publishing
+        as a ROS OccupancyGrid message.
+
+        Parameters
+        ----------
+        best_p_map : np.ndarray
+            The log odds map of the best particle, represented as a 2D numpy array.
+        best_p_map_meta : Dict
+            Metadata associated with the best particle map, containing information such as grid resolution and thresholds.
+        
+        Returns 
+        -------
+        discretized_map : np.ndarray
+            A 2D numpy array representing the discretized color value map, where each cell contains a value corresponding
+            to free space, occupied space, or unknown space based on the specified thresholds.
+        '''
         if best_p_map is None or best_p_map_meta is None:
             rospy.logwarn("No best particle map available to convert to LogOddsMap message.")
             return None
@@ -805,6 +855,30 @@ class RBPF_ROS_Node:
         msg_queue_size: int,
         true_pose: Optional[Pose2DMsg] = None
     ):
+        '''
+        Evaluates the results of the RBPF filter run for the current step and returns the results as a StepResult
+        dataclass.
+
+        Parameters
+        ----------
+        step_time : float
+            The time at which the current step was executed.
+        step_duration : float
+            The duration of the current step execution.
+        filter_duration : float
+            The duration of the RBPF filter execution for the current step.
+        msg_queue_size : int
+            The current size of the rbpf input queue.
+        true_pose : Optional[Pose2DMsg], optional
+            The true pose of the robot at the current step, if available.
+
+        Returns
+        -------
+        step_res : StepResult
+            The result of the current step evaluation.
+        info : dict
+            The raw step information from the RBPF.
+        '''
         # Evaluate step results
         step_res = None
         info = self.rbpf.get_step_info()
@@ -850,6 +924,9 @@ class RBPF_ROS_Node:
         step_res: StepResult,
         total_step_time: float
     ):
+        '''
+        Method to display information about the current step.
+        '''
         # rospy.logwarn(f"Total step time is: {total_step_time} s")
         if step_res is None:
             rospy.logwarn(f"Step result not intialized -> No information to display!")
@@ -1044,6 +1121,7 @@ class RBPF_ROS_Node:
                     true_pose=true_pose,
                 )
 
+                # Validate step 
                 if step_res is None or info is None:
                     rospy.logwarn("No RBPF step information available. Publishing data will be skipped this step.")
                     continue
@@ -1057,6 +1135,7 @@ class RBPF_ROS_Node:
 
                 total_step_time = time.perf_counter() - start_time
 
+                # Display useful information about the current step
                 self.display_information(step_res=step_res, total_step_time=total_step_time)
                                 
             except Exception:
@@ -1071,6 +1150,27 @@ class RBPF_ROS_Node:
                         
 
 def init():
+    '''
+    Initializes the RBPF Filter and its components. The following steps are performed:
+        1. Initialize the ROS node.
+        2. Load parameters from ros parameter server and from robot ElementTree
+        3. Define experiment parameters.
+        4. Initialize Robot Estimator classes.
+        6. Return the initialized components.
+
+    Returns
+    -------
+    rbpf : RBPF
+        The initialized RBPF filter.
+    raw_odom_est : RawOdomEstimator
+        The initialized raw odometry estimator.
+    evaluator : RBPFEvaluator
+        The initialized RBPF evaluator.
+    exp_params : ExperimentParams
+        The loaded experiment parameters.
+    ros_params : ROSParams
+        The loaded ROS node parameters.
+    '''
     # Init ros node
     rospy.init_node(NODE_NAME)
 
@@ -1119,12 +1219,14 @@ def init():
 
 
 def main():
+    # RUn debugger if needed
     if USE_DEBUGGER:
         debug_code()
 
-    # Init RBPF filter
+    # Init RBPF Filter
     rbpf, raw_odom_est, evaluator, exp_params, ros_params = init()
 
+    # Init RBPF ROS Node
     rbpf_ros_node = RBPF_ROS_Node(
         rbpf=rbpf,
         raw_odom_est=raw_odom_est,

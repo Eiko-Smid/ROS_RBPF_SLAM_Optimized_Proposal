@@ -85,14 +85,12 @@
         <arg name="laser_noise_stddv" value="$(arg laser_noise_stddv)"/>
     </include>
 
-    <!--Generate static transform between map and odom -->
-    <!-- <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" /> -->
-
-    <!--Launch the occupancy grid mapping algorithm (with known pose).-->
+    <!--Launch the RBPF Data Processor and load its params from config file -->
     <node pkg="rbpf_slam" name="rbpf_data_processor_node" type="rbpf_data_processor_node.py" output="screen">
         <rosparam command="load" file="$(find rbpf_slam)/config/rbpf_data_processor_params.yaml"/>
     </node>
 
+    <!--Launch the RBPF SLAM node and load its params from config file -->
     <node pkg="rbpf_slam" name="rbpf_slam_node" type="rbpf_slam_node_new.py" output="screen">
         <rosparam command="load" file="$(find rbpf_slam)/config/rbpf_slam_params.yaml"/>
     </node>
