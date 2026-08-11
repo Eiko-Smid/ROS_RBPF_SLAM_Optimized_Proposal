@@ -366,17 +366,26 @@ class ResultAggregator:
 
     def aggregate_by_dataset_and_param(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
         '''
-        Groups the run-level dataframe by dataset_id and parameter_hash and aggregates all metrics that are
-        currently written by RankedRunConverter.to_dataframe(...).
+        First aggregation stage that groups the given DataFrame by dataset_id, parameter_hash,
+        and used_meas_model, then aggregates the run metrics.
 
-        The output is one row per dataset/parameter-set/meas-model combination. The method keeps the same basic
-        structure as the old aggregator:
+        Process
             1) define required columns
             2) check missing columns
             3) group and aggregate
             4) compute pooled rates where raw counts and denominators are available
             5) compute dataset_param_score
             6) rank by dataset_param_score
+
+        Parameters
+        ----------
+        ranked_run_df : pd.DataFrame
+            DataFrame containing the ranked runs with the required columns.
+        
+        Returns
+        -------
+        pd.DataFrame
+            Given df aggregated by dataset_id, parameter_hash, and used_meas_model with additional metrics added.
         '''
         
         # 1) Required columns
@@ -784,14 +793,24 @@ class ResultAggregator:
         '''
         Groups the dataset-parameter dataframe by parameter_hash and aggregates all metrics over datasets/maps.
 
-        The input dataframe is expected to be the output of aggregate_by_dataset_and_param(...).
-
         Important design decision:
             - Scores are aggregated from dataset_param_score.
             - Scan matcher failure rates are NOT recomputed from total counts / total steps here.
-            Instead, we compute mean/worst over dataset-level rates so that large maps do not dominate
-            the global parameter score.
+              Instead, we compute mean/worst over dataset-level rates so that large maps do not dominate
+              the global parameter score.
             - Raw event counts are still summed as diagnostic information.
+
+        Parameters
+        ----------
+        agg_dataset_param_df : pd.DataFrame
+            DataFrame from first aggregation stage, grouped by dataset_id and parameter_hash.
+            
+        Returns
+        -------
+        pd.DataFrame
+            Given df aggregated by parameter_hash, and used_meas_model with additional metrics added.
+                
+            
         '''
 
         # 1) Required columns

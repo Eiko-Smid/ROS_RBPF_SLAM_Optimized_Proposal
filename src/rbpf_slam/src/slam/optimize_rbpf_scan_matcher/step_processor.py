@@ -17,12 +17,10 @@ THETA = 2
 
 class StepProcessor:
     """
-    Convert the stored step results of ranked scan-matching runs into one flat
-    DataFrame row per step.
+    Convert the stored step results of ranked scan-matching runs into one flat DataFrame row per step.
 
-    Coordinate-pose fields are split into scalar columns. All other step fields
-    are preserved under their native names, with additional degree and
-    millisecond aliases for the step-trace CSV.
+    Coordinate-pose fields are split into scalar columns. All other step fields are preserved under
+    their native names, with additional degree and millisecond aliases for the step-trace CSV.
     """
 
     _RADIAN_TO_DEGREE_ALIASES = {

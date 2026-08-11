@@ -19,6 +19,9 @@ class RankedRunConverterScanMatching:
 
     @classmethod
     def to_dataframe(cls, ranked_runs: Iterable[RankedRunScanMatching]) -> pd.DataFrame:
+        '''
+        Transforms the given ranked runs into a pandas DataFrame for further analysis and reporting.
+        '''
         rows = []
 
         for run in ranked_runs:
@@ -141,6 +144,9 @@ class RankedRunConverterScanMatching:
 
 
 class ResultAggregatorScanMatching:
+    '''
+    Class to aggregate summary results of the optimization pipeline. 
+    '''
     @staticmethod
     def _groupby(df: pd.DataFrame, by, dropna: bool = False):
         try:
@@ -151,12 +157,20 @@ class ResultAggregatorScanMatching:
     
     @staticmethod
     def _place_col_after_col(df: pd.DataFrame, col: str, col_after: str) -> pd.DataFrame:
+        '''
+        Places the given column after the given column name name col_after. 
+        '''
         extract_col = df.pop(col)
         df.insert(df.columns.get_loc(col_after) + 1, col, extract_col)
         return df
     
 
     def rank_by_score(self, ranked_run_df: pd.DataFrame, score_col: str, ascending: bool = True) -> pd.DataFrame:
+        '''
+        Ranks the given DataFrame by the given score column. The ranking is done in ascending order if
+        ascending is True, otherwise in descending order. The rank is added as a new column named "rank"
+        at the beginning of the DataFrame.
+        '''
         ranked_df: pd.DataFrame = ranked_run_df.sort_values(by=score_col, ascending=ascending).reset_index(drop=True)
 
         if "rank" in ranked_df.columns:
@@ -167,6 +181,22 @@ class ResultAggregatorScanMatching:
 
 
     def aggregate_by_dataset_and_param(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
+        '''
+        Groupe the given DataFrame by dataset_id and parameter_hash, then aggregate the metrics. Also computes additional
+        metrics such as scan match failed rate and dataset_param_score. The resulting DataFrame is ranked by 
+        dataset_param_score in ascending order (lower is better).
+
+        Parameters
+        ----------
+        ranked_run_df : pd.DataFrame
+            DataFrame containing the ranked runs with required columns.
+        
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated DataFrame grouped by dataset_id and parameter_hash, with additional metrics and ranking.
+        '''
+        # Define the required columns for aggregation
         required_cols = {
             "dataset_id",
             "parameter_hash",
@@ -188,12 +218,15 @@ class ResultAggregatorScanMatching:
             "corr_worse_rate_rot",
 
         }
+
+        # Check if given df includes the required columns, raise err if not
         missing = sorted(col for col in required_cols if col not in ranked_run_df.columns)
         if missing:
             raise ValueError(
                 "aggregate_by_dataset_and_param missing required columns: " + ", ".join(missing)
             )
 
+        # Groupe the df by dataset_id and parameter_hash, then aggregate the metrics
         agg_df = self._groupby(ranked_run_df, ["dataset_id", "parameter_hash"])
         agg_df: pd.DataFrame = agg_df.agg(
             # General info
@@ -242,19 +275,20 @@ class ResultAggregatorScanMatching:
             col_after="dataset_id",
         )
 
+        # Compute scan match failed rate and place it at desired position 
         n_steps = agg_df["total_n_steps"]
         agg_df["scan_match_failed_rate"] = agg_df["total_scan_match_failed_count"] / n_steps
-        
-        
+                
         agg_df = self._place_col_after_col(
             df=agg_df,
             col="scan_match_failed_rate",
             col_after="total_scan_match_failed_count",
         )
 
+        # Fill NaN values in std_score with 0.0 to avoid issues in score computation
         agg_df["std_score"] = agg_df["std_score"].fillna(0.0)
 
-        # Compute score
+        # Compute and insert score
         dataset_param_score = (
             1.0 * agg_df["mean_score"]
             + 0.5 * agg_df["worst_score"]
@@ -267,6 +301,23 @@ class ResultAggregatorScanMatching:
 
 
     def aggregate_by_params(self, agg_dataset_param_df: pd.DataFrame) -> pd.DataFrame:
+        '''
+        Second aggregation stage that groups the given DataFrame by parameter_hash, then aggregates the
+        metrics. Also computes additional statistics for each parameter hash. The resulting DataFrame is
+        ranked by its score in ascending order (lower is better).
+
+        Parameters
+        ----------
+        agg_dataset_param_df : pd.DataFrame
+            DataFrame containing the aggregated results from the first aggregation stage, grouped by
+            dataset_id and parameter_hash.
+        
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated DataFrame grouped by parameter_hash, with additional metrics and ranking.
+        '''
+        # Define the required columns for aggregation
         required_cols = {
             "parameter_hash",
             "measurement_stddev",
@@ -292,10 +343,12 @@ class ResultAggregatorScanMatching:
             "mean_rmse_corr_rot_err_deg",
             "worst_rmse_corr_rot_err_deg",
         }
+        # Check if given df includes the required columns, raise err if not
         missing = sorted(col for col in required_cols if col not in agg_dataset_param_df.columns)
         if missing:
             raise ValueError("aggregate_by_params missing required columns: " + ", ".join(missing))
 
+        # Group the df by parameter_hash, then aggregate the metrics
         agg_param_df = self._groupby(agg_dataset_param_df, ["parameter_hash"])
         agg_param_df: pd.DataFrame = agg_param_df.agg(
             # General info 
@@ -336,6 +389,7 @@ class ResultAggregatorScanMatching:
             
         ).reset_index()
 
+        # Fill NaN values in std_score with 0.0 to avoid issues in score computation
         agg_param_df["std_score"] = agg_param_df["std_score"].fillna(0.0)
 
         # Compute score

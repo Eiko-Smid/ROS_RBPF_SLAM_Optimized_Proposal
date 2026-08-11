@@ -47,7 +47,7 @@ class RankedRunConverter:
     @classmethod
     def to_dataframe(cls, ranked_runs: Iterable[RankedRun]) -> pd.DataFrame:
         """
-        Convert ranked runs to a pandas DataFrame.
+        Transform the given ranked runs into a pandas DataFrame for further analysis and reporting.
         """
         rows = []
 
@@ -446,7 +446,7 @@ class RankedRunConverter:
 
 class ResultAggregator:
     """
-    Aggregate the given dataframe run results into the desired output types.
+    Class to aggregate summary results of the optimization pipeline.
     """
     @staticmethod
     def _groupby(df: pd.DataFrame, by, dropna: bool = False):
@@ -464,6 +464,9 @@ class ResultAggregator:
 
     @staticmethod
     def _place_col_after_col(df: pd.DataFrame, col: str, col_after: str) -> pd.DataFrame:
+        """
+        Place the given column after the column named by col_after.
+        """
         extract_col = df.pop(col)
         df.insert(df.columns.get_loc(col_after) + 1, col, extract_col)
         return df
@@ -471,7 +474,9 @@ class ResultAggregator:
 
     def rank_by_score(self, ranked_run_df: pd.DataFrame, score_col: str, ascending=True) -> pd.DataFrame:
         '''
-        Sorts the given df by score in the desired order (asc or desc).
+        Rank the given DataFrame by the specified score column. The ranking is ascending if
+        ascending is True and descending otherwise. The rank is added as a new column named
+        "rank" at the beginning of the DataFrame.
         '''   
         # Sort df by score values 
         ranked_df: pd.DataFrame = ranked_run_df.sort_values(by=score_col, ascending=ascending).reset_index(drop=True)
@@ -488,10 +493,23 @@ class ResultAggregator:
 
     def aggregate_by_dataset_and_param(self, ranked_run_df: pd.DataFrame) -> pd.DataFrame:
         '''
-        Groupes the df by dataset_id and parameter_hash and computes metrics for each group. These metrics are then used 
-        to compute a score. At the end the df is sorted by score in ascending order and a rank column is added.
+        First aggregation stage that groups the given DataFrame by dataset_id, parameter_hash,
+        and used_meas_model, then aggregates the run metrics. It also computes derived failure
+        and measurement-model rates plus a dataset_param_score. The resulting DataFrame is ranked
+        by dataset_param_score in ascending order (lower is better).
+
+        Parameters
+        ----------
+        ranked_run_df : pd.DataFrame
+            DataFrame containing the ranked runs with the required columns.
+
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated DataFrame grouped by dataset_id, parameter_hash, and used_meas_model,
+            with additional metrics, scores, and ranking.
         '''
-        # Estimate if all needed columns exist
+        # Define the required columns for aggregation
         required_cols = [
             # Grouping columns
             "dataset_id",
@@ -612,14 +630,14 @@ class ResultAggregator:
             # "meas_model_fallback_unexpected_known_free_rate"
         ]
 
-        # Estimate missing columns
+        # Check if the given DataFrame includes the required columns, raising an error if not
         missing = [col for col in required_cols if col not in ranked_run_df.columns]
         if missing:
             raise ValueError(
                 "aggregate_by_dataset_and_param missing required columns: " + ", ".join(missing)
             )
 
-        # Compute metrics from grouped columns
+        # Group the DataFrame by dataset, parameter hash, and measurement model, then aggregate the metrics
         agg_dataset_param_df = self._groupby(
             ranked_run_df,
             ["dataset_id", "parameter_hash", "used_meas_model"],
@@ -772,7 +790,7 @@ class ResultAggregator:
             col_after="dataset_id"
         )
 
-        # Compute failed rates for sm
+        # Compute scan-matching failure rates
         # Here we don't compute mean from rates before because here we can safely compute this by the n_steps. This
         # is because we aggregate per map. This is the correct computation
         n_steps = agg_dataset_param_df["total_n_steps"]
@@ -784,7 +802,7 @@ class ResultAggregator:
             agg_dataset_param_df["total_scan_match_fallback_failed_count"] / n_steps
         )
 
-        # Place scan match fallback rates directly after scan match counts
+        # Place scan-matching failure rates directly after their corresponding counts
         agg_dataset_param_df = self._place_col_after_col(
             df=agg_dataset_param_df,
             col="scan_match_failed_rate",
@@ -846,10 +864,10 @@ class ResultAggregator:
             "meas_model_fallback_unexpected_known_free_count", "meas_model_fallback_known_free_ray_count", "meas_model_fallback_call_count"
         )
 
-        # Use 0.0 score if score is none
+        # Fill NaN values in std_score with 0.0 to avoid issues in score computation
         agg_dataset_param_df["std_score"] = agg_dataset_param_df["std_score"].fillna(0.0)
 
-        # Compute score 
+        # Compute and insert the dataset-parameter score
         dataset_param_score = (
             1.0 * agg_dataset_param_df["mean_score"]
             + 0.5 * agg_dataset_param_df["worst_score"]
@@ -862,7 +880,25 @@ class ResultAggregator:
 
 
     def aggregate_by_params(self, agg_dataset_param_df: pd.DataFrame):
-        # Estimate if all needed columns exist
+        '''
+        Second aggregation stage that groups the dataset-level results by parameter_hash, then
+        aggregates the metrics across datasets. It also computes additional statistics and a
+        global_score for each parameter hash. The resulting DataFrame is ranked by global_score
+        in ascending order (lower is better).
+
+        Parameters
+        ----------
+        agg_dataset_param_df : pd.DataFrame
+            DataFrame containing the results from the first aggregation stage, grouped by dataset,
+            parameter hash, and measurement model.
+
+        Returns
+        -------
+        pd.DataFrame
+            Aggregated DataFrame grouped by parameter_hash, with additional metrics, global scores,
+            and ranking.
+        '''
+        # Define the required columns for aggregation
         required_cols = [
             # Grouping column
             "parameter_hash",
@@ -989,14 +1025,14 @@ class ResultAggregator:
             "meas_model_fallback_unexpected_known_free_rate",
         ]
 
-        # Estimate missing columns
+        # Check if the given DataFrame includes the required columns, raising an error if not
         missing = [col for col in required_cols if col not in agg_dataset_param_df.columns]
         if missing:
             raise ValueError(
                 "aggregate_by_params missing required columns: " + ", ".join(missing)
             )
         
-        # Compute metrics from grouped columns
+        # Group the DataFrame by parameter_hash, then aggregate the metrics across datasets
         agg_param_df = self._groupby(agg_dataset_param_df, ["parameter_hash"])
         agg_param_df: pd.DataFrame = agg_param_df.agg(
             # General info
@@ -1207,9 +1243,10 @@ class ResultAggregator:
 
         ).reset_index()
         
+        # Fill NaN values in std_score with 0.0 to avoid issues in score computation
         agg_param_df["std_score"] = agg_param_df["std_score"].fillna(0.0)
         
-        # Compute score
+        # Compute and insert the global score
         global_score = (
             1.0 * agg_param_df["mean_score"]
             + 0.5 * agg_param_df["worst_score"]
