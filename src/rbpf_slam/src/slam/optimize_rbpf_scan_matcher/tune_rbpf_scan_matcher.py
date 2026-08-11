@@ -258,7 +258,7 @@ STEP_COLS_TO_USE = [
     "t_correct_pose_ms",
 ]
 
-
+# Defines a playback dataset, which includes the directory and suffix of the playback files.
 @dataclass
 class PlaybackDataset:
     playback_dir: str
@@ -310,7 +310,7 @@ def _to_jsonable(value: Any) -> Any:
 # Define params for big grid search after newly implemented grid based subsampling
 def _grid_axes():
     '''
-    Defines the parameter grid to use.
+    Defines the parameter grid to use for the optimization process.
     '''
     return {
         "every_nth_beam_filter": [2],
@@ -349,7 +349,18 @@ def write_parameter_overview(
     override: bool = False,
 ) -> None:
     '''
-    Writes the parameter grid together with all other experiment parameters to a JSON file for later reference
+    Writes the parameter grid together with all other experiment parameters to a JSON file for later reference.
+
+    Parameters
+    ----------
+    path : str
+        Path to the JSON file where the parameter overview will be saved.
+    n_repeats : int
+        Number of repeats for each parameter combination.
+    wheel_separation : float
+        Wheel separation of the robot, used in the motion model parameters.
+    override : bool, optional
+        If True, will override the existing file if it exists. Default is False.
     '''
     file_exists = ResultWriterScanMatching.create_path_and_check_if_file_exists(path=path)
 
@@ -396,7 +407,8 @@ def generate_param_grid(
     n_repeats: int = 1,
 ) -> Iterator[ExperimentParams]:
     '''
-    Generates one instance of te experiment parameters for each parameter combination defined in grid axes. 
+    Defined the parameter grid for the RBPF SLAM optimization. This is a generator that yields ExperimentParams for
+    each combination of parameters in the grid.
     '''
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
@@ -572,10 +584,8 @@ def generate_param_grid(
 
 def build_optimizer() -> ScanMatchingOptimizer:
     '''
-    Builds the ScanMatchingOptimizer with the required components: 
-    - PlaybackRunnerScanMatching
-    - ScanMatchingEvaluator
-    - ScanMatchingScorer
+    Builds and returns the Scan matcher optimizer and returns it. This function initializes the playback runner,
+    evaluator, and optimizer with the necessary components.
     '''
     runner = PlaybackRunnerScanMatching(
         factory=RBPFFactory(),
@@ -591,7 +601,7 @@ def build_optimizer() -> ScanMatchingOptimizer:
 
 def scan_matcher_tuning_pipeline() -> None:
     '''
-    Tuning pipe to find the best possbile scan matcher parameter based on the defined parameter grid inside _grid_axes(). 
+    Tuning pipe to find the best possible scan matcher parameter based on the defined parameter grid inside _grid_axes(). 
     Process:
         1) Defines storage
         2) initialize pipeline components

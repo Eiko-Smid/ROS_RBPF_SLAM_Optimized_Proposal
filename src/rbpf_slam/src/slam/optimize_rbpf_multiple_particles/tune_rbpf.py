@@ -70,17 +70,30 @@ USED_MEAS_MODEL = "LaserRangeFinderModel"
 # Switch between sequential and parallel optimization pipe
 USE_PARALLEL_OPTM_PIPE = False
 
-# Number of workers to use for multiprocessing tuning pipe
+# Ctrl debugger
 DEBUG_CODE = False
+
+# Number of workers to use for multiprocessing tuning pipe
 NUMBER_OF_WORKERS = 4
 # Define whether to keep the step results or not. Don't keep for big grid search -> Too much memory!
 KEEP_STEP_RESULTS = True
+
+# Defines whether to store (True) the map and its metadata or not (False).
 STORE_MAP_DATA = True
+
+# Defines the number of decimals to use when writing float values to CSV files
 CSV_FLOAT_DECIMALS = 6
 
+# Defines whether to override existing pipeline results (True) or not (False).
 OVERRIDE_EXISTING_RESULTS = False
-N_PLAYBACK_STEPS = 50             # Set an integer (e.g. 200) to use only the first N steps. None = all steps are used.
-N_OPTIMIZATION_REPEATS = 1          # Number of full grid passes. 3 means each parameter combination is evaluated three times.
+
+# Defines how many steps of the playback data to use for the optimization. If None, the full playback data is used.
+N_PLAYBACK_STEPS = 50    
+
+# Defines how ofter the optimization is repeated for each parameter combination. Useful for stability testing without seeds
+N_OPTIMIZATION_REPEATS = 1          
+
+# The seeds to use for the optimization runs. 
 # SEED_LIST = [22, 23, 56]
 SEED_LIST = [22, 56]
 # SEED_LIST = [22]
@@ -93,11 +106,16 @@ USE_SEED_LIST_FOR_MEASUREMENT_NOISE = True
 # Define sttdev [m] to add noise to the playback measurements.
 # Set to None to disable noise injection.
 MEASUREMENT_STDDEV = 0.03
+
+# Defines the min and max sensor range of the laser range finder sensor. 
 MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0
 
+# Defines the suffixes of the pose columns in the step trace dataframe. This is used for automatically converting poses into 
+# a three column format (x, y, theta) for easier readability and processability. 
 POSE_APPENDIX = ("x", "y", "theta")
 
+# Defines the columns of the step data that will be written to csv. All others in df will be skipped
 STEP_COLS_TO_USE = [
     # General information
     "rank",
@@ -174,6 +192,7 @@ STEP_COLS_TO_USE = [
 
 ]
 
+# Defines the column names in the summary that will not be written to the csv file.
 SUMMARY_COLS_TO_EXCLUDE = [
     # Proposal counters
     "meas_model_prop_valid_beam_count",
@@ -195,7 +214,7 @@ SUMMARY_COLS_TO_EXCLUDE = [
 ]
 
 
-
+# Defines a playback dataset, which includes the directory and suffix of the playback files.
 @dataclass
 class PlaybackDataset:
     playback_dir: str
@@ -295,12 +314,14 @@ PLAYBACK_DATA_LIST = [
 
 
 def debug():
+    '''Starts debugpy and waits for debugger to attach.'''
     debugpy.listen(("localhost", 5678))
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()  
 
 
 def _to_jsonable(value):
+    '''Converts a value to a JSON-serializable format.'''
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, np.generic):
@@ -315,6 +336,9 @@ def _to_jsonable(value):
 
 
 def _grid_axes() -> dict:
+    '''
+    Defines the parameter grid to use for the optimization process.
+    '''
     return {
         # General rbpf params
         "every_nth_beam_filter": [2],               # use every nth beam for proposal/scan matching
@@ -402,9 +426,20 @@ def write_parameter_overview(
     override: bool = False,
 ) -> None:
     '''
-    Write the experiment parameter overview to a JSON file for experiment reconstructability. 
+    Writes the parameter grid together with all other experiment parameters to a JSON file for later reference.
+
+    Parameters
+    ----------
+    path : str
+        Path to the JSON file where the parameter overview will be saved.
+    n_repeats : int
+        Number of repeats for each parameter combination.
+    wheel_separation : float
+        Wheel separation of the robot, used in the motion model parameters.
+    override : bool, optional
+        If True, will override the existing file if it exists. Default is False.
     '''
-    # dummy_pose = (0.0, 0.0, 0.0)
+    # Parameter set should be independend of roboter start pose, since this depends on map. Simply write None 
     dummy_pose = None
     file_exists = ResultWriter.create_path_and_check_if_file_exists(path=path)
 
@@ -445,9 +480,11 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
     Defined the parameter grid for the RBPF SLAM optimization. This is a generator that yields ExperimentParams for
     each combination of parameters in the grid.
     '''
+    # Raise err if n_repeats is less than 1
     if n_repeats < 1:
         raise ValueError(f"n_repeats must be >= 1, got {n_repeats}")
 
+    # Get the parameter grid axes
     axes = _grid_axes()
 
     # Extract grid axes params
@@ -542,6 +579,7 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
     max_translation_jump = axes.get("max_translation_jump", [0.7])
     max_rotation_jump_deg = axes.get("max_rotation_jump_deg", [45.0])
 
+    # Generate all combinations of parameters using itertools.product
     for repeat_idx in range(1, n_repeats + 1):
         for (
             sigma_meas,
@@ -711,6 +749,10 @@ def generate_param_grid(start_pose, wheel_separation: float, n_repeats: int = 1)
 
 
 def build_optimizer():
+    '''
+    Builds and returns the rbpf optimizer and returns it. This function initializes the playback runner, evaluator,
+    and optimizer with the necessary components.
+    '''
     # Init Playback runner
     factory = RBPFFactory()
     evaluator = RBPFEvaluator()
@@ -731,7 +773,18 @@ def build_optimizer():
 
 def rbpf_tuning_pipeline():
     '''
-    Normal sequential tuning pipeline that either runs the rbpf algorithm in single or multiprocessing variant.
+    Tuning pipeline to estimate the best parameters for the RBPF SLAM algorithm from the defined grid axes.
+
+    Process:
+        1) Defines storage
+        2) initialize pipeline components
+        3) Load each dataset and converts the loaded playback data
+        4) Calls the optimizer that runs the RBPF SLAM algorithm on all datasets with all parameter combinations and all seeds
+           Computes the metrics for each run and stores the results in a ranked list of runs.
+        5) Sorts the estimated resutls by score
+        6) Processes the ranked runs 
+        7) Aggregates the summary results by dataset and parameter/seed combinations
+        8) Stores the results of the pipeline
     '''
     # Define vars
     ranked_run_list = []
@@ -898,9 +951,22 @@ def rbpf_tuning_pipeline():
 
 def rbpf_tuning_pipeline_multiprocessing():
     '''
-    Tuning pipeline that trains the rbpf algorithm in parallel batches. The called optimizer creates n workers
-    that process the parameter grid and corresponding seeds in parallel. The RBPF should notbe called in parallel
-    here too, otherwise the multiprocessing will not work properly.
+    Tuning pipeline to estimate the best parameters for the RBPF SLAM algorithm from the defined grid axes.
+    
+    This pipeline trains the rbpf algorithm in parallel batches. The optimizer creates n workers that process the
+    parameter grid and corresponding seeds in parallel. The RBPF should not be called in parallel here too, otherwise
+    the multiprocessing will not work properly.
+
+    Process:
+        1) Defines storage
+        2) initialize pipeline components
+        3) Load each dataset and converts the loaded playback data
+        4) Calls the optimizer that runs the RBPF SLAM algorithm on all datasets with all parameter combinations and all seeds
+           Computes the metrics for each run and stores the results in a ranked list of runs.
+        5) Sorts the estimated resutls by score
+        6) Processes the ranked runs 
+        7) Aggregates the summary results by dataset and parameter/seed combinations
+        8) Stores the results of the pipeline
     '''
     # Define vars
     ranked_run_list = []
@@ -1002,7 +1068,6 @@ def rbpf_tuning_pipeline_multiprocessing():
         )    
 
     # Aggregate results
-    # TODO: Adapt aggregate results to new tuning pipeline fo rbpf with multiple particles
     # Convert ranked runs to pandas DataFrame for easier analysis 
     ranked_run_df = ranked_run_conv.to_dataframe(ranked_run_list)
 
@@ -1025,7 +1090,7 @@ def rbpf_tuning_pipeline_multiprocessing():
         ranked_runs=ranked_run_list,
     )
 
-    # # Save results
+    # Save results
     result_writer.write_dataframe_csv(
         path=ranked_scored_path,
         df=rank_scored_df,
