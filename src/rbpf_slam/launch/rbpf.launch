@@ -91,7 +91,7 @@
     </node>
 
     <!--Launch the RBPF SLAM node and load its params from config file -->
-    <node pkg="rbpf_slam" name="rbpf_slam_node" type="rbpf_slam_node_new.py" output="screen">
+    <node pkg="rbpf_slam" name="rbpf_slam_node" type="rbpf_slam_node.py" output="screen">
         <rosparam command="load" file="$(find rbpf_slam)/config/rbpf_slam_params.yaml"/>
     </node>
     
