@@ -11,6 +11,8 @@ from typing import Any, Dict, Iterator, List, Tuple, Union
 from ..infrastructure.playback_loader import PlaybackLoader
 from ..infrastructure.playback_converter import PlaybackConverter
 
+from ..scan_matcher.warmp_up_numba_scan_matcher import warm_up_numba_scan_matcher
+
 from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, BeamRangeFinderMeasModelParams
 from ..rbpf.scan_match_factory import (
     OccupancyParams,
@@ -21,6 +23,7 @@ from ..rbpf.scan_match_factory import (
     ScanMatcherParams,
 )
 
+
 from ..optimize_rbpf.playback_defs import ExperimentParams
 from .evaluator_scanmatching import ScanMatchingEvaluator
 from .playback_runner_scanmatching import PlaybackRunnerScanMatching
@@ -29,118 +32,6 @@ from .optimizer_scanmatching import ScanMatchingOptimizer
 from .result_writer_scanmatching import ResultWriterScanMatching
 from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggregatorScanMatching
 from .step_processor import StepProcessor
-
-
-'''
-1. Test final pipeline
-    1.1 Test of final tuning pipeline for scan-matching-only mode on 100 steps 
-
-    1.2 Test after correction and metric changes
-
-        - First test of full run after correction and metric changes. 
-
-
-2. Optimize further
-    - We added new metrics, increased the grid parameters and added new parameters to the grid. 
-    - Also we computed search window for surface detection in map extractor 
-
-    2.1 Over cafe map
-
-    2.2 over turtlebot map
-
-    
-3. After intial shift fix and after adding initalization pahse for algorithm
-
-    3.1 Cafe map (1779375646)
-    
-        3.1.1 First run on cafe map with zero stddev in scan measurements
-            Results:
-                - Solid results
-
-        3.1.2 Run on cafe map with added noise in scan ranges (accidently without measurement seed)
-
-        
-        3.1.3 Run on cafe map with added noise in scan ranges with measurement seed
-
-            - Quiet good results but a little bit more worse then the corresponding turtle bot 3 results.
-            - We did smaller turns here but scan matcher weakness is not turn as it seems its more translation.
-            - Also this map might not have that much featueres than the turtle bot map has. 
-            
-        3.1.4 Run on cafe map with on small grid with different seeds -> find stable params
-
-        
-        3.1.5 Final run with best union params
-
-        
-    3.2 turtle bot 3 map (1779363559)
-
-        3.2.1 First run on turtle bot map with zero stddev in scan measurements
-            Results:
-                - Solid results
-
-        3.2.2 Run on turtle bot map with added noise in scan ranges (accidently without measurement seed)
-
-        
-        3.2.3 Run on turtle bot map with added noise in scan ranges with measurement seed
-        
-        3.2.4 Run on turtle bot map with on small grid with different seeds -> find stable params
-
-        
-        3.2.5 Final run with best union params
-
-
-4. Run over all three maps
-    - Now we do a grid search over all three maps with param grid and seeds
-
-    4.1 With missing metrics
-
-
-    4.2 With all needed metrics
-
-
-5. Adapt grid resolution (0.1 -> 0.05 m)#
-
-    - All results are with the old deterministic subsampling of the map points
-    - We simply use every nth point in the list of map points. Since these are not necessarily located next togehter 
-      it could be that we sometimes erase many points close togehterr and sometimes not. 
-    - This should be foixed in the future with voxel/grid downsampling
-
-    5.1 256 param grid search
-
-        - Results are stable
-        - But not better than with 0.1 m grid resolution
-
-    
-    5.2 Try to search iin other param scpae area to find better global optimum 
-
-
-    5.3 Try to fine tuner the params from before to find better local optimum
-
-
-6. After adding grid based subsampling of the map points
-
-    6.1 Run big grid search with 0.05 m grid resolution 
-        
-        Results:
-            - A bit better than 5.3 but not significantly better
-            - Seems like its more stable now cause icp failure rate got reduced
-
-    6.2 Fine tuning
-
-        Result:
-            - Did not improve over 6.1
-
-
-    6.3 Try icp without downsampling of the map points (keep all map points) 
-
-
-7. Reference results
-
-    7.1 Ref 1 (Full n playbacks)
-        - After every code change that can influence the results, compare the results against this reference (score)
-        
-
-'''
 
 
 # Playback data path defs
@@ -928,6 +819,9 @@ def main() -> None:
     # Start Debugger 
     if DEBUG_CODE:
         debug()
+
+    # Warm up numba functions
+    warm_up_numba_scan_matcher()
 
     if USE_PARALLEL_OPTM_PIPE:
         # Scan matcher tuning pipe parallel

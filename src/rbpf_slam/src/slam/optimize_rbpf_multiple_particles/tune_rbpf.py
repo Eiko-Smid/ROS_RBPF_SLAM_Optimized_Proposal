@@ -13,6 +13,9 @@ from .playback_defs import ExperimentParams, PlaybackData
 from ..infrastructure.playback_loader import PlaybackLoader
 from ..infrastructure.playback_converter import PlaybackConverter
 
+from ..scan_matcher.warmp_up_numba_scan_matcher import warm_up_numba_scan_matcher
+from ..rbpf.warm_up_numba_beam_model import warm_up_numba_beam_model
+
 from ..rbpf.rbpf import (
     RBPFFactory,
     ParticleParams,
@@ -30,8 +33,6 @@ from ..rbpf.scan_match_factory import (
     ScanMatchFactory
 )
 
-from ..scan_matcher.icp_scan_matching import warmup_numba_functions
-
 # from .evaluator import RBPFEvaluator
 from .evaluator_mult_part import RBPFEValMultParticles as RBPFEvaluator
 from .playback_runner import PlaybackRunner
@@ -47,21 +48,20 @@ from .step_processor import StepProcessor
 STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
 
 # Default storage
-# SUB_DIR = "proposal_optm_1_14/"
-# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
-# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
-# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
-# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
-# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
-
-# # Test storage
-# SUB_DIR = "proposal_optm_test_7_tune_pipe_parallel/"
-SUB_DIR = "proposal_optm_test_9_deleted_alpha_beta/"
+SUB_DIR = "proposal_optm_1_14/"
 OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
 STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
 PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
 PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
 RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
+
+# Test storage
+# SUB_DIR = "proposal_optm_test_9_deleted_alpha_beta/"
+# OPTM_SUMMARY_PATH= STORAGE_DIR + SUB_DIR + 'summary'
+# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + 'steps.csv'
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + 'proposal_weights.csv'
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + 'params.json'
+# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + 'runs/'
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -318,6 +318,16 @@ def debug():
     debugpy.listen(("localhost", 5678))
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()  
+
+
+def warmup_numba_functions() -> None:
+    '''
+    Function to warmup all numba functions used in this pipeline. This is done since the first call of 
+    a numba functions takes a long time to compile the function, and should be avoided during actual 
+    run. 
+    '''
+    warm_up_numba_scan_matcher()
+    warm_up_numba_beam_model()
 
 
 def _to_jsonable(value):
@@ -1139,7 +1149,7 @@ def rbpf_tuning_pipeline_multiprocessing():
 def main():
     # Attatch debugger
     if DEBUG_CODE:
-            debug()
+        debug()
             
     # Initialize numba functions
     warmup_numba_functions()
