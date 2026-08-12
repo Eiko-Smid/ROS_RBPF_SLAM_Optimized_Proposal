@@ -1315,7 +1315,7 @@ def init():
 
 
 def main():
-    # RUn debugger if needed
+    # Run debugger if needed
     if USE_DEBUGGER:
         debug_code()
 

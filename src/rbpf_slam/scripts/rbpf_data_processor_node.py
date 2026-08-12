@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import debugpy
 
 from typing import Tuple
 
@@ -56,6 +57,7 @@ except ModuleNotFoundError:
     from slam.infrastructure.playback_recorder import PlaybackRecorder
 
 
+# Constants
 NODE_NAME = "rbpf_data_processor_node"
 
 
@@ -75,6 +77,15 @@ class ROSParams:
     robot_start_pose: Tuple[float, float, float]
     motion_error_factor: float
     turn_error_factor: float
+
+
+
+def debug_code():
+    '''Starts debugpy and waits for debugger to attach.'''
+    debugpy.listen(("0.0.0.0", 5678))
+    print("Waiting for debugger attach...")
+    debugpy.wait_for_client()
+    print("Debugger attached")
 
 
 
@@ -104,6 +115,7 @@ def load_wheel_separation():
         wheel_separation,
     )
     return wheel_separation
+
 
 
 def load_ros_node_params(
@@ -270,9 +282,9 @@ class RBPFDataProcessorNode:
 
 
     def add_wheel_encoder_noise(
-            self,
-            left_control: float,
-            right_control: float,
+        self,
+        left_control: float,
+        right_control: float,
         ) -> Tuple[float, float]:
             '''
             Adds Gaussian motion- and turn-dependent noise to wheel travel values.
@@ -314,11 +326,11 @@ class RBPFDataProcessorNode:
 
 
     def publish_rbpf_info(
-            self,
-            laser_scan: LaserScan,
-            dl: float, 
-            dr: float,
-            pose: Tuple[float, float, float],
+        self,
+        laser_scan: LaserScan,
+        dl: float, 
+        dr: float,
+        pose: Tuple[float, float, float],
     ):
         # Init RBPFInput message
         msg = RBPFInput()
@@ -337,89 +349,89 @@ class RBPFDataProcessorNode:
 
 
     def synchronizer_cb(
-            self, 
-            laser_scan: LaserScan,
-            ground_truth_odom: Odometry,
-        ) -> None:
-            '''
-            Callback functions that readds the synchronized laser scan and ground truth odometry messages, processes them
-            and publishes the RBPF input message. 
-            The method simulates the wheel encoder data based on the received ground truth odometry and publishes it together
-            with the laser scan data, while ensuring the data is within time thresholds.
+        self, 
+        laser_scan: LaserScan,
+        ground_truth_odom: Odometry,
+    ) -> None:
+        '''
+        Callback functions that readds the synchronized laser scan and ground truth odometry messages, processes them
+        and publishes the RBPF input message. 
+        The method simulates the wheel encoder data based on the received ground truth odometry and publishes it together
+        with the laser scan data, while ensuring the data is within time thresholds.
 
-            Parameters
-            ----------
-            laser_scan: LaserScan
-                The synchronized laser scan message.
-            ground_truth_odom: Odometry
-                The synchronized ground truth odometry message.
+        Parameters
+        ----------
+        laser_scan: LaserScan
+            The synchronized laser scan message.
+        ground_truth_odom: Odometry
+            The synchronized ground truth odometry message.
+        
+        '''
+        # Read synchronized data 
+        with self.lock:
+            # Check if this is the first scan message received, if so, store it and return
+            if self.prev_scan_msg is None:
+                # Init message
+                self.prev_scan_msg: LaserScan = laser_scan
+                return            
+            else:
+                # Compute time difference
+                new_laser_time = laser_scan.header.stamp
+                old_laser_time = self.prev_scan_msg.header.stamp
+                scan_time_diff = (new_laser_time - old_laser_time).to_sec()
+
+            # Copy data -> glob var are free now -> leave lock
+            laser_scan_cp = laser_scan
+            ground_truth_odom_cp = ground_truth_odom
+
+        # Accept new data pair if time difference is within thres
+        if scan_time_diff > (
+            self.ros_params.desired_time_window_s
+            - self.ros_params.time_window_tolerance_s
+        ):
+            # Compute time difference between scan and ground truth odom
+            dt_scan_ground_truth = abs(laser_scan_cp.header.stamp.to_sec() - ground_truth_odom_cp.header.stamp.to_sec())
+            # rospy.loginfo(                
+            #     f"time_diff_scan_ground_truth={dt_scan_ground_truth * 1000.0:.2f} ms"
+            # )
+
+            # Check if synchronization error is within threshold, otherwise skip 
+            if dt_scan_ground_truth > self.ros_params.max_sync_error_s:
+                rospy.logwarn(
+                    f"Skipping pair: synchronization error "
+                    f"{dt_scan_ground_truth * 1000.0:.2f} ms"
+                )
+                return
+
+            # Extract ground truth pose 
+            pose = self.transform_pose_to_planar_pose(pose=ground_truth_odom_cp.pose.pose)
+            # rospy.loginfo(f"True pose: x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}")
             
-            '''
-            # Read synchronized data 
-            with self.lock:
-                # Check if this is the first scan message received, if so, store it and return
-                if self.prev_scan_msg is None:
-                    # Init message
-                    self.prev_scan_msg: LaserScan = laser_scan
-                    return            
-                else:
-                    # Compute time difference
-                    new_laser_time = laser_scan.header.stamp
-                    old_laser_time = self.prev_scan_msg.header.stamp
-                    scan_time_diff = (new_laser_time - old_laser_time).to_sec()
-    
-                # Copy data -> glob var are free now -> leave lock
-                laser_scan_cp = laser_scan
-                ground_truth_odom_cp = ground_truth_odom
-    
-            # Accept new data pair if time difference is within thres
-            if scan_time_diff > (
-                self.ros_params.desired_time_window_s
-                - self.ros_params.time_window_tolerance_s
-            ):
-                # Compute time difference between scan and ground truth odom
-                dt_scan_ground_truth = abs(laser_scan_cp.header.stamp.to_sec() - ground_truth_odom_cp.header.stamp.to_sec())
-                # rospy.loginfo(                
-                #     f"time_diff_scan_ground_truth={dt_scan_ground_truth * 1000.0:.2f} ms"
-                # )
-    
-                # Check if synchronization error is within threshold, otherwise skip 
-                if dt_scan_ground_truth > self.ros_params.max_sync_error_s:
-                    rospy.logwarn(
-                        f"Skipping pair: synchronization error "
-                        f"{dt_scan_ground_truth * 1000.0:.2f} ms"
-                    )
-                    return
-    
-                # Extract ground truth pose 
-                pose = self.transform_pose_to_planar_pose(pose=ground_truth_odom_cp.pose.pose)
-                # rospy.loginfo(f"True pose: x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}")
-                
-                # Simulate wheel encoder data 
-                dl, dr = self._wheelencoder_simulation(
-                    old_pose=self.prev_pose,
-                    new_pose=pose,
-                    width=self.wheel_separation,
-                )
-    
-                # Add noise to wheel encoder data
-                dl, dr = self.add_wheel_encoder_noise(
-                    left_control=dl,
-                    right_control=dr,
-                )
-                
-                # Update prev data
-                self.prev_scan_msg = laser_scan_cp
-                self.prev_pose = pose
+            # Simulate wheel encoder data 
+            dl, dr = self._wheelencoder_simulation(
+                old_pose=self.prev_pose,
+                new_pose=pose,
+                width=self.wheel_separation,
+            )
 
-                # Publish rbpf input data
-                self.publish_rbpf_info(
-                    laser_scan=laser_scan_cp,
-                    dl=dl, 
-                    dr=dr,
-                    pose=pose
-                )
-            return       
+            # Add noise to wheel encoder data
+            dl, dr = self.add_wheel_encoder_noise(
+                left_control=dl,
+                right_control=dr,
+            )
+            
+            # Update prev data
+            self.prev_scan_msg = laser_scan_cp
+            self.prev_pose = pose
+
+            # Publish rbpf input data
+            self.publish_rbpf_info(
+                laser_scan=laser_scan_cp,
+                dl=dl, 
+                dr=dr,
+                pose=pose
+            )
+        return       
 
 
     def exe(self):
@@ -427,9 +439,8 @@ class RBPFDataProcessorNode:
 
 
 
-
 def main():
-    '''Initializes parameters and starts the synchronized playback node.'''
+    '''Initializes parameters and starts the synchronized playback node.'''    
     # Init node
     rospy.init_node(NODE_NAME)
     config_name = rospy.get_param("~config_name")

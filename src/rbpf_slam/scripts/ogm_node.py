@@ -22,6 +22,7 @@ import numpy as np
 # Import classes (support both roslaunch and direct execution contexts)
 try:
     from rbpf_slam.src.slam.scan_matcher.ogm_scan_matching import OGM
+    from rbpf_slam.src.slam.infrastructure.defs import Pose2D
     from rbpf_slam.src.slam.rbpf.scan_match_factory import (
         OccupancyParams,
         SensorParams,
@@ -29,18 +30,24 @@ try:
     )
 except ModuleNotFoundError:
     from slam.scan_matcher.ogm_scan_matching import OGM
+    from slam.infrastructure.defs import Pose2D
     from slam.rbpf.scan_match_factory import (
         OccupancyParams,
         SensorParams,
         MapParameter,
     )
 
+
+# Constants
+# Decide whether to use the debugger (True) or not (False).
 USE_DEBUGGER = False
+# Defines the name of the OGM Node
 NODE_NAME = "ogm_node"
-Pose2D = Tuple[float, float, float]
+
 
 
 def debug_code():
+    '''Starts debugpy and waits for debugger to attach.'''
     debugpy.listen(("0.0.0.0", 5678))
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()
@@ -49,6 +56,10 @@ def debug_code():
 
 @dataclass
 class Colormap:
+    '''
+    Dataclass that defines the discretized color values used to represent
+    occupancy grid map cells after transformation.
+    '''
     col_val_unknown: int = -1
     col_val_occ: int = 100
     col_val_free: int = 0
@@ -56,6 +67,10 @@ class Colormap:
 
 @dataclass
 class ROSParams:
+    '''
+    Dataclass that defines the ROS parameters for the OGM node. These include
+    topic names, TF frame names, and runtime settings.
+    '''
     rbpf_input_topic: str
     map_topic: str
     map_tf_frame: str
@@ -67,6 +82,10 @@ class ROSParams:
 
 @dataclass
 class OGMParams:
+    '''
+    Dataclass that defines the occupancy grid mapping experiment parameters,
+    including map, sensor, occupancy, and discretization settings.
+    '''
     occupancy_params: OccupancyParams
     sensor_params: SensorParams
     map_param: MapParameter
@@ -75,7 +94,21 @@ class OGMParams:
 
 
 def load_experiment_params() -> OGMParams:
-    '''Load the OGM experiment configuration.'''
+    '''
+    Loads the OGM experiment configuration from the ROS parameter server and
+    initializes the OGMParams dataclass.
+
+    Returns
+    -------
+    ogm_params : OGMParams
+        The loaded occupancy grid mapping experiment parameters.
+
+    Raises
+    ------
+    RuntimeError
+        If the experiment configuration is missing required values or contains
+        values that cannot be converted to the expected types.
+    '''
     config = rospy.get_param("~experiment")
 
     try:
@@ -101,7 +134,21 @@ def load_experiment_params() -> OGMParams:
 
 
 def load_colormap_params() -> Colormap:
-    '''Load OccupancyGrid colormap values from configuration.'''
+    '''
+    Loads the OccupancyGrid colormap values from the ROS parameter server and
+    initializes the Colormap dataclass.
+
+    Returns
+    -------
+    col_map : Colormap
+        The color values used for unknown, occupied, and free map cells.
+
+    Raises
+    ------
+    RuntimeError
+        If the colormap configuration is missing required values or contains
+        values that cannot be converted to integers.
+    '''
     config = rospy.get_param("~colormap")
 
     try:
@@ -117,7 +164,21 @@ def load_colormap_params() -> Colormap:
 
 
 def load_ros_node_params() -> ROSParams:
-    '''Load ROS topics, frames, and runtime settings from configuration.'''
+    '''
+    Loads the ROS topics, frames, and runtime settings from the ROS parameter
+    server and initializes the ROSParams dataclass.
+
+    Returns
+    -------
+    ros_params : ROSParams
+        The loaded ROS parameters for the OGM node.
+
+    Raises
+    ------
+    RuntimeError
+        If the ROS configuration is missing required values or contains values
+        that cannot be converted to the expected types.
+    '''
     config = rospy.get_param("~ros")
 
     try:
@@ -141,6 +202,21 @@ def load_ros_node_params() -> ROSParams:
 
 
 def init_ogm(exp_param: OGMParams) -> OGM:
+    '''
+    Initializes an empty occupancy grid map from the given experiment
+    parameters.
+
+    Parameters
+    ----------
+    exp_param : OGMParams
+        The occupancy, sensor, map, and discretization parameters of the OGM
+        experiment.
+
+    Returns
+    -------
+    ogm : OGM
+        The initialized occupancy grid mapping algorithm.
+    '''
     # init OGM algorithm
     ogm = OGM(
         map_parameter=exp_param.occupancy_params.min_distance_to_border,
@@ -168,7 +244,27 @@ def init_ogm(exp_param: OGMParams) -> OGM:
     return ogm
 
 
-class OGMROSCommunication:
+class OGMROSNode:
+    '''
+    ROS interface for the known-pose occupancy grid mapping algorithm.
+
+    Integrates the OGM algorithm into the robot's ROS infrastructure. The node
+    receives synchronized laser scans and true robot poses, updates the map,
+    publishes the discretized map as an OccupancyGrid message, and broadcasts
+    the odom-to-base transform required to connect the robot's TF tree.
+
+    Parameters
+    ----------
+    ogm : OGM
+        The occupancy grid mapping algorithm used to update the map.
+    ogm_params : OGMParams
+        Configuration parameters of the occupancy grid mapping algorithm.
+    ros_params : ROSParams
+        ROS-specific configuration including topic names, frame names, and
+        queue size.
+    col_map : Colormap
+        Color values used to discretize the log-odds map for publication.
+    '''
     def __init__(
         self,
         ogm: OGM,
@@ -213,7 +309,19 @@ class OGMROSCommunication:
 
 
     def lookup_base_to_laser_transform_2d(self):
-        '''Look up static transform from base frame to laser frame once.'''
+        '''
+        Looks up the static transform from the source laser frame into the
+        target base frame and converts it into a planar pose.
+
+        The lookup is repeated until the transform becomes available or ROS is
+        shut down.
+
+        Returns
+        -------
+        Pose2D
+            The laser pose in the base frame as an (x, y, yaw) tuple. Returns a
+            zero pose if ROS shuts down before the transform is available.
+        '''
         while not rospy.is_shutdown():
             try:
                 transform = self.tf_buffer.lookup_transform(
@@ -248,7 +356,16 @@ class OGMROSCommunication:
 
 
     def _rbpf_input_cb(self, msg: RBPFInput) -> None:
-        '''Store synchronized input data for processing in the main loop.'''
+        '''
+        Stores a synchronized RBPF input message in the processing queue while
+        preserving the message order.
+
+        Parameters
+        ----------
+        msg : RBPFInput
+            The synchronized laser scan, wheel encoder, and true-pose data
+            produced by the RBPF data processor node.
+        '''
         try:
             self.rbpf_input_queue.put_nowait(msg)
         except Full:
@@ -269,9 +386,26 @@ class OGMROSCommunication:
         timestamp: rospy.Time,
     ) -> TransformStamped:
         """
-        Convert a 2D pose into a ROS TransformStamped message.
+        Converts a 2D pose into a ROS TransformStamped message. The pose
+        describes the child frame relative to the parent frame.
 
-        The pose describes the child frame relative to the parent frame.
+        Parameters
+        ----------
+        pose : Pose2D
+            A tuple representing the 2D pose (x, y, theta), where theta is the
+            orientation in radians.
+        parent_frame : str
+            The frame ID of the parent frame.
+        child_frame : str
+            The frame ID of the child frame.
+        timestamp : rospy.Time
+            The timestamp for the TransformStamped message.
+
+        Returns
+        -------
+        TransformStamped
+            A ROS TransformStamped message containing the given pose, frame
+            IDs, and timestamp.
         """
         if pose is None or len(pose) != 3:
             raise ValueError("Pose must contain (x, y, theta).")
@@ -317,7 +451,37 @@ class OGMROSCommunication:
         origin_y: float,
         orient_yaw: float = 0.0,
     ) -> OccupancyGrid:
-        '''Create an OccupancyGrid message from a flattened map and its metadata.'''
+        '''
+        Creates a ROS OccupancyGrid message from a flattened map and its
+        metadata.
+
+        Parameters
+        ----------
+        map_raveled : np.ndarray
+            The flattened occupancy grid map in row-major order.
+        timestamp : rospy.Time
+            The timestamp for the OccupancyGrid message. If None, the current
+            ROS time is used.
+        frame_id : str
+            The frame ID in which the map is represented.
+        grid_res : float
+            The grid resolution in meters per cell.
+        width : int
+            The map width in number of cells.
+        height : int
+            The map height in number of cells.
+        origin_x : float
+            The x-coordinate of the map origin in the map frame.
+        origin_y : float
+            The y-coordinate of the map origin in the map frame.
+        orient_yaw : float, optional
+            The yaw orientation of the map origin in radians. Default is 0.0.
+
+        Returns
+        -------
+        OccupancyGrid
+            A ROS OccupancyGrid message containing the map data and metadata.
+        '''
         map_msg = OccupancyGrid()
 
         timestamp = timestamp if timestamp is not None else rospy.Time.now()
@@ -347,15 +511,36 @@ class OGMROSCommunication:
     @staticmethod
     def transform_pose_to_planar_pose(pose: Pose2DMsg):
         '''
-        Transform a ROS Pose2D message to an (x, y, yaw) tuple.
+        Converts a ROS Pose2D message into a planar pose tuple.
+
+        Parameters
+        ----------
+        pose : Pose2DMsg
+            The ROS pose message to convert.
+
+        Returns
+        -------
+        Pose2D
+            The pose represented as an (x, y, theta) tuple.
         '''
         return (pose.x, pose.y, pose.theta)
 
 
     @staticmethod
     def transform_laser_scan_to_measurement(laser_scan: LaserScan):
-        '''Transform the sensor msgs LaserScan to a list of measurement's consisting of 
-        (range, bearing) tuple.'''
+        '''
+        Converts a ROS LaserScan message into range-bearing measurements.
+
+        Parameters
+        ----------
+        laser_scan : LaserScan
+            The laser scan message to convert.
+
+        Returns
+        -------
+        measurements : list
+            The scan represented as a list of (range, bearing) tuples.
+        '''
         min_angle= laser_scan.angle_min
         angle_increment= laser_scan.angle_increment
         bearing= min_angle
@@ -371,7 +556,21 @@ class OGMROSCommunication:
 
     @staticmethod
     def transform_planar_pose(pose, pose_offset):
-        '''Compose two 2D poses: world->base and base->laser => world->laser.'''
+        '''
+        Composes a planar robot pose with a planar sensor offset.
+
+        Parameters
+        ----------
+        pose : Pose2D
+            The base pose in the world frame as an (x, y, yaw) tuple.
+        pose_offset : Pose2D
+            The laser pose relative to the base frame as an (x, y, yaw) tuple.
+
+        Returns
+        -------
+        Pose2D
+            The laser pose in the world frame as an (x, y, yaw) tuple.
+        '''
         x, y, yaw = pose
         dx, dy, dyaw = pose_offset
         transformed_x = x + np.cos(yaw) * dx - np.sin(yaw) * dy
@@ -382,17 +581,19 @@ class OGMROSCommunication:
 
     def convert_log_odds_map(self, log_odds_map: np.ndarray) -> np.ndarray:
         '''
-        Discretize a log-odds map into unknown, free, and occupied cells.
+        Converts a log-odds map into a discretized color-value map suitable for
+        publication as a ROS OccupancyGrid message.
 
         Parameters
         ----------
         log_odds_map : np.ndarray
-            The log-odds map to be discretized.
+            The log-odds map represented as a 2D numpy array.
 
         Returns
         -------
-        np.ndarray
-            The discretized occupancy grid map.
+        discretized_map : np.ndarray
+            A 2D array whose cells contain the configured unknown, free, or
+            occupied values. Returns None when no log-odds map is available.
         '''
         if log_odds_map is None:
             rospy.logwarn("No log-odds map available. Skipping map publishing.")
@@ -410,7 +611,13 @@ class OGMROSCommunication:
 
     def publish_occupancy_grid_message(self, timestamp: rospy.Time) -> None:
         '''
-        Discretize the current OGM map and publish it as an OccupancyGrid.
+        Discretizes the current OGM map, creates a ROS OccupancyGrid message,
+        and publishes it on the configured map topic.
+
+        Parameters
+        ----------
+        timestamp : rospy.Time
+            The timestamp assigned to the published map and its metadata.
         '''
         log_odds_map = self.ogm.get_log_odds_map()
         map_meta = self.ogm.get_map_meta()
@@ -436,6 +643,20 @@ class OGMROSCommunication:
 
 
     def publish_green_cells(self, i_range, j_range, ogm):        
+        '''
+        Publishes the selected occupancy grid cells as green visualization
+        markers for debugging.
+
+        Parameters
+        ----------
+        i_range : Tuple[int, int]
+            The half-open range of map row indices to visualize.
+        j_range : Tuple[int, int]
+            The half-open range of map column indices to visualize.
+        ogm : OGM
+            The occupancy grid map used to convert cell indices into map-frame
+            coordinates and determine marker size.
+        '''
         marker = Marker()
         marker.header.frame_id = "map"
         marker.header.stamp = rospy.Time.now()
@@ -482,7 +703,12 @@ class OGMROSCommunication:
         
     def exe(self):
         '''
-        Main loop that executes the algorithm.
+        Main loop that executes the OGM node.
+
+        Retrieves synchronized input messages from the queue, transforms the
+        robot pose into the laser pose, updates and extends the occupancy grid
+        map, publishes the odom-to-base transform, and publishes the current
+        discretized map.
         '''
         while not rospy.is_shutdown():
             try:
@@ -541,6 +767,25 @@ class OGMROSCommunication:
 
 
 def init():
+    '''
+    Initializes the OGM algorithm and its configuration. The following steps
+    are performed:
+        1. Initialize the ROS node.
+        2. Load the experiment, ROS, and colormap parameters.
+        3. Initialize the occupancy grid mapping algorithm.
+        4. Return the initialized components.
+
+    Returns
+    -------
+    ogm : OGM
+        The initialized occupancy grid mapping algorithm.
+    exp_params : OGMParams
+        The loaded OGM experiment parameters.
+    ros_params : ROSParams
+        The loaded ROS node parameters.
+    col_map : Colormap
+        The loaded color values used to discretize the map.
+    '''
     # Init ROS node
     rospy.init_node(NODE_NAME)
 
@@ -559,6 +804,7 @@ def init():
 
 
 def main():
+    '''Initializes the OGM ROS node and starts its processing loop.'''
     # Debug code if enabled
     if USE_DEBUGGER:
             debug_code()
@@ -567,7 +813,7 @@ def main():
     ogm, exp_params, ros_params, col_map = init()
 
     # Initialize algorithm
-    ros_ogm = OGMROSCommunication(
+    ros_ogm = OGMROSNode(
         ogm=ogm,
         ogm_params=exp_params,
         ros_params=ros_params,

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
-from typing import Tuple, Optional
+from typing import Tuple
 
 from dataclasses import dataclass
 from math import atan2, cos, sin, sqrt
 import random
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 import rospy
 import message_filters
@@ -55,9 +56,9 @@ except ModuleNotFoundError:
 Description
 -----------
 This node records synchronized the laser scan data and ground-truth pose. Computes the odometry control from
-the previous synchronized pose and adds artificial wheel encoder noise. 
+the previous synchronized pose and adds artificial wheel encoder noise to it. 
 
-The synchronized data is stored in the playback directory specified by PLAYBACK_DIR. Three files are created:
+The synchronized data is stored in the playback directory configured for the recorder. Three files are created:
     1. <timestamp>_steps.csv
         Contains the synchronized data for each playback step including the timestamp, left/right wheel travel,
         and true pose.
@@ -69,13 +70,7 @@ The synchronized data is stored in the playback directory specified by PLAYBACK_
 '''
 
 
-TAG = (
-    "AWS small house map on different path with synced playback."
-)
-
-MAP_NAME = "AWS_Robot_Maker_Small_House_alt_path"
 NODE_NAME = "playback_node"
-PLAYBACK_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
 
 
 @dataclass
@@ -86,136 +81,204 @@ class ROSParams:
     The node processes every nth laser scan. With a laser update rate of 10 Hz
     and record_every_nth_scan=5, one playback step is recorded every 0.5 s.
     '''
-    # Ground-truth odometry topic published by libgazebo_ros_p3d.so
-    ground_truth_topic: str = "/ground_truth/odom"
-
-    # Scan topic
-    scan_topic: str = "scan"
-
-    # Laser scanner
-    # Desired time window between 2 scans [s]
-    des_time_window = 0.5 
-    # If time diff is > des_time_window + d_time_window we take this scan 
-    d_time_window = 0.1 * des_time_window
-
-    # Reject scan/ground-truth pairs with a larger interpolation gap [s]
-    # This threshold is checked for both bracketing poses separately.
-    max_sync_error_s: float = 0.02
-
-    # Number of ground-truth poses and selected scans stored temporarily
-    # Queue size for time synchronizer (stores that many values at max to find matching pair)
-    time_synchronizer_queue_size = 50
-    # Time difference between the topic data that is accepted for valid pairs [s]
-    time_synchronizer_slop = 0.02
-
-    # Robot spawn pose used as old pose for the first recorded control
-    robot_start_pose: Tuple[float, float, float] = (0.0, 0.0, 0.0)
-
-    # Artificial wheel encoder noise factors
-    motion_error_factor: Optional[float] = None
-    turn_error_factor: Optional[float] = None
-
-    # Laser noise metadata
-    laser_range_resolution: Optional[float] = None
-    laser_noise_type: Optional[str] = None
-    laser_noise_mean: Optional[float] = None
-    laser_noise_stddv: Optional[float] = None
+    ground_truth_topic: str
+    scan_topic: str
+    desired_time_window_s: float
+    time_window_tolerance_s: float
+    max_sync_error_s: float
+    time_synchronizer_queue_size: int
+    time_synchronizer_slop_s: float
+    robot_start_pose: Tuple[float, float, float]
+    motion_error_factor: float
+    turn_error_factor: float
+    laser_range_resolution: float
+    laser_noise_type: str
+    laser_noise_mean: float
+    laser_noise_stddv: float
 
 
+@dataclass
+class MetadataParams:
+    '''Stores metadata settings for the recorded playback data.'''
+    map_name: str
 
-def define_exp_parameter() -> ExperimentParams:
+
+@dataclass
+class RECORDParams:
+    '''Stores parameters used by the PlaybackRecorder.'''
+    enable_recording: bool
+    output_dir: str
+
+
+def load_wheel_separation() -> float:
+    '''Load the wheel separation computed in the generated robot description.'''
+    robot_description = rospy.get_param(
+        "/robot_vacuum_cleaner_description"
+    )
+    robot = ET.fromstring(robot_description)
+    wheel_separation_element = robot.find(
+        ".//plugin[@name='differential_drive_controller']/wheelSeparation"
+    )
+
+    if (
+        wheel_separation_element is None
+        or wheel_separation_element.text is None
+    ):
+        raise RuntimeError(
+            "wheelSeparation not found in robot_vacuum_cleaner_description"
+        )
+
+    wheel_separation = float(wheel_separation_element.text)
+    rospy.loginfo(
+        "Loaded wheel separation from robot description: %s",
+        wheel_separation,
+    )
+    return wheel_separation
+
+
+
+def load_experiment_params(
+    robot_start_pose: Tuple[float, float, float],
+    wheel_separation: float,
+) -> ExperimentParams:
     '''
-    Defines the experiment parameters stored together with the playback data.
+    Load experiment settings and add robot-specific runtime values.
 
     Returns
     -------
     ExperimentParams
         Parameters used by the RBPF, map, sensor and scan matcher.
     '''
-    # Compute wheel separation
-    h_chassis = 0.15
-    dist_chassis_to_ground = h_chassis / 5
-    r_wheel = h_chassis / 2 + dist_chassis_to_ground
-    w_wheel = 0.3 * r_wheel
-    r_chassis = 0.25
-    wheel_separation = 2 * r_chassis + w_wheel
+    config = rospy.get_param("~experiment")
 
-    exp_param = ExperimentParams(
-        occupancy_params=OccupancyParams(
-            prior_probability=0.5,
-            min_distance_to_border=13.0,
-            increasing_probability=0.7,
-            decreasing_probability=0.3,
-            min_log_odds=-5.0,
-            max_log_odds=5.0,
-        ),
-        sensor_params=SensorParams(
-            min_sensor_range=0.1,
-            max_sensor_range=10.0,
-        ),
-        map_param=MapParameter(
-            map_width=25.0,
-            map_height=25.0,
-            grid_resolution_m=0.05,
-        ),
-        icp_params=ICPParams(
-            max_n_points=400,
-            max_correspondence_distance=0.6,
-            neighbors_pca=10,
-            max_iterations=5,
-            epsilon_rel=1e-3,
-            no_improvement_limit=3,
-            min_error=5e-4,
-            min_dtrans=1e-3,
-            min_drot=1e-2,
-        ),
-        robot_params=RobotParams(
-            wheel_separation=wheel_separation,
-        ),
-        scan_matcher_params=ScanMatcherParams(
-            occ_thres=1.2,
-            delta_r=0.6,
-        ),
-        particle_params=ParticleParams(
-            n_particles=40,
-            start_pose=(0.0, 0.0, 0.0),
-        ),
-        motion_model_params=MotionModelParams(
-            sigma_x=0.2,
-            sigma_y=0.2,
-            sigma_theta=0.15,
-            wheel_separation=wheel_separation,
-            ctrl_motion_fac=0.1,
-            ctrl_turn_fac=0.20,
-        ),
-        measurement_model_params=MeasurementModelParams(
-            sigma_measurement=0.2,
-        ),
-        every_nth_scan_filter=4,
-        every_nth_scan_map=2,
-        proposal_sigma_xy=0.1,
-        proposal_sigma_theta=0.05,
-        proposal_n_samples=10,
-        tag=TAG,
-    )
-
-    return exp_param
+    try:
+        return ExperimentParams(
+            occupancy_params=OccupancyParams(
+                **config["occupancy_params"]
+            ),
+            sensor_params=SensorParams(
+                **config["sensor_params"]
+            ),
+            map_param=MapParameter(
+                **config["map_params"]
+            ),
+            icp_params=ICPParams(
+                **config["icp_params"]
+            ),
+            robot_params=RobotParams(
+                wheel_separation=wheel_separation,
+            ),
+            scan_matcher_params=ScanMatcherParams(
+                **config["scan_matcher_params"]
+            ),
+            particle_params=ParticleParams(
+                start_pose=robot_start_pose,
+                **config["particle_params"],
+            ),
+            motion_model_params=MotionModelParams(
+                wheel_separation=wheel_separation,
+                **config["motion_model_params"],
+            ),
+            measurement_model_params=MeasurementModelParams(
+                **config["measurement_model_params"]
+            ),
+            tag=str(config["tag"]),
+            **config["rbpf_params"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid playback experiment configuration: {exc}"
+        ) from exc
 
 
 
-@dataclass
-class RECORDParams:
-    '''Stores parameters used by the PlaybackRecorder.'''
-    enable_recording: bool = True
-    output_dir: str = PLAYBACK_DIR
+def load_metadata_params() -> MetadataParams:
+    '''Load playback metadata settings from the ROS parameter server.'''
+    config = rospy.get_param("~metadata")
+
+    try:
+        return MetadataParams(
+            map_name=str(config["map_name"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid playback metadata configuration: {exc}"
+        ) from exc
 
 
-def build_metadata(exp_params: ExperimentParams, ros_params: ROSParams):
+def load_record_params() -> RECORDParams:
+    '''Load recorder settings from the ROS parameter server.'''
+    config = rospy.get_param("~recording")
+
+    try:
+        return RECORDParams(
+            enable_recording=bool(config["enable_recording"]),
+            output_dir=str(config["output_dir"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid playback recording configuration: {exc}"
+        ) from exc
+
+
+def load_ros_node_params(
+    robot_start_pose: Tuple[float, float, float],
+    motion_error_factor: float,
+    turn_error_factor: float,
+    laser_range_resolution: float,
+    laser_noise_type: str,
+    laser_noise_mean: float,
+    laser_noise_stddv: float,
+) -> ROSParams:
+    '''Load fixed ROS settings and add values supplied by the launch file.'''
+    config = rospy.get_param("~ros")
+
+    try:
+        topics = config["topics"]
+        synchronization = config["synchronization"]
+
+        return ROSParams(
+            ground_truth_topic=topics["ground_truth"],
+            scan_topic=topics["scan"],
+            desired_time_window_s=float(
+                synchronization["desired_time_window_s"]
+            ),
+            time_window_tolerance_s=float(
+                synchronization["time_window_tolerance_s"]
+            ),
+            max_sync_error_s=float(
+                synchronization["max_sync_error_s"]
+            ),
+            time_synchronizer_queue_size=int(
+                synchronization["time_synchronizer_queue_size"]
+            ),
+            time_synchronizer_slop_s=float(
+                synchronization["time_synchronizer_slop_s"]
+            ),
+            robot_start_pose=robot_start_pose,
+            motion_error_factor=motion_error_factor,
+            turn_error_factor=turn_error_factor,
+            laser_range_resolution=laser_range_resolution,
+            laser_noise_type=laser_noise_type,
+            laser_noise_mean=laser_noise_mean,
+            laser_noise_stddv=laser_noise_stddv,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Invalid playback ROS configuration: {exc}"
+        ) from exc
+
+
+def build_metadata(
+    metadata_params: MetadataParams,
+    exp_params: ExperimentParams,
+    ros_params: ROSParams,
+):
     '''
     Builds the metadata dictionary stored together with the playback data.
     '''
     return {
-        "map": MAP_NAME,
+        "map": metadata_params.map_name,
 
         "robot_start_pose": ros_params.robot_start_pose,
 
@@ -232,13 +295,13 @@ def build_metadata(exp_params: ExperimentParams, ros_params: ROSParams):
 
         # Time synchronization parameters
         "time_synchronizer_queue_size": ros_params.time_synchronizer_queue_size,
-        "time_synchronizer_slop": ros_params.time_synchronizer_slop,
+        "time_synchronizer_slop": ros_params.time_synchronizer_slop_s,
 
         "ground_truth_topic": ros_params.ground_truth_topic,
         "scan_topic": ros_params.scan_topic,
 
-        "data_time_seperation_s": ros_params.des_time_window,
-        "d_time_window": ros_params.d_time_window,
+        "data_time_seperation_s": ros_params.desired_time_window_s,
+        "d_time_window": ros_params.time_window_tolerance_s,
         "max_sync_error_s": ros_params.max_sync_error_s,
 
         "n_particles": exp_params.particle_params.n_particles,
@@ -261,6 +324,7 @@ class ROSPlaybackNode:
 
     def __init__(
         self,
+        metadata_params: MetadataParams,
         ros_params: ROSParams,
         record_params: RECORDParams,
         exp_param: ExperimentParams,
@@ -275,6 +339,7 @@ class ROSPlaybackNode:
 
         # Build metadata
         metadata = build_metadata(
+            metadata_params=metadata_params,
             exp_params=exp_param,
             ros_params=ros_params,
         )
@@ -304,7 +369,7 @@ class ROSPlaybackNode:
         self.synchronizer = message_filters.ApproximateTimeSynchronizer(
             [self.scan_sub, self.ground_truth_sub],
             queue_size=ros_params.time_synchronizer_queue_size,
-            slop=ros_params.time_synchronizer_slop
+            slop=ros_params.time_synchronizer_slop_s
         )
 
         # Register callback -> synced data will be send to this cb
@@ -356,7 +421,10 @@ class ROSPlaybackNode:
             ground_truth_odom_cp = ground_truth_odom
 
         # Accept new data pair
-        if time_diff > (self.ros_params.des_time_window - self.ros_params.d_time_window):
+        if time_diff > (
+            self.ros_params.desired_time_window_s
+            - self.ros_params.time_window_tolerance_s
+        ):
             # Compute time difference between scan and ground truth odom
             dt_scan_ground_truth = abs(laser_scan_cp.header.stamp.to_sec() - ground_truth_odom_cp.header.stamp.to_sec())
             # rospy.loginfo(                
@@ -404,7 +472,7 @@ class ROSPlaybackNode:
         return        
 
 
-    staticmethod
+    @staticmethod
     def wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3) -> Tuple[float, float]:
         '''
         Get's the pose at x_t and x_t-1, as well as robot width and computes the distance the left 
@@ -523,43 +591,51 @@ def main():
     '''Initializes parameters and starts the synchronized playback node.'''
     # Init node
     rospy.init_node(NODE_NAME)
+    config_name = rospy.get_param("~config_name")
 
     # Get motion error parameters
-    motion_error_factor = rospy.get_param(
+    motion_error_factor = float(rospy.get_param(
         "/motion_error_factor"
-    )
-    turn_error_factor = rospy.get_param(
+    ))
+    turn_error_factor = float(rospy.get_param(
         "/turn_error_factor"
-    )
+    ))
 
     # Get robot spawn pose
-    spawn_x = rospy.get_param("/spawn_x")
-    spawn_y = rospy.get_param("/spawn_y")
-    spawn_yaw = rospy.get_param("/spawn_yaw")
-    robot_start_pose = (spawn_x, spawn_y, spawn_yaw)
+    robot_start_pose = (
+        float(rospy.get_param("/spawn_x")),
+        float(rospy.get_param("/spawn_y")),
+        float(rospy.get_param("/spawn_yaw")),
+    )
 
     # Get laser noise parameters
-    laser_range_resolution = rospy.get_param("/laser_range_resolution")
-    laser_noise_type = rospy.get_param("/laser_noise_type")
-    laser_noise_mean = rospy.get_param("/laser_noise_mean")
-    laser_noise_stddv = rospy.get_param("/laser_noise_stddv")
+    laser_range_resolution = float(
+        rospy.get_param("/laser_range_resolution")
+    )
+    laser_noise_type = str(rospy.get_param("/laser_noise_type"))
+    laser_noise_mean = float(rospy.get_param("/laser_noise_mean"))
+    laser_noise_stddv = float(rospy.get_param("/laser_noise_stddv"))
 
-    # Define experiment and recording parameters
-    exp_param = define_exp_parameter()
-    rec_params = RECORDParams()
-    ros_params = ROSParams()
+    # Load YAML configuration and add runtime robot/simulator parameters
+    wheel_separation = load_wheel_separation()
+    exp_param = load_experiment_params(
+        robot_start_pose=robot_start_pose,
+        wheel_separation=wheel_separation,
+    )
+    metadata_params = load_metadata_params()
+    rec_params = load_record_params()
+    ros_params = load_ros_node_params(
+        robot_start_pose=robot_start_pose,
+        motion_error_factor=motion_error_factor,
+        turn_error_factor=turn_error_factor,
+        laser_range_resolution=laser_range_resolution,
+        laser_noise_type=laser_noise_type,
+        laser_noise_mean=laser_noise_mean,
+        laser_noise_stddv=laser_noise_stddv,
+    )
 
-    # Set runtime ROS parameters
-    ros_params.robot_start_pose = robot_start_pose
-    ros_params.motion_error_factor = motion_error_factor
-    ros_params.turn_error_factor = turn_error_factor
-
-    ros_params.laser_range_resolution = laser_range_resolution
-    ros_params.laser_noise_type = laser_noise_type
-    ros_params.laser_noise_mean = laser_noise_mean
-    ros_params.laser_noise_stddv = laser_noise_stddv
-
-    # Display parameters 
+    # Display loaded parameters 
+    rospy.loginfo("Loaded playback configuration: %s", config_name)
     rospy.loginfo(f"Node {NODE_NAME} started with parameters:")
     rospy.loginfo(
         "Robot start pose: x={:.2f}, y={:.2f}, yaw={:.2f}".format(
@@ -581,6 +657,7 @@ def main():
 
     # Init playback node
     playback_node = ROSPlaybackNode(
+        metadata_params=metadata_params,
         ros_params=ros_params,
         record_params=rec_params,
         exp_param=exp_param,
