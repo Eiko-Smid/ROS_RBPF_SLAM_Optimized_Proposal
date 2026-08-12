@@ -30,6 +30,12 @@ import numpy as np
 # Import code infra
 
 try: 
+    from rbpf_slam.src.slam.scan_matcher.warmp_up_numba_scan_matcher import (
+        warm_up_numba_scan_matcher,
+    )
+    from rbpf_slam.src.slam.rbpf.warm_up_numba_beam_model import (
+        warm_up_numba_beam_model,
+    )
     from rbpf_slam.src.slam.rbpf.rbpf import (
         RBPFFactory,
         ParticleParams,
@@ -55,6 +61,10 @@ try:
     from rbpf_slam.src.slam.infrastructure.defs import Pose2D
     
 except ModuleNotFoundError:
+    from slam.scan_matcher.warmp_up_numba_scan_matcher import (
+        warm_up_numba_scan_matcher,
+    )
+    from slam.rbpf.warm_up_numba_beam_model import warm_up_numba_beam_model
     from slam.rbpf.rbpf import (
         RBPFFactory,
         ParticleParams,
@@ -160,6 +170,15 @@ def debug_code():
     print("Debugger attached")
 
 
+def warmup_numba_functions() -> None:
+    '''
+    Warm up and validate all Numba functions used by the RBPF SLAM node before
+    the filter starts processing measurements.
+    '''
+    warm_up_numba_scan_matcher()
+    warm_up_numba_beam_model()
+
+
 
 def load_wheel_separation() -> float:
     '''
@@ -244,7 +263,8 @@ def load_experiment_params(start_pose: Pose2D) -> ExperimentParams:
     Returns 
     -------
     exp_params : ExperimentParams
-        The experiment parameters loaded from the ROS parameter server and initialized with robot-specific values.
+        The experiment parameters loaded from the ROS parameter server and initialized with robot-
+        specific values.
     '''
     # Load the experiment configuration from the ROS parameter server
     config = rospy.get_param("~experiment")
@@ -1254,9 +1274,10 @@ def init():
     '''
     Initializes the RBPF Filter and its components. The following steps are performed:
         1. Initialize the ROS node.
-        2. Load parameters from ros parameter server and from robot ElementTree
-        3. Define experiment parameters.
-        4. Initialize Robot Estimator classes.
+        2. Warm up and validate the required Numba functions.
+        3. Load parameters from the ROS parameter server and robot ElementTree.
+        4. Define experiment parameters.
+        5. Initialize Robot Estimator classes.
         6. Return the initialized components.
 
     Returns
@@ -1274,6 +1295,9 @@ def init():
     '''
     # Init ros node
     rospy.init_node(NODE_NAME)
+
+    # Warm up Numba functions used by the RBPF filter
+    warmup_numba_functions()
 
     # Load configuration and values supplied by the robot launch
     config_name = rospy.get_param("~config_name")

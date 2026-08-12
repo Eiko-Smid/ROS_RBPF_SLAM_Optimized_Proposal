@@ -21,6 +21,9 @@ import numpy as np
 
 # Import classes (support both roslaunch and direct execution contexts)
 try:
+    from rbpf_slam.src.slam.scan_matcher.warmp_up_numba_scan_matcher import (
+        warm_up_numba_scan_matcher,
+    )
     from rbpf_slam.src.slam.scan_matcher.ogm_scan_matching import OGM
     from rbpf_slam.src.slam.infrastructure.defs import Pose2D
     from rbpf_slam.src.slam.rbpf.scan_match_factory import (
@@ -29,6 +32,9 @@ try:
         MapParameter,
     )
 except ModuleNotFoundError:
+    from slam.scan_matcher.warmp_up_numba_scan_matcher import (
+        warm_up_numba_scan_matcher,
+    )
     from slam.scan_matcher.ogm_scan_matching import OGM
     from slam.infrastructure.defs import Pose2D
     from slam.rbpf.scan_match_factory import (
@@ -62,6 +68,14 @@ def debug_code():
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()
     print("Debugger attached")
+
+
+def warmup_numba_functions() -> None:
+    '''
+    Warm up and validate the scan-matcher component's Numba functions before
+    the OGM node starts processing measurements.
+    '''
+    warm_up_numba_scan_matcher()
 
 
 @dataclass
@@ -781,9 +795,10 @@ def init():
     Initializes the OGM algorithm and its configuration. The following steps
     are performed:
         1. Initialize the ROS node.
-        2. Load the experiment, ROS, and colormap parameters.
-        3. Initialize the occupancy grid mapping algorithm.
-        4. Return the initialized components.
+        2. Warm up and validate the required Numba functions.
+        3. Load the experiment, ROS, and colormap parameters.
+        4. Initialize the occupancy grid mapping algorithm.
+        5. Return the initialized components.
 
     Returns
     -------
@@ -798,6 +813,9 @@ def init():
     '''
     # Init ROS node
     rospy.init_node(NODE_NAME)
+
+    # Warm up Numba functions used by the OGM algorithm
+    warmup_numba_functions()
 
     # Load configuration
     config_name = rospy.get_param("~config_name")

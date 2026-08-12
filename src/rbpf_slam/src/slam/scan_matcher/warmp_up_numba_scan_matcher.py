@@ -221,4 +221,4 @@ def warm_up_numba_scan_matcher() -> None:
     warm_up_prepare_system_point_to_plane_numba()
     warm_up_update_map_numba_inf_free_space()
     warm_up_extract_map_numba()
-    print("All Numba functions for scan matcher warmed up successfully.\n")
+    print("All Numba functions for scan matcher warmed up successfully.")
