@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Tuple
+from typing import Tuple, Dict, Any, List
 
 from dataclasses import dataclass
 from math import atan2, cos, sin, sqrt
@@ -55,31 +55,29 @@ except ModuleNotFoundError:
 '''
 Description
 -----------
-This node records synchronized the laser scan data and ground-truth pose. Computes the odometry control from
-the previous synchronized pose and adds artificial wheel encoder noise to it. 
+This node records synchronized laser scan and ground-truth pose data. It computes odometry controls
+from the previous synchronized pose and adds artificial wheel encoder noise to them.
 
-The synchronized data is stored in the playback directory configured for the recorder. Three files are created:
+The synchronized data is stored in the configured playback directory. Three files are created:
+
     1. <timestamp>_steps.csv
-        Contains the synchronized data for each playback step including the timestamp, left/right wheel travel,
-        and true pose.
+        Contains the timestamp, left and right wheel travel, and true pose for each playback step.
     2. <timestamp>_scans.jsonl
         Contains the laser scan data for each playback step.
     3. <timestamp>_meta.json
-        Contains the metadata for the playback data, including the map name, robot start pose, sensor parameters,
-        wheel separation, and other relevant information.
+        Contains playback metadata including the map name, robot start pose, sensor parameters, wheel
+        separation, synchronization settings, and experiment tag.
 '''
 
-
+# Name of the ROS node
 NODE_NAME = "playback_node"
 
 
 @dataclass
 class ROSParams:
     '''
-    Stores ROS topic names and parameters required by the playback node.
-
-    The node processes every nth laser scan. With a laser update rate of 10 Hz
-    and record_every_nth_scan=5, one playback step is recorded every 0.5 s.
+    Dataclass that defines the ROS and simulator parameters required by the playback node. These include
+    topic names, synchronization settings, robot start pose, and noise metadata.
     '''
     ground_truth_topic: str
     scan_topic: str
@@ -99,19 +97,36 @@ class ROSParams:
 
 @dataclass
 class MetadataParams:
-    '''Stores metadata settings for the recorded playback data.'''
+    '''
+    Dataclass that defines the general metadata stored with each playback recording.
+    '''
     map_name: str
 
 
 @dataclass
 class RECORDParams:
-    '''Stores parameters used by the PlaybackRecorder.'''
+    '''
+    Dataclass that defines the configuration values used by the PlaybackRecorder.
+    '''
     enable_recording: bool
     output_dir: str
 
 
 def load_wheel_separation() -> float:
-    '''Load the wheel separation computed in the generated robot description.'''
+    '''
+    Loads the wheel separation computed in the generated robot description.
+
+    Returns
+    -------
+    wheel_separation : float
+        The distance between the left and right wheels in meters.
+
+    Raises
+    ------
+    RuntimeError
+        If the differential-drive plugin or its wheelSeparation element cannot be found in the robot
+        description.
+    '''
     robot_description = rospy.get_param(
         "/robot_vacuum_cleaner_description"
     )
@@ -142,12 +157,26 @@ def load_experiment_params(
     wheel_separation: float,
 ) -> ExperimentParams:
     '''
-    Load experiment settings and add robot-specific runtime values.
+    Loads the playback experiment configuration from the ROS parameter server and adds robot-specific
+    runtime values.
+
+    Parameters
+    ----------
+    robot_start_pose : Tuple[float, float, float]
+        The robot start pose in the map frame as an (x, y, theta) tuple.
+    wheel_separation : float
+        The wheel separation loaded from the generated robot description.
 
     Returns
     -------
-    ExperimentParams
-        Parameters used by the RBPF, map, sensor and scan matcher.
+    exp_params : ExperimentParams
+        The experiment parameters stored as part of the playback metadata.
+
+    Raises
+    ------
+    RuntimeError
+        If the experiment configuration is missing required values or contains values that cannot
+        initialize the parameter dataclasses.
     '''
     config = rospy.get_param("~experiment")
 
@@ -193,7 +222,20 @@ def load_experiment_params(
 
 
 def load_metadata_params() -> MetadataParams:
-    '''Load playback metadata settings from the ROS parameter server.'''
+    '''
+    Loads the general playback metadata settings from the ROS parameter server and initializes the
+    MetadataParams dataclass.
+
+    Returns
+    -------
+    metadata_params : MetadataParams
+        The loaded metadata settings for the playback recording.
+
+    Raises
+    ------
+    RuntimeError
+        If the metadata configuration is missing required values or has an invalid structure.
+    '''
     config = rospy.get_param("~metadata")
 
     try:
@@ -207,7 +249,19 @@ def load_metadata_params() -> MetadataParams:
 
 
 def load_record_params() -> RECORDParams:
-    '''Load recorder settings from the ROS parameter server.'''
+    '''
+    Loads the recorder settings from the ROS parameter server and initializes the RECORDParams dataclass.
+
+    Returns
+    -------
+    record_params : RECORDParams
+        The loaded configuration values for the PlaybackRecorder.
+
+    Raises
+    ------
+    RuntimeError
+        If the recorder configuration is missing required values or has an invalid structure.
+    '''
     config = rospy.get_param("~recording")
 
     try:
@@ -230,7 +284,38 @@ def load_ros_node_params(
     laser_noise_mean: float,
     laser_noise_stddv: float,
 ) -> ROSParams:
-    '''Load fixed ROS settings and add values supplied by the launch file.'''
+    '''
+    Loads fixed ROS settings from the ROS parameter server and adds the dynamic values supplied by the
+    launch file and simulator.
+
+    Parameters
+    ----------
+    robot_start_pose : Tuple[float, float, float]
+        The robot start pose supplied by the launch file.
+    motion_error_factor : float
+        The motion-dependent wheel encoder noise factor.
+    turn_error_factor : float
+        The turn-dependent wheel encoder noise factor.
+    laser_range_resolution : float
+        The configured laser range resolution in meters.
+    laser_noise_type : str
+        The type of noise applied by the simulated laser scanner.
+    laser_noise_mean : float
+        The mean of the simulated laser noise.
+    laser_noise_stddv : float
+        The standard deviation of the simulated laser noise.
+
+    Returns
+    -------
+    ros_params : ROSParams
+        The ROS parameters initialized with fixed configuration and dynamic runtime values.
+
+    Raises
+    ------
+    RuntimeError
+        If the ROS configuration is missing required values or contains values that cannot be converted
+        to the expected types.
+    '''
     config = rospy.get_param("~ros")
 
     try:
@@ -273,9 +358,23 @@ def build_metadata(
     metadata_params: MetadataParams,
     exp_params: ExperimentParams,
     ros_params: ROSParams,
-):
+) -> Dict:
     '''
-    Builds the metadata dictionary stored together with the playback data.
+    Builds the metadata dictionary stored with the recorded playback data.
+
+    Parameters
+    ----------
+    metadata_params : MetadataParams
+        General metadata settings for the recording.
+    exp_params : ExperimentParams
+        Experiment, robot, map, and sensor parameters associated with the recording.
+    ros_params : ROSParams
+        ROS, synchronization, start-pose, and simulator-noise parameters.
+
+    Returns
+    -------
+    metadata : Dict
+        The complete metadata dictionary written by the PlaybackRecorder.
     '''
     return {
         "map": metadata_params.map_name,
@@ -309,17 +408,33 @@ def build_metadata(
     }
 
 
+
 class ROSPlaybackNode:
     '''
-    Records synchronized playback data for offline RBPF SLAM evaluation.
+    ROS interface for recording synchronized playback data for offline RBPF SLAM evaluation.
+
+    Integrates the PlaybackRecorder into the robot's ROS infrastructure. The node receives synchronized
+    laser scans and ground-truth odometry, derives noisy wheel encoder controls, and stores each accepted
+    pair as one playback step together with the configured metadata.
 
     Processing pipeline
     -------------------
-    1. Receive every laser scan and select every nth scan.
-    2. Synchronize the scan with the odom data 
-    4. Compute left/right wheel travel from the previous synchronized pose.
-    5. Add artificial wheel encoder noise.
-    6. Store scan, controls and synchronized true pose as one playback step.
+    1. Receive the synchronized laser scan and odometry data.
+    2. Validate the recording interval and synchronization error.
+    3. Compute left and right wheel travel from consecutive poses.
+    4. Add artificial wheel encoder noise.
+    5. Store the scan, controls, and synchronized true pose.
+
+    Parameters
+    ----------
+    metadata_params : MetadataParams
+        General metadata settings stored with the playback recording.
+    ros_params : ROSParams
+        ROS topics, synchronization settings, robot pose, and simulator noise.
+    record_params : RECORDParams
+        Configuration values used to initialize the PlaybackRecorder.
+    exp_param : ExperimentParams
+        Experiment parameters associated with the recorded data.
     '''
 
     def __init__(
@@ -380,7 +495,7 @@ class ROSPlaybackNode:
 
 
     def on_shutdown(self) -> None:
-        '''Defines the shutdown behavior of the node.'''
+        '''Logs the shutdown of the synchronized playback node.'''
         rospy.loginfo("Shutting down synchronized playback node.")
 
     
@@ -390,12 +505,11 @@ class ROSPlaybackNode:
         ground_truth_odom: Odometry,
     ) -> None:
         '''
-        Records the laser scan data together with the synchronized ground truth odometry (dl, dr). 
-        
-        Receives the synchronized laser scan and ground truth odometry messages. Validates that the time difference
-        between both messages is within the defined threshold. If not raises error. 
-        If the time difference is within the threshold, it simulates the wheel distances of the left and right wheel based
-        on the previous synchronized and the current synchronized pose.
+        Processes and records a synchronized laser scan and ground-truth odometry pair.
+
+        The callback checks the elapsed time since the previously accepted scan and the synchronization
+        error between both messages. Valid pairs are converted into noisy wheel controls and stored as
+        one playback step; invalid pairs are skipped.
 
         Parameters
         ----------
@@ -441,7 +555,9 @@ class ROSPlaybackNode:
 
             # Extract ground truth pose 
             pose = self.transform_pose_to_planar_pose(pose=ground_truth_odom_cp.pose.pose)
-            # rospy.loginfo(f"True pose: x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}")
+            # rospy.loginfo(
+            #     f"True pose: x={pose[0]:.2f}, y={pose[1]:.2f}, yaw={pose[2]:.2f}"
+            # )
             
             # Simulate wheel encoder data 
             dl, dr = self.wheelencoder_simulation(
@@ -475,26 +591,26 @@ class ROSPlaybackNode:
     @staticmethod
     def wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3) -> Tuple[float, float]:
         '''
-        Get's the pose at x_t and x_t-1, as well as robot width and computes the distance the left 
-        and right wheel traveled, since the last time stamp. 
+        Computes the left and right wheel travel between two planar robot poses using differential-drive
+        kinematics.
 
-        Parameters:@
+        Parameters
         ----------
-        old_pose: tuple
-            The pose at time x_t-1, given as (x, y, theta)
-        new_pose: tuple
-            The pose at time x_t, given as (x, y, theta)
-        width: float
-            The width of the robot, given as distance between the two wheels
-        eps_alpha: float
-            Threshold to determine if a turn took place, given as minimum angle in radians
+        old_pose : Tuple[float, float, float]
+            The previous robot pose as an (x, y, theta) tuple.
+        new_pose : Tuple[float, float, float]
+            The current robot pose as an (x, y, theta) tuple.
+        width : float
+            The distance between the left and right wheels in meters.
+        eps_alpha : float, optional
+            The minimum heading change treated as a turn; defaults to 1e-3 radians.
 
-        Returns:
+        Returns
         -------
-        left_control: float
-            The distance the left wheel traveled since the last time stamp
-        right_control: float
-            The distance the right wheel traveled since the last time stamp
+        left_control : float
+            The distance traveled by the left wheel in meters.
+        right_control : float
+            The distance traveled by the right wheel in meters.
         '''
         old_x, old_y, old_theta= old_pose
         new_x, new_y, new_theta= new_pose
@@ -528,9 +644,22 @@ class ROSPlaybackNode:
         '''
         Adds Gaussian motion- and turn-dependent noise to wheel travel values.
 
-        The variance follows the same model as the previous wheel encoder node:
-        motion noise depends on each wheel distance and turn noise depends on the
-        difference between left and right wheel travel.
+        The variance follows the previous wheel encoder model: motion noise depends on each wheel
+        distance, while turn noise depends on their difference.
+
+        Parameters
+        ----------
+        left_control : float
+            The ideal distance traveled by the left wheel in meters.
+        right_control : float
+            The ideal distance traveled by the right wheel in meters.
+
+        Returns
+        -------
+        noisy_left_control : float
+            The left wheel travel after applying artificial noise.
+        noisy_right_control : float
+            The right wheel travel after applying artificial noise.
         '''
         motion_error_factor = float(self.ros_params.motion_error_factor or 0.0)
         turn_error_factor = float(self.ros_params.turn_error_factor or 0.0)
@@ -569,7 +698,17 @@ class ROSPlaybackNode:
         pose: Pose
     ) -> Tuple[float, float, float]:
         '''
-        Transforms the pose message to a planar pose, consisting of (x, y, yaw) tuple.
+        Converts a ROS Pose message into a planar pose tuple.
+
+        Parameters
+        ----------
+        pose : Pose
+            The ROS pose message to convert.
+
+        Returns
+        -------
+        planar_pose : Tuple[float, float, float]
+            The pose represented as an (x, y, yaw) tuple.
         '''
         x= pose.position.x
         y= pose.position.y
@@ -582,13 +721,22 @@ class ROSPlaybackNode:
     
 
     def exe(self):
-        '''Keeps the Node alive. All functionality is handled by the callback.'''
+        '''
+        Keeps the node alive while the registered callback processes synchronized input.
+        '''
         rospy.spin()
 
 
 
 def main():
-    '''Initializes parameters and starts the synchronized playback node.'''
+    '''
+    Initializes the synchronized playback node. The following steps are performed:
+        1. Initialize the ROS node.
+        2. Load dynamic robot and simulator values.
+        3. Load the playback configuration from the ROS parameter server.
+        4. Initialize the playback recorder and ROS interface.
+        5. Start processing synchronized input data.
+    '''
     # Init node
     rospy.init_node(NODE_NAME)
     config_name = rospy.get_param("~config_name")
