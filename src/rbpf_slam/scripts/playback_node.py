@@ -51,6 +51,24 @@ except ModuleNotFoundError:
     from slam.infrastructure.playback_recorder import PlaybackRecorder
 
 
+'''
+Description
+-----------
+This node records synchronized the laser scan data and ground-truth pose. Computes the odometry control from
+the previous synchronized pose and adds artificial wheel encoder noise. 
+
+The synchronized data is stored in the playback directory specified by PLAYBACK_DIR. Three files are created:
+    1. <timestamp>_steps.csv
+        Contains the synchronized data for each playback step including the timestamp, left/right wheel travel,
+        and true pose.
+    2. <timestamp>_scans.jsonl
+        Contains the laser scan data for each playback step.
+    3. <timestamp>_meta.json
+        Contains the metadata for the playback data, including the map name, robot start pose, sensor parameters,
+        wheel separation, and other relevant information.
+'''
+
+
 TAG = (
     "AWS small house map on different path with synced playback."
 )
@@ -235,8 +253,7 @@ class ROSPlaybackNode:
     Processing pipeline
     -------------------
     1. Receive every laser scan and select every nth scan.
-    2. Wait until timestamped ground-truth poses passed the scan timestamp.
-    3. Interpolate the ground-truth pose to the scan timestamp.
+    2. Synchronize the scan with the odom data 
     4. Compute left/right wheel travel from the previous synchronized pose.
     5. Add artificial wheel encoder noise.
     6. Store scan, controls and synchronized true pose as one playback step.
@@ -297,16 +314,31 @@ class ROSPlaybackNode:
         rospy.on_shutdown(self.on_shutdown)
 
 
-    def on_shutdown(self):
+    def on_shutdown(self) -> None:
         '''Defines the shutdown behavior of the node.'''
         rospy.loginfo("Shutting down synchronized playback node.")
 
     
     def synchronizer_cb(
-            self, 
-            laser_scan: LaserScan,
-            ground_truth_odom: Odometry,
-    ):
+        self, 
+        laser_scan: LaserScan,
+        ground_truth_odom: Odometry,
+    ) -> None:
+        '''
+        Records the laser scan data together with the synchronized ground truth odometry (dl, dr). 
+        
+        Receives the synchronized laser scan and ground truth odometry messages. Validates that the time difference
+        between both messages is within the defined threshold. If not raises error. 
+        If the time difference is within the threshold, it simulates the wheel distances of the left and right wheel based
+        on the previous synchronized and the current synchronized pose.
+
+        Parameters
+        ----------
+        laser_scan : LaserScan
+            The synchronized laser scan message.
+        ground_truth_odom : Odometry
+            The synchronized ground truth odometry message.
+        '''
         # Validate if laser scan timestamp is within window
         with self.lock:
             if self.prev_scan_msg is None:
@@ -373,7 +405,7 @@ class ROSPlaybackNode:
 
 
     staticmethod
-    def wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3):
+    def wheelencoder_simulation(old_pose, new_pose, width, eps_alpha= 1e-3) -> Tuple[float, float]:
         '''
         Get's the pose at x_t and x_t-1, as well as robot width and computes the distance the left 
         and right wheel traveled, since the last time stamp. 
@@ -482,7 +514,7 @@ class ROSPlaybackNode:
     
 
     def exe(self):
-        '''Keeps the callback-driven playback node alive.'''
+        '''Keeps the Node alive. All functionality is handled by the callback.'''
         rospy.spin()
 
 
