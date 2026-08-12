@@ -37,6 +37,16 @@ except ModuleNotFoundError:
         MapParameter,
     )
 
+'''
+Description
+-----------
+
+This Script implements a ROS node for running the known-pose occupancy grid mapping algorithm (OGM). The class
+OGMROSNode is a wrapper for the actual OGM algorithm, providing ROS-specific functionality such as subscribing
+to input topics, publishing the occupancy grid map, and broadcasting transforms.
+
+'''
+
 
 # Constants
 # Decide whether to use the debugger (True) or not (False).

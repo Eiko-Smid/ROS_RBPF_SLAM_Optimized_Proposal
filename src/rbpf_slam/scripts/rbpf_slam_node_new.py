@@ -87,6 +87,11 @@ Description
 -----------
 This script implements a ROS node for running a Rao-Blackwellized Particle Filter (RBPF) for 2D simultaneous
 localization and mapping (SLAM) in a robotic system. 
+The class RBPF_ROS_Node serves as a wrapper for the acutal RBPF SLAM algorithm, providing ROS-specific functionality
+such as subscribing to input topics, publishing the occupancy grid map, and broadcasting transforms.
+
+The input data is given by the Data processor Node over one topic. This odom and sensor data is then used in the RBPF
+to estimate the robot's pose and create an OGM of the environment at the same time.
 
 '''
 
