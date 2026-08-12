@@ -91,6 +91,12 @@ ros:
     ground_truth: "/ground_truth/odom"
     scan: "scan"
 
+
+  frames:
+    odom: "odom_link"
+    base: "base_link"
+
+
   synchronization:
     desired_time_window_s: 0.5
     time_window_tolerance_s: 0.05

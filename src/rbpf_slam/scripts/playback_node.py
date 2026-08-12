@@ -11,11 +11,14 @@ import xml.etree.ElementTree as ET
 
 import rospy
 import message_filters
+import tf2_ros
 
 from geometry_msgs.msg import Pose
+from geometry_msgs.msg import TransformStamped
+
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
-from tf.transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 try:
     from rbpf_slam.src.slam.rbpf.rbpf import (
@@ -33,6 +36,7 @@ try:
     )
     from rbpf_slam.src.slam.optimize_rbpf.playback_defs import ExperimentParams
     from rbpf_slam.src.slam.infrastructure.playback_recorder import PlaybackRecorder
+    from rbpf_slam.src.slam.infrastructure.defs import Pose2D
 
 except ModuleNotFoundError:
     from slam.rbpf.rbpf import (
@@ -50,6 +54,7 @@ except ModuleNotFoundError:
     )
     from slam.optimize_rbpf.playback_defs import ExperimentParams
     from slam.infrastructure.playback_recorder import PlaybackRecorder
+    from slam.infrastructure.defs import Pose2D
 
 
 '''
@@ -81,6 +86,8 @@ class ROSParams:
     '''
     ground_truth_topic: str
     scan_topic: str
+    odom_tf_frame: str
+    base_tf_frame: str
     desired_time_window_s: float
     time_window_tolerance_s: float
     max_sync_error_s: float
@@ -320,11 +327,14 @@ def load_ros_node_params(
 
     try:
         topics = config["topics"]
+        frames = config["frames"]
         synchronization = config["synchronization"]
 
         return ROSParams(
             ground_truth_topic=topics["ground_truth"],
             scan_topic=topics["scan"],
+            odom_tf_frame=frames["odom"],
+            base_tf_frame=frames["base"],
             desired_time_window_s=float(
                 synchronization["desired_time_window_s"]
             ),
@@ -490,6 +500,11 @@ class ROSPlaybackNode:
         # Register callback -> synced data will be send to this cb
         self.synchronizer.registerCallback(self.synchronizer_cb)
 
+        # Define TF infra
+        self.tf_buffer = tf2_ros.Buffer()
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+
         # Define shutdown behavior
         rospy.on_shutdown(self.on_shutdown)
 
@@ -497,6 +512,67 @@ class ROSPlaybackNode:
     def on_shutdown(self) -> None:
         '''Logs the shutdown of the synchronized playback node.'''
         rospy.loginfo("Shutting down synchronized playback node.")
+
+
+    @staticmethod
+    def _pose_into_transform_stamped_msg(
+        pose: Pose2D,
+        parent_frame: str,
+        child_frame: str,
+        timestamp: rospy.Time,
+    ) -> TransformStamped:
+        """
+        Converts a 2D pose into a ROS TransformStamped message. The pose
+        describes the child frame relative to the parent frame.
+
+        Parameters
+        ----------
+        pose : Pose2D
+            A tuple representing the 2D pose (x, y, theta), where theta is the
+            orientation in radians.
+        parent_frame : str
+            The frame ID of the parent frame.
+        child_frame : str
+            The frame ID of the child frame.
+        timestamp : rospy.Time
+            The timestamp for the TransformStamped message.
+
+        Returns
+        -------
+        TransformStamped
+            A ROS TransformStamped message containing the given pose, frame
+            IDs, and timestamp.
+        """
+        if pose is None or len(pose) != 3:
+            raise ValueError("Pose must contain (x, y, theta).")
+
+        transform_msg = TransformStamped()
+
+        # Header
+        transform_msg.header.stamp = timestamp
+        transform_msg.header.frame_id = parent_frame
+
+        # Frame located relative to the parent
+        transform_msg.child_frame_id = child_frame
+
+        # Translation of child inside parent
+        transform_msg.transform.translation.x = float(pose[0])
+        transform_msg.transform.translation.y = float(pose[1])
+        transform_msg.transform.translation.z = 0.0
+
+        # Rotation of child inside parent
+        quat = quaternion_from_euler(
+            0.0,
+            0.0,
+            float(pose[2]),
+        )
+
+        transform_msg.transform.rotation.x = quat[0]
+        transform_msg.transform.rotation.y = quat[1]
+        transform_msg.transform.rotation.z = quat[2]
+        transform_msg.transform.rotation.w = quat[3]
+
+        return transform_msg
 
     
     def synchronizer_cb(
@@ -571,6 +647,18 @@ class ROSPlaybackNode:
                 left_control=dl,
                 right_control=dr,
             )
+
+            # Compute TFs
+            # Define tf odom -> base link
+            odom_base_tf = self._pose_into_transform_stamped_msg(
+                pose=pose,
+                parent_frame=self.ros_params.odom_tf_frame,
+                child_frame=self.ros_params.base_tf_frame,
+                timestamp=laser_scan_cp.header.stamp,
+            )
+
+            # Publish tf odom -> base link
+            self.tf_broadcaster.sendTransform(odom_base_tf)                
 
             # Store data
             self.recorder.record_step(

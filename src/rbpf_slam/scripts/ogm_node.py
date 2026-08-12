@@ -7,7 +7,7 @@ import tf2_ros
 from queue import Empty, Full, Queue
 
 from visualization_msgs.msg import Marker
-from geometry_msgs.msg import Point, Pose2D as Pose2DMsg, TransformStamped
+from geometry_msgs.msg import Point, TransformStamped, Pose2D as Pose2DMsg
 from nav_msgs.msg import OccupancyGrid
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
