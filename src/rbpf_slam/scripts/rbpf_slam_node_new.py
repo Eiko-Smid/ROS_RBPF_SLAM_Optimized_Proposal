@@ -83,54 +83,72 @@ except ModuleNotFoundError:
 
 
 '''
-
+Description
+-----------
+This script implements a ROS node for running a Rao-Blackwellized Particle Filter (RBPF) for 2D simultaneous
+localization and mapping (SLAM) in a robotic system. 
 
 '''
 
-
+# Constants
+# Defines the name of the RBPF Node
 NODE_NAME = "rbpf_slam_node"
 
+# Decide whether to use the debugger (True) or not (False).
 USE_DEBUGGER = False
 
-# Pose names
-POSE_ERR_TRUE_BEST_P_TOPIC = "pose_err_true_best_p"
-POSE_ERR_TRUE_MEAN_P = "pose_err_true_maen_p"
-
-
-
-@dataclass
-class tf_poses:
-    map_to_base_pose: Pose2D = (0.0, 0.0, 0.0)
-    odom_to_base_pose: Pose2D = (0.0, 0.0, 0.0)
-    map_to_odom_pose: Pose2D = (0.0, 0.0, 0.0)
 
 
 @dataclass
 class Colormap:
+    '''
+    Dataclass that defines the discretized color values used to represent
+    occupancy grid map cells after transformation.
+    '''
+    # Color value representing unknown cells
     col_val_unknown: int = -1
+    # Color value representing occupied cells
     col_val_occ: int = 100
+    # Color value representing free cells
     col_val_free: int = 0
 
 
 @dataclass
 class ROSParams:
+    '''
+    Dataclass that defines the ROS parameters for the RBPF SLAM node. These are topic names, 
+    frame names, timeouts, etc.
+    '''
+    # Topic names for subscribing
     rbpf_input_topic: str
+
+    # Topic names for publishing
     map_topic: str
     true_pose_topic: str
     best_particle_pose_topic: str
     weighted_mean_particle_pose_topic: str
+
+    # TF frame names
     map_tf_frame: str
     odom_tf_frame: str
     base_tf_frame: str
     laser_tf_frame: str
+
+    # Runtime parameters
+    # Defines the max size of the input queue
     input_queue_size: int
+    # Defines the timeout for waiting for TFs in seconds
     tf_timeout_s: float
+
+    # Defines the max duration for the rbpf filter to proceed the task before throwing a warning (in seconds).
     max_filter_duration_s: float
+    # Defines the colormap used for publishing the occupancy grid map
     col_map: Colormap = field(default_factory=Colormap)
 
 
 
 def debug_code():
+    '''Starts debugpy and waits for debugger to attach.'''
     debugpy.listen(("0.0.0.0", 5678))
     print("Waiting for debugger attach...")
     debugpy.wait_for_client()
@@ -138,10 +156,16 @@ def debug_code():
 
 
 
-def load_wheel_separation():
+def load_wheel_separation() -> float:
     '''
     Load the wheel separation computed in the generated robot description.
+
+    Returns
+    -------
+    wheel_separation : float
+        The wheel separation of the DDMR.
     '''
+    # Get the robot description from ros parameter server and parse it as XML
     robot_description = rospy.get_param(
         "/robot_vacuum_cleaner_description"
     )
@@ -150,6 +174,7 @@ def load_wheel_separation():
         ".//plugin[@name='differential_drive_controller']/wheelSeparation"
     )
 
+    # Raise err if wheelSeparation is not found in the robot description
     if (
         wheel_separation_element is None
         or wheel_separation_element.text is None
@@ -168,7 +193,12 @@ def load_wheel_separation():
 
 def _initialize_experiment_tag(exp_params: ExperimentParams) -> ExperimentParams:
     '''
-    Initialize the experiment tag based on the parameters of the experiment. 
+    Initialize the experiment tag based on the parameters of the experiment.
+
+    Returns
+    -------
+    exp_params : ExperimentParams
+        The experiment parameters with the initialized tag. 
     '''
     # Keep this template aligned with optimize_rbpf_multiple_particles/tune_rbpf.py.
     sigma_meas = 0.06
@@ -198,11 +228,26 @@ def _initialize_experiment_tag(exp_params: ExperimentParams) -> ExperimentParams
 
 def load_experiment_params(start_pose: Pose2D) -> ExperimentParams:
     '''
-    Load the RBPF experiment configuration and add robot-specific values.
+    Load the RBPF experiment configuration and add robot-specific values and returns the initialized
+    ExperimentParams dataclass.
+
+    Parameters
+    ----------
+    start_pose : Pose2D
+        The starting pose of the robot in the map frame as (x, y, theta) pose.
+
+    Returns 
+    -------
+    exp_params : ExperimentParams
+        The experiment parameters loaded from the ROS parameter server and initialized with robot-specific values.
     '''
+    # Load the experiment configuration from the ROS parameter server
     config = rospy.get_param("~experiment")
+
+    # Load the wheel separation from the robot description 
     wheel_separation = load_wheel_separation()
 
+    # Initialize the ExperimentParams dataclass
     try:
         icp_config = dict(config["icp_params"])
         exp_params = ExperimentParams(
@@ -243,12 +288,21 @@ def load_experiment_params(start_pose: Pose2D) -> ExperimentParams:
             f"Invalid RBPF experiment configuration: {exc}"
         ) from exc
 
-    return _initialize_experiment_tag(exp_params=exp_params)
+    exp_params = _initialize_experiment_tag(exp_params=exp_params)
+
+    return exp_params
 
 
 
 def load_ros_node_params() -> ROSParams:
-    '''Load ROS topics, frames, and runtime settings from configuration.'''
+    '''
+    Loads the ros params from the ROS parameter server and returns the initialized ROSParams dataclass.
+
+    Returns
+    -------
+    ros_params : ROSParams
+        The ROS parameters loaded from the ROS parameter server and initialized with the required values.
+    '''
     config = rospy.get_param("~ros")
 
     try:
@@ -293,6 +347,26 @@ def load_robot_start_pose() -> Pose2D:
 
 
 class RBPF_ROS_Node:
+    '''
+    ROS interface for the RBPF-based SLAM system.
+
+    Integrates the RBPF SLAM algorithm into the robot's ROS infrastructure. The node receives laser scan
+    and wheel odometry data, executes the SLAM filter, and publishes the estimated robot pose, occupancy
+    grid map, and required TF transformations. 
+    
+    Parameters
+    ----------
+    rbpf : RBPF
+        The RBPF SLAM filter used for localization and mapping.
+    raw_odom_est : RawOdomEstimator
+        Estimator used to compute the raw odometry pose from wheel encoder data.
+    evaluator : RBPFEvaluator
+        Evaluator used to extract and evaluate the results of each RBPF step.
+    exp_params : ExperimentParams
+        Configuration parameters of the RBPF SLAM algorithm.
+    ros_params : ROSParams
+        ROS-specific configuration including topic names, frame names, queue sizes, and runtime settings.
+    '''
     def __init__(
         self,
         rbpf: RBPF,
@@ -963,9 +1037,24 @@ class RBPF_ROS_Node:
         timestamp: rospy.Time,
     ) -> TransformStamped:
         """
-        Convert a 2D pose into a ROS TransformStamped message.
+        Convert a 2D pose into a ROS TransformStamped message. The pose describes the child frame relative
+        to the parent frame.
 
-        The pose describes the child frame relative to the parent frame.
+        Parameters
+        ----------
+        pose : Pose2D
+            A tuple representing the 2D pose (x, y, theta) where theta is the orientation in radians.
+        parent_frame : str
+            The frame ID of the parent frame.
+        child_frame : str
+            The frame ID of the child frame.
+        timestamp : rospy.Time
+            The timestamp for the TransformStamped message.
+
+        Returns
+        -------
+        TransformStamped
+            A ROS TransformStamped message containing the given information and angles in quaternion.
         """
         if pose is None or len(pose) != 3:
             raise ValueError("Pose must contain (x, y, theta).")
@@ -1006,6 +1095,13 @@ class RBPF_ROS_Node:
     ) -> List[TransformStamped]:
         """
         Create the currently available dynamic transforms.
+
+        Parameters
+        ----------
+        step_res : StepResult
+            The result of the current RBPF step containing the true pose, weighted mean particle pose, ....
+        timestamp : rospy.Time
+            The timestamp to use for the published TransformStamped messages.
 
         Returns
         -------
@@ -1077,7 +1173,7 @@ class RBPF_ROS_Node:
 
     def exe(self) -> None:
         '''
-        Main loop that executes the algorithm.
+        Main loop that executes the Node.
         '''
         while not rospy.is_shutdown():
             # Extract new data from queue
