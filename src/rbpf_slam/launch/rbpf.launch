@@ -10,8 +10,8 @@
 
     <!--Define world to launch-->
     <!-- <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-bookstore-world/worlds/bookstore_light.world"/> -->
-    <!-- <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house_light.world"/> -->
-    <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/turtle_map.world"/>
+    <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house_light.world"/>
+    <!-- <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/turtle_map.world"/> -->
     <!-- <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/robot_vacuum_cleaner.world"/> -->
 
     <!--Robot spawn pose for cafe map-->
