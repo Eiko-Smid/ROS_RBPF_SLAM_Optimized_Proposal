@@ -1449,9 +1449,9 @@ class IterativeClosestPoint():
     
 
     def find_transformation(
-            self, 
-            new_data_pointpairs: np.ndarray, 
-            true_data_pointpairs: np.ndarray
+        self, 
+        new_data_pointpairs: np.ndarray, 
+        true_data_pointpairs: np.ndarray
         ) -> ICPResult:
         '''
         Get's the new data points and the true datapoints and trys to minimize the error between the two

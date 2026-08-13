@@ -453,3 +453,9 @@ The project includes the complete workflow from individual algorithm components 
 The current implementation should be considered an experimental SLAM system rather than a production-ready robotics framework.
 
 Potential future work includes validation on physical hardware, further performance optimization, and additional automated parameter-search methods.
+
+
+
+$$
+p(z_{t} \mid m_{t-1}^{(i)}, x_j) p(y_t \mid x_{t-1}^{(i)}, u_t)
+$$

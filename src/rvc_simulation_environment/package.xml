@@ -6,7 +6,7 @@
 
   <maintainer email="smid.eiko@gmail.com">eiko</maintainer>
 
-  <license>BDS</license>
+  <license>MIT</license>
 
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>gazebo_ros</build_depend>
