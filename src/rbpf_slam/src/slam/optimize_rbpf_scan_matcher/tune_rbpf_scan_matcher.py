@@ -6,6 +6,7 @@ import itertools
 import json
 import numpy as np
 from dataclasses import asdict, dataclass, is_dataclass
+from pathlib import Path
 from typing import Any, Dict, Iterator, List, Tuple, Union
 
 from ..infrastructure.playback_loader import PlaybackLoader
@@ -34,20 +35,22 @@ from .aggregator_scanmatching import RankedRunConverterScanMatching, ResultAggre
 from .step_processor import StepProcessor
 
 
-# Playback data path defs
-STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/optimization_results/"
+# Data path defs
+DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+STORAGE_DIR = DATA_DIR / "scan_matching" / "optimization_results"
+PLAYBACK_DATA_DIR = DATA_DIR / "python_playback"
 
 # Default storage
-# SUB_DIR = "sm_optm_7_1/"
-# OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
-# SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
-# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
+SUB_DIR = "sm_optm_7_1/"
+OPTM_SUMMARY_PATH = STORAGE_DIR / SUB_DIR / "summary"
+SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR / SUB_DIR / "trace_steps.csv"
+PARAMETER_OVERVIEW_PATH = STORAGE_DIR / SUB_DIR / "params.json"
 
 # Test storage
-SUB_DIR = "sm_test_2/"
-OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
-SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "trace_steps.csv"
-PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
+# SUB_DIR = "sm_test_3/"
+# OPTM_SUMMARY_PATH = STORAGE_DIR / SUB_DIR / "summary"
+# SCAN_MATCHING_STEP_TRACE_PATH = STORAGE_DIR / SUB_DIR / "trace_steps.csv"
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR / SUB_DIR / "params.json"
 
 # Ctrl debugger
 DEBUG_CODE = False
@@ -152,7 +155,7 @@ STEP_COLS_TO_USE = [
 # Defines a playback dataset, which includes the directory and suffix of the playback files.
 @dataclass
 class PlaybackDataset:
-    playback_dir: str
+    playback_dir: Path
     playback_suffix: str
 
 
@@ -160,16 +163,16 @@ class PlaybackDataset:
 PLAYBACK_DATA_LIST = [
     # turtle bot map
     PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+        playback_dir=PLAYBACK_DATA_DIR,
         playback_suffix="1779363559",
     ),
     # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+    #     playback_dir=PLAYBACK_DATA_DIR,
     #     playback_suffix="1779375646",
     # ),
     # AWS map
     PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/scan_matching/python_playback/",
+        playback_dir=PLAYBACK_DATA_DIR,
         playback_suffix="1780397517",
     )
 ]
@@ -504,10 +507,10 @@ def scan_matcher_tuning_pipeline() -> None:
     '''
     # Define storage paths for results
     ranked_run_list = []
-    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
-    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
-    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
+    ranked_scored_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_rank_scored.csv")
+    agg_dataset_seed_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_dataset_id_param.csv")
+    agg_param_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_param.csv")
+    ranked_param_overview_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_ranked_param_overview.csv")
 
     # Initialize tuning pipe components
     playback_loader = PlaybackLoader()
@@ -667,10 +670,10 @@ def scan_matcher_tuning_pipeline_multiprocessing() -> None:
     '''
     # Define storage paths for results
     ranked_run_list = []
-    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_seed_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
-    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
-    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
+    ranked_scored_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_rank_scored.csv")
+    agg_dataset_seed_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_dataset_id_param.csv")
+    agg_param_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_param.csv")
+    ranked_param_overview_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_ranked_param_overview.csv")
 
     # Initialize tuning pipe components
     playback_loader = PlaybackLoader()

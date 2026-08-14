@@ -20,8 +20,8 @@ The system consists of multiple components:
     - **Occupancy Grid Mapping** algorithm to build the 2D grid map
     - **Resampler** with an adaptive resampling strategy
 - **ROS / Gazebo integration**
-    - ROS nodes for synchronized sensor processing and SLAM execution
-    - **Differential-Drive Mobile Robot** (DDMR) in Gazebo
+    - **ROS** nodes for synchronized sensor processing and SLAM execution
+    - Differential-Drive Mobile Robot (DDMR) in **Gazebo**
     - RViz visualization
 - **Tuning and evaluation framework**
     - **Multiprocessing** implementation of the pipelines to speed up the tuning process
@@ -33,10 +33,10 @@ The system consists of multiple components:
     - Visualizes information such as trajectories and maps stored by the evaluation framework
     - Provides a GUI to select the data to display
 - **Performance Optimization**
-    - **Vectorized NumPy** implementation in key algorithm parts such as **point-cloud downsampling** or
-      **outlier rejection** in ICP
-    - **Numba** function implementation for further speedup in other algorithm parts such as ray casting in
-      the measurement model
+    - **Vectorized NumPy** implementation in key algorithm parts such as **Point-Cloud Downsampling** or
+      **Outlier Rejection** in ICP
+    - **Numba** function implementation for further speedup in other algorithm parts such as **Ray Casting** in
+      the **measurement model**
 
 
 
@@ -77,7 +77,7 @@ x_{1:t}^{[i]}, m_t^{[i]}, w_t^{[i]}
 
 ### Optimized Proposal Distribution
 
-A standard particle filter can use the **motion model** directly as its **proposal distribution**:
+A standard particle filter uses the **motion model** directly as its **proposal distribution**:
 
 ```math
 x_t^{[i]}
@@ -86,7 +86,7 @@ p(x_t \mid x_{t-1}^{[i]}, u_t)
 ```
 
 This is simple, but it has an important disadvantage: the current laser measurement $z_t$ is **not considered
-when proposing the new particle pose**. Only the odometry source is used. Since the odometry source is
+when sampling the new particle pose**. Only the odometry source is used. Since the odometry source is
 **quite noisy**, the difference between the proposal and the actual **target distribution** can be large.
 
 In this case, a **large number of samples** is needed to capture the meaningful area of the target distribution.
@@ -118,7 +118,7 @@ For each particle, the proposal is estimated approximately as follows:
 2. The **ICP scan matcher** corrects this prediction using the current laser scan and the particle map from $t-1$.
 3. A deterministic set of candidate poses is generated around the scan-matched pose.
 4. The candidates are evaluated according to the product of the **measurement and motion models**.
-5. Their weighted distribution is **approximated by a Gaussian** with mean.
+5. Their weighted distribution is **approximated by a Gaussian** with the following mean and covariance matrix.
 
 For all $x_j \in \{x_1, \ldots, x_k\}$:
 
@@ -228,12 +228,12 @@ ros_ws/
 │   ├── CMakeLists.txt                  # Catkin workspace CMake configuration
 │   │
 │   ├── rbpf_slam/                      # RBPF SLAM package
-│   │   ├── config/                     # ROS and algorithm configuration files
-│   │   ├── data/                       # Playback, tuning, result, and presentation data
-│   │   ├── launch/                     # Launch files for SLAM, OGM, playback, etc.
+│   │   ├── config/                     # Parameter configurations for the ROS Nodes
+│   │   ├── data/                       # Playback data, tuning results (traj + maps) and README images/gifs
+│   │   ├── launch/                     # ROS launch files
 │   │   ├── msg/                        # Custom ROS message definitions
 │   │   ├── rviz/                       # RViz configurations
-│   │   ├── scripts/                    # ROS nodes and executable scripts
+│   │   ├── scripts/                    # ROS nodes scripts
 │   │   ├── src/                        # SLAM implementation and supporting infrastructure
 │   │   ├── CMakeLists.txt
 │   │   ├── package.xml
@@ -255,6 +255,13 @@ artifacts rather than project source files.
 ## Building the ROS Package
 
 The package is intended for a ROS1 Noetic catkin workspace on ubuntu 20.04. python version 3.8.10 is being used.
+After the os setup is finished and everything is installed, the project can be cloned with the command:
+
+```bash
+git clone https://github.com/Eiko-Smid/ROS_SLAM_BT.git
+```
+
+After that the change the directory to the project root, build the env and source it with:
 
 Example:
 
@@ -267,10 +274,8 @@ source devel/setup.bash
 The workspace must be sourced in every terminal before starting the ROS nodes or running a Python script:
 
 ```bash
-source ~/work/ros_workspaces/ros_ws/devel/setup.bash
+source devel/setup.bash
 ```
-
-Additional Python and ROS dependencies must be installed before running the project.
 
 
 ## Running the Project
@@ -299,7 +304,7 @@ roslaunch rbpf_slam rbpf.launch
 The exact launch files and configuration files can be adapted depending on the simulation environment and experiment.
 
 The **parameters** for the node are stored in the directory `src/rbpf_slam/config` and can be adjusted. Since the
-parameters were tuned to run on multiple maps/seeds, it is recommended not to change them!
+parameters were tuned to run on multiple maps/seeds, it is recommended **not to change them!**
 
 
 ### Running the Playback Node

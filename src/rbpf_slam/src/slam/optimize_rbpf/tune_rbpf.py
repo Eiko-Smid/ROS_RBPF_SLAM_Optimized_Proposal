@@ -44,23 +44,25 @@ from .aggregator import RankedRunConverter, ResultAggregator
 from .step_processor import StepProcessor
 
 
-# Playback data path defs
-STORAGE_DIR = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optimization_results/"
+# Data path defs
+DATA_DIR = Path(__file__).resolve().parents[3] / "data"
+STORAGE_DIR = DATA_DIR / "slam" / "optimization_results"
+PLAYBACK_DATA_DIR = DATA_DIR / "python_playback"
 
 # Default storage
 SUB_DIR = "proposal_optm_36_1/"
-OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
-STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
-PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
-PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
-RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + "runs/"
+OPTM_SUMMARY_PATH = STORAGE_DIR / SUB_DIR / "summary"
+STEP_TRACE_PATH = STORAGE_DIR / SUB_DIR / "steps.csv"
+PROPOSAL_WEIGHTS_PATH = STORAGE_DIR / SUB_DIR / "proposal_weights.csv"
+PARAMETER_OVERVIEW_PATH = STORAGE_DIR / SUB_DIR / "params.json"
+RUN_STORAGE_DIR = STORAGE_DIR / SUB_DIR / "runs"
 
-# SUB_DIR = "proposal_test_12_deleted_alpha_beta/"
-# OPTM_SUMMARY_PATH = STORAGE_DIR + SUB_DIR + "summary"
-# STEP_TRACE_PATH = STORAGE_DIR + SUB_DIR + "steps.csv"
-# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR + SUB_DIR + "proposal_weights.csv"
-# PARAMETER_OVERVIEW_PATH = STORAGE_DIR + SUB_DIR + "params.json"
-# RUN_STORAGE_DIR = STORAGE_DIR + SUB_DIR + "runs/"
+# SUB_DIR = "proposal_test_13_final_test/"
+# OPTM_SUMMARY_PATH = STORAGE_DIR / SUB_DIR / "summary"
+# STEP_TRACE_PATH = STORAGE_DIR / SUB_DIR / "steps.csv"
+# PROPOSAL_WEIGHTS_PATH = STORAGE_DIR / SUB_DIR / "proposal_weights.csv"
+# PARAMETER_OVERVIEW_PATH = STORAGE_DIR / SUB_DIR / "params.json"
+# RUN_STORAGE_DIR = STORAGE_DIR / SUB_DIR / "runs"
 
 USED_MEAS_MODEL = "LaserRangeFinderModel"
 # USED_MEAS_MODEL = "NN_Based_Gmap_Probs"
@@ -187,7 +189,7 @@ SUMMARY_COLS_TO_EXCLUDE = [
 # Defines a playback dataset, which includes the directory and suffix of the playback files.
 @dataclass
 class PlaybackDataset:
-    playback_dir: str
+    playback_dir: Path
     playback_suffix: str
 
 
@@ -195,12 +197,12 @@ class PlaybackDataset:
 # PLAYBACK_DATA_LIST = [
 #     # Turtle bot map
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1779363559",
 #     ), 
 #     # AWS indoor map
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1780397517",
 #     ),    
 # ]
@@ -208,17 +210,17 @@ class PlaybackDataset:
 # PLAYBACK_DATA_LIST = [
 #     # Turtle bot map
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1781885725",
 #     ), 
 #     # AWS indoor map
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1781885274",
 #     ), 
     # AWS bookstore map   
     # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_dir=PLAYBACK_DATA_DIR,
     #     playback_suffix="1782917349",
     # )
 # ]
@@ -227,22 +229,22 @@ class PlaybackDataset:
 # PLAYBACK_DATA_LIST = [
 #     # AWS bookstore map   
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1782917349",
 #     ),
 #     # Turtle bot map unsee area
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1783013274",
 #     ),
 #     # Cafe map
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1783013816",
 #     ),
 #     # AWS indoor map different path, same area
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1783014916",
 #     ),
 # ]
@@ -253,32 +255,32 @@ class PlaybackDataset:
 PLAYBACK_DATA_LIST = [
     # Turtle bot map
     PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_dir=PLAYBACK_DATA_DIR,
         playback_suffix="1781885725",
     ), 
     # AWS indoor map
     PlaybackDataset(
-        playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+        playback_dir=PLAYBACK_DATA_DIR,
         playback_suffix="1781885274",
     ),
     # # Turtle bot map unsee area
     # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_dir=PLAYBACK_DATA_DIR,
     #     playback_suffix="1783013274",
     # ),
     # # AWS indoor map different path, same area
     # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_dir=PLAYBACK_DATA_DIR,
     #     playback_suffix="1783014916",
     # ),
     # # Cafe map
     # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_dir=PLAYBACK_DATA_DIR,
     #     playback_suffix="1783013816",
     # ),
     # # AWS bookstore map   
     # PlaybackDataset(
-    #     playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+    #     playback_dir=PLAYBACK_DATA_DIR,
     #     playback_suffix="1782917349",
     # ),
 ]
@@ -287,7 +289,7 @@ PLAYBACK_DATA_LIST = [
 # Bookstore map
 # PLAYBACK_DATA_LIST = [
 #     PlaybackDataset(
-#         playback_dir="/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/",
+#         playback_dir=PLAYBACK_DATA_DIR,
 #         playback_suffix="1782917349",
 #     )
 # ]
@@ -728,11 +730,11 @@ def rbpf_tuning_pipeline():
     '''
     # Define vars
     ranked_run_list = []
-    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_param_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
-    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
-    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
-    Path(RUN_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
+    ranked_scored_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_rank_scored.csv")
+    agg_dataset_param_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_dataset_id_param.csv")
+    agg_param_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_param.csv")
+    ranked_param_overview_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_ranked_param_overview.csv")
+    RUN_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # Init
     # Init playback loader and converter
@@ -911,11 +913,11 @@ def rbpf_tuning_pipeline_multiprocessing():
     '''
     # Define vars
     ranked_run_list = []
-    ranked_scored_path = OPTM_SUMMARY_PATH + "_" + "rank_scored.csv"
-    agg_dataset_param_path = OPTM_SUMMARY_PATH + "_" + "agg_dataset_id_param.csv"
-    agg_param_path = OPTM_SUMMARY_PATH + "_" + "agg_param.csv"
-    ranked_param_overview_path = OPTM_SUMMARY_PATH + "_" + "ranked_param_overview.csv"
-    Path(RUN_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
+    ranked_scored_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_rank_scored.csv")
+    agg_dataset_param_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_dataset_id_param.csv")
+    agg_param_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_agg_param.csv")
+    ranked_param_overview_path = OPTM_SUMMARY_PATH.with_name(f"{OPTM_SUMMARY_PATH.name}_ranked_param_overview.csv")
+    RUN_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # Init
     # Init playback loader and converter
