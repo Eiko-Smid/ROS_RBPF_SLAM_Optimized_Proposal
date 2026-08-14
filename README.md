@@ -419,18 +419,18 @@ algorithm behavior.
 
 Additionally all three tuning pipeliens produce the the following folders:
 - params.json
-      - Overview of the parameters used for the tuning process
+     - Overview of the parameters used for the tuning process
 - summary_agg_dataset_id_param.csv
-      - The summary ranked results aggregated by dataset id and parameter hash
+     - The summary ranked results aggregated by dataset id and parameter hash
 - summary_agg_param.csv
-      - The summary_agg_dataset_id_param results aggregated by parameter hash
-      - This view shows which parameter set won by score
+     - The summary_agg_dataset_id_param results aggregated by parameter hash
+     - This view shows which parameter set won by score
 - summary_rank_scored.csv
-      - The summary of all individual runs, ranked by score
+     - The summary of all individual runs, ranked by score
 - summary_ranked_param_overview.csv
-      - The rank order of summary_agg_param showing all used parameter's
+     - The rank order of summary_agg_param showing all used parameter's
 - trace_steps.csv
-      - The individual steps of each runs, sorted by the score of the runs
+     - The individual steps of each runs, sorted by the score of the runs
 
 
 Sorting is always from lowest to highest score -> low score == better!
@@ -439,31 +439,31 @@ Finally we will discuss the most important parameter's of the tuning pipes.
 
 Parameters all pipes have in common:
 - NUMBER_OF_WORKERS
-      - The number of workers to use for the parallized tuning pipe (Defualt= 4)
-      - None -> Use all CPU cores
+     - The number of workers to use for the parallized tuning pipe (Defualt= 4)
+     - None -> Use all CPU cores
 - KEEP_STEP_RESULTS
-      - When True the step results are getting stored, else not
-      - Recommended to set this to false, for huge runs (high amount of params or steps in playback data)
+     - When True the step results are getting stored, else not
+     - Recommended to set this to false, for huge runs (high amount of params or steps in playback data)
 - N_PLAYBACK_STEPS
-      - The number of steps from the playback data to use. None -> Use all steps
-      - Else only N steps are used from the choose playback files
+     - The number of steps from the playback data to use. None -> Use all steps
+     - Else only N steps are used from the choose playback files
 - PLAYBACK_DATA_LIST 
-      - Defiens the playback data being used in the tuning pipe.
-      - Add one PlaybackDataset instance and the timestamp of the playback file to be used for each file
+     - Defiens the playback data being used in the tuning pipe.
+     - Add one PlaybackDataset instance and the timestamp of the playback file to be used for each file
 - SEED_LIST
-      - Defines the seeds being used for the run
+     - Defines the seeds being used for the run
 - MEASUREMENT_STDDEV
-      - Defines the standard deviation of the measurements. Default is 0.03. Adapt as u like!
-      - Recommended to set this to zero if the measurement in the playback data already include measurement
+     - Defines the standard deviation of the measurements. Default is 0.03. Adapt as u like!
+     - Recommended to set this to zero if the measurement in the playback data already include measurement
         noise
 - STORE_MAP_DATA
-      - Only available in the two rbpf tuning pipes!
-      - IF true the map of each run is being stoered, else not! 
-      - Recommended to set to False for big runs!
+     - Only available in the two rbpf tuning pipes!
+     - IF true the map of each run is being stoered, else not! 
+     - Recommended to set to False for big runs!
 - MIN_SENSOR_RANGE
-      - The minimal range of sensor to use in the algorithm. Distances lower than this will be skipped.
+     - The minimal range of sensor to use in the algorithm. Distances lower than this will be skipped.
 - MAX_SENSOR_RANGE
-      - The max range of the sensor. Range measurements bigger than this threshold are being skipped.
+     - The max range of the sensor. Range measurements bigger than this threshold are being skipped.
 
 
 
