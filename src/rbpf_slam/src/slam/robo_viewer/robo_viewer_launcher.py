@@ -5,6 +5,7 @@
 # debugpy.wait_for_client()
 
 import os
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 import tkinter as tk
@@ -16,6 +17,15 @@ import pandas as pd
 from .robo_viewer import RoboViewer
 from ..infrastructure.map_data_handler import MapDataHandler
 from ..infrastructure.particle_data_handler import ParticleDataHandler
+
+
+# Define start directory for file search in the TK gui created by the class RoboViewerLauncher
+START_DIR = str(
+    Path(__file__).resolve().parents[3]
+    / "data"
+    / "slam"
+)
+
 
 
 class RoboViewerLauncher:
@@ -485,9 +495,6 @@ def main() -> None:
 
     This function is called when running this file as a script.
     '''
-    # Define start directory for file seach in the TK gui created by the class RoboViewerLauncher
-    start_directory = "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/optm_results_mult_part/"
-    
     # Define dict containing the name of the trajectory to load/use and the corresponding columns names inside the step.csv
     trajectory_cols = {
         "true_pose_traj": (
@@ -521,7 +528,7 @@ def main() -> None:
     # Init the robo view launcher -> launches the robo viewer
     robot_view_launcher = RoboViewerLauncher(
         trajectory_columns=trajectory_cols,
-        start_directory=start_directory,
+        start_directory=START_DIR,
     )
     robot_view_launcher.run()
 

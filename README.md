@@ -376,7 +376,7 @@ The data is stored automatically, and the node can be shut down when the user de
 After shutdown, the data should be available in the folder:
 
 ```bash
-src/rbpf_slam/data/slam/python_playback
+src/rbpf_slam/data/python_playback
 ```
 
 The stored data is named using the current timestamp.
@@ -393,14 +393,10 @@ the standard parameters:
 - RBPF tuning pipeline: `python3 -m slam.optimize_rbpf.tune_rbpf`
 - RBPF tuning pipeline with multiple particles:
   `python3 -m slam.optimize_rbpf_multiple_particles.tune_rbpf`
-
+- Scan matcher tuning pipeline (not for RoboViewer): `python3 -m slam.optimize_rbpf_scan_matcher.tune_rbpf_scan_matcher`
 
 This generates the data that can then be visualized by the RoboViewer. The data will be available in one of the
 following folders, depending on which tuning pipeline was used:
-
-```bash
-src/rbpf_slam/data/scan_matching/optimization_results
-```
 
 ```bash
 src/rbpf_slam/data/slam/optimization_results
@@ -408,6 +404,10 @@ src/rbpf_slam/data/slam/optimization_results
 
 ```bash
 src/rbpf_slam/data/slam/optm_results_mult_part
+```
+
+```bash
+src/rbpf_slam/data/scan_matching/optimization_results
 ```
 
 Attention: The scan matcher tuning pipeline results cannot be visualized by the RoboViewer!
@@ -443,11 +443,11 @@ File/folder explanation (only for RBPF tuning, not for scan matcher tuning):
 - Currently, the file is always saved when the global variable `KEEP_STEP_RESULTS` is set to `True` in the tuning file.
 
 If the parameters should actually be tuned, they must be adjusted in the corresponding tuning file. Each file
-contains `grid_axes`, where the parameters to be used for the search can be defined. Additionally, the
+contains the function `grid_axes`, where the parameters to be used for the search can be defined. Additionally, the
 `ExperimentParams` in each file can be changed manually, for example the `ICPParams`, which control the ICP
 algorithm behavior.
 
-Additionally, all three tuning pipelines produce the following files:
+All three tuning pipelines produce the following files:
 
 - params.json
     - Overview of the parameters used for the tuning process
@@ -487,15 +487,18 @@ Parameters common to all pipelines:
 - MEASUREMENT_STDDEV
     - Defines the standard deviation of the measurements. Default is 0.03. Adjust as needed!
     - Recommended to set this to zero if the measurement in the playback data already includes measurement noise
-- STORE_MAP_DATA
-    - Only available in the two RBPF tuning pipelines!
-    - If True, the map of each run is stored; otherwise, it is not
-    - Recommended to set to False for large runs!
+- SUB_DIR 
+    - Must be set new in every pipeline run since it defines storage location!
+    - Defines the Directory name where the results of the tuning run will be stored inside. 
 - MIN_SENSOR_RANGE
     - The minimum sensor range used in the algorithm. Distances below this value are skipped.
 - MAX_SENSOR_RANGE
     - The maximum sensor range. Range measurements above this threshold are skipped.
 
+Parameter's only available in the two rbpf tuning pipelines!!!:
+- STORE_MAP_DATA
+    - If True, the map of each run is stored; otherwise, it is not
+    - Recommended to set to False for large runs!
 
 
 ### Using the RoboViewer
