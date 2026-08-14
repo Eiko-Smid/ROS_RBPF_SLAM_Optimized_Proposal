@@ -1,0 +1,152 @@
+# ============================================================
+# RBPF SLAM Version-1 configuration
+# ============================================================
+
+config_name: "rbpf_slam_v1"
+
+
+# ============================================================
+# RBPF experiment/filter parameters
+# ============================================================
+
+experiment:
+
+  measurement_model_params:
+    occ_thresh: 1.4
+    free_thresh: -1.4
+    unknown_ratio_thresh: 0.3
+    known_free_ratio_thresh: 0.7
+
+    sigma_hit: 0.07
+
+    w_hit: 0.5
+    w_short: 0.3
+    lambda_short: 0.20
+    w_max: 0.10
+    w_rand: 0.10
+
+    p_unknown: 0.10
+    p_out_of_map: 0.15
+    p_unexpected_known_free: 0.00
+    p_pred_below_min: 0.02
+
+    alpha_meas: 0.075
+    beam_step: 2
+    eps: 1.0e-12
+
+
+  occupancy_params:
+    prior_probability: 0.5
+    min_distance_to_border: 10.0
+    increasing_probability: 0.85
+    decreasing_probability: 0.15
+    min_log_odds: -5.0
+    max_log_odds: 5.0
+
+
+  sensor_params:
+    min_sensor_range: 0.1
+    max_sensor_range: 10.0
+
+
+  map_params:
+    map_width: 10.0
+    map_height: 10.0
+    grid_resolution_m: 0.05
+
+
+  icp_params:
+    max_n_points: 1200
+    downsample_grid_size: 0.1
+    max_correspondence_distance: 0.4
+    neighbors_pca: 6
+
+    max_iterations: 5
+    epsilon_rel: 0.001
+    no_improvement_limit: 3
+
+    min_error: 0.0005
+    min_dtrans: 0.001
+    min_drot: 0.01
+
+    min_points: 20
+    min_corresp: 25
+
+    min_hessian_rank: 3
+    max_hessian_condition: 1.0e+8
+
+    max_translation_jump: 0.7
+    max_rotation_jump: 0.7853981633974483
+
+    max_acceptable_mean_error: 0.15
+
+
+  scan_matcher_params:
+    occ_thres: 1.4
+    delta_r: 0.6
+    surface_radius_m: 0.2
+    min_free_ratio: 0.4
+
+
+  particle_params:
+    n_particles: 20
+
+
+  motion_model_params:
+    sigma_x: 0.12
+    sigma_y: 0.12
+    sigma_theta: 0.11
+
+    ctrl_motion_fac: 0.1
+    ctrl_turn_fac: 0.15
+
+
+  rbpf_params:
+    every_nth_scan_filter: 2
+    every_nth_scan_map: 2
+
+    neff_threshold: 6.0
+
+    proposal_sigma_xy: 0.06
+    proposal_sigma_theta: 0.0249931148885588
+    proposal_n_samples: 3
+
+    cov_std_scale: 0.5
+    cov_max_std_xy: 1.0
+    cov_max_std_theta: 0.17453292519943295
+
+    min_std_xy: 0.0
+    min_std_theta: 0.0
+
+    meas_kernel_size: 1
+    gaussian_sigma: 0.05
+
+    measurement_noise_stddev: 0.03
+    used_meas_model: "LaserRangeFinderModel"
+
+
+# ============================================================
+# ROS-specific configuration of rbpf_slam_node
+# ============================================================
+
+ros:
+
+  topics:
+    rbpf_input: "rbpf/input"
+    map: "map"
+    true_pose: "true_pose"
+    best_particle_pose: "best_particle_pose"
+    weighted_mean_particle_pose: "weighted_mean_particle_pose"
+
+
+  frames:
+    map: "map"
+    odom: "odom_link"
+    base: "base_link"
+    laser: "laser_scanner_link"
+
+
+  runtime:
+    input_queue_size: 10
+    tf_timeout_s: 10.0
+    max_filter_duration_s: 0.45

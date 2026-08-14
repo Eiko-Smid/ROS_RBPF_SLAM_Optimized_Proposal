@@ -13,27 +13,392 @@ from gazebo_msgs.msg import LinkStates
 from sensor_msgs.msg import LaserScan
 from tf.transformations import euler_from_quaternion
 # from nav_msgs.msg import OccupancyGrid
-from rvc_commander.msg import Measurement
-from rvc_commander.msg import LogOddsMap
+# from rvc_commander.msg import Measurement
+# from rvc_commander.msg import LogOddsMap
+from rbpf_slam.msg import Measurement
+from rbpf_slam.msg import LogOddsMap
 
 
-@njit
-def extract_map_numba(
-    log_map,
-    i_pose,
-    j_pose,
-    r_cells,
-    r_cells_sq,
-    occ_thresh,
-    free_thresh,
-    min_free_count,
-    grid_res,
+
+@njit(cache=True, nogil=True)
+def update_map_numba_unique_cells(
+    log_odds_map,
+    measurements,
+    x,
+    y,
+    heading,
     shift_x,
-    shift_y
+    shift_y,
+    grid_resolution,
+    min_sensor_range,
+    max_sensor_range,
+    log_odds_decreasing,
+    log_odds_increasing,
+    min_log_odds,
+    max_log_odds,
 ):
-    n_rows, n_cols = log_map.shape
+    """
+    Update log-odds occupancy grid using one update per cell per scan.
+
+    Cell states for this scan:
+        0 = untouched
+        1 = free candidate
+        2 = occupied endpoint candidate
+
+    Rule:
+        - If at least one beam ends in a cell, the cell gets one occupied update.
+        - Else if one or more beams pass through a cell, the cell gets one free update.
+        - A cell is never updated more than once per scan.
+        - Occupied endpoints dominate free pass-through evidence.
+    """
+
+    n_rows, n_cols = log_odds_map.shape
+
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return 1, 0
+
+    # 0 untouched, 1 free, 2 occupied
+    cell_state = np.zeros((n_rows, n_cols), dtype=np.uint8)
+
+    beam_out_map_count = 0
+
+    # ------------------------------------------------------------
+    # PASS 1: collect all real occupied endpoint cells
+    # ------------------------------------------------------------
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        if r <= min_sensor_range:
+            continue
+
+        # Only finite non-max-range beams create occupied endpoints
+        if (not np.isfinite(r)) or r >= max_sensor_range:
+            continue
+
+        phi = heading + bearing
+
+        end_x = x + r * np.cos(phi)
+        end_y = y + r * np.sin(phi)
+
+        end_i = int(np.floor((end_y + shift_y) / grid_resolution))
+        end_j = int(np.floor((end_x + shift_x) / grid_resolution))
+
+        if end_i < 0 or end_i >= n_rows or end_j < 0 or end_j >= n_cols:
+            beam_out_map_count += 1
+            continue
+
+        cell_state[end_i, end_j] = 2
+
+    # ------------------------------------------------------------
+    # PASS 2: trace rays and collect free cells
+    #         but never overwrite occupied endpoint cells
+    # ------------------------------------------------------------
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        if r <= min_sensor_range:
+            continue
+
+        if (not np.isfinite(r)) or r >= max_sensor_range:
+            r_eff = max_sensor_range
+            is_hit = False
+        else:
+            r_eff = r
+            is_hit = True
+
+        phi = heading + bearing
+
+        end_x = x + r_eff * np.cos(phi)
+        end_y = y + r_eff * np.sin(phi)
+
+        end_i = int(np.floor((end_y + shift_y) / grid_resolution))
+        end_j = int(np.floor((end_x + shift_x) / grid_resolution))
+
+        if end_i < 0 or end_i >= n_rows or end_j < 0 or end_j >= n_cols:
+            beam_out_map_count += 1
+            continue
+
+        cell_i = pose_i
+        cell_j = pose_j
+
+        dx = abs(end_j - cell_j)
+        dy = abs(end_i - cell_i)
+
+        sx = 1 if cell_j < end_j else -1
+        sy = 1 if cell_i < end_i else -1
+
+        err = dx - dy
+
+        while True:
+            is_endpoint = (cell_i == end_i and cell_j == end_j)
+
+            # Do not mark the endpoint of a real hit as free.
+            # Also do not overwrite any occupied endpoint cell from any beam.
+            if not is_endpoint:
+                if cell_state[cell_i, cell_j] != 2:
+                    cell_state[cell_i, cell_j] = 1
+
+            # For max-range/no-hit beams, endpoint is also free unless occupied by another beam.
+            if is_endpoint:
+                if not is_hit:
+                    if cell_state[cell_i, cell_j] != 2:
+                        cell_state[cell_i, cell_j] = 1
+                break
+
+            e2 = 2 * err
+
+            if e2 > -dy:
+                err -= dy
+                cell_j += sx
+
+            if e2 < dx:
+                err += dx
+                cell_i += sy
+
+            if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
+                break
+
+    # ------------------------------------------------------------
+    # PASS 3: apply exactly one update per touched cell
+    # ------------------------------------------------------------
+    for i in range(n_rows):
+        for j in range(n_cols):
+            state = cell_state[i, j]
+
+            if state == 0:
+                continue
+
+            old_val = log_odds_map[i, j]
+
+            if old_val <= min_log_odds or old_val >= max_log_odds:
+                continue
+
+            if state == 2:
+                new_val = old_val + log_odds_increasing
+            else:
+                new_val = old_val + log_odds_decreasing
+
+            if new_val < min_log_odds:
+                new_val = min_log_odds
+            elif new_val > max_log_odds:
+                new_val = max_log_odds
+
+            log_odds_map[i, j] = new_val
+
+    return 0, beam_out_map_count
+
+
+@njit(cache=True, nogil=True)
+def update_map_numba_inf_free_space(
+    log_odds_map: np.ndarray,
+    measurements: np.ndarray,   # shape (N, 2) -> [range, bearing]
+    x: float,
+    y: float,
+    heading: float,
+    shift_x: float,
+    shift_y: float,
+    grid_resolution: float,
+    min_sensor_range: float,
+    max_sensor_range: float,
+    log_odds_decreasing: float,
+    log_odds_increasing: float,
+    min_log_odds: float,
+    max_log_odds: float,
+) -> int:
+    """
+    Update the occupancy grid map (log-odds) using laser scan measurements.
+
+    This version correctly handles:
+    - finite measurements → free space + occupied endpoint
+    - max-range / inf measurements → free space ONLY (no occupied endpoint)
+
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        2D log-odds occupancy grid map (modified in-place)
+
+    measurements : np.ndarray
+        Array of shape (N, 2) containing (range, bearing)
+
+    x, y, heading : float
+        Robot pose in world coordinates
+
+    shift_x, shift_y : float
+        Map origin shift (centered map)
+
+    grid_resolution : float
+        Cell size in meters
+
+    min_sensor_range, max_sensor_range : float
+        Sensor limits
+
+    log_odds_decreasing : float
+        Log-odds update for free cells (negative)
+
+    log_odds_increasing : float
+        Log-odds update for occupied cells (positive)
+
+    min_log_odds, max_log_odds : float
+        Clamping limits
+
+    Returns
+    -------
+    int
+        Status flag (0 = success, 1 = robot outside map)
+    """
+    beam_out_map_count = 0
+    n_rows, n_cols = log_odds_map.shape
+
+    # Convert robot pose to grid index
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    # If robot is outside map → abort
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return 1, beam_out_map_count
+
+    # Iterate over all beams
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        # --------------------------------------------------
+        # 1. Determine measurement type
+        # --------------------------------------------------
+
+        # Ignore too small values
+        if r <= min_sensor_range:
+            continue
+
+        # Handle max-range / inf → free space only
+        if not np.isfinite(r) or r >= max_sensor_range:
+            r_eff = max_sensor_range
+            is_hit = False   # NO occupied endpoint
+        else:
+            r_eff = r
+            is_hit = True    # valid obstacle hit
+
+        # --------------------------------------------------
+        # 2. Compute endpoint in world coordinates
+        # --------------------------------------------------
+        phi = heading + bearing
+
+        end_x = x + r_eff * np.cos(phi)
+        end_y = y + r_eff * np.sin(phi)
+
+        end_i = int(np.floor((end_y + shift_y) / grid_resolution))
+        end_j = int(np.floor((end_x + shift_x) / grid_resolution))
+
+        # If endpoint outside map → skip beam
+        if end_i < 0 or end_i >= n_rows or end_j < 0 or end_j >= n_cols:
+            beam_out_map_count += 1
+            continue
+
+        # --------------------------------------------------
+        # 3. Bresenham ray tracing (free + occupied update)
+        # --------------------------------------------------
+        cell_i = pose_i
+        cell_j = pose_j
+
+        dx = abs(end_j - cell_j)
+        dy = abs(end_i - cell_i)
+
+        sx = 1 if cell_j < end_j else -1
+        sy = 1 if cell_i < end_i else -1
+
+        err = dx - dy
+
+        while True:
+            old_val = log_odds_map[cell_i, cell_j]
+
+            # Only update if within bounds
+            if min_log_odds < old_val < max_log_odds:
+
+                # Last cell (endpoint)
+                if cell_i == end_i and cell_j == end_j:
+                    if is_hit:
+                        # Only mark occupied if real hit
+                        log_odds_map[cell_i, cell_j] = old_val + log_odds_increasing
+                    # else: max-range → DO NOTHING (no occupied cell)
+
+                else:
+                    # Free space update
+                    log_odds_map[cell_i, cell_j] = old_val + log_odds_decreasing
+
+            # Stop at endpoint
+            if cell_i == end_i and cell_j == end_j:
+                break
+
+            # Bresenham step
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                cell_j += sx
+            if e2 < dx:
+                err += dx
+                cell_i += sy
+
+            # Safety check
+            if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
+                break
+
+    return 0, beam_out_map_count
+
+
+@njit(cache=True, nogil=True)
+def extract_map_numba(
+    log_odds_map: np.ndarray,
+    i_pose: int,
+    j_pose: int,
+    r_cells: int,
+    r_cells_sq: int,
+    surface_r_cells: int,
+    occ_thresh: float,
+    free_thresh: float,
+    min_free_count: int,
+    grid_res: float,
+    shift_x: float,
+    shift_y: float
+) -> np.ndarray:
+    '''
+    Map extractor that extracts map points in a circular area around the given pose. To be a valid map point a cell has 
+    to fulfill the following criteria:
+        1. The cell has to be occupied (log odds value above occ_thresh)    
+        2. The cell has to belong to a surface, which is defined as having at least min_free_count free cells 
+    
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        2D log-odds occupancy grid map
+    i_pose, j_pose : int
+        Robot pose in grid indices
+    r_cells : int
+        Radius of the circular area in cells
+    r_cells_sq : int
+        Radius squared (pre-computed for efficiency)
+    surface_r_cells : int
+        Radius of the surface window in cells (used to check if cell belongs to surface)
+    occ_thresh : float
+        Log-odds threshold to consider a cell occupied
+    free_thresh : float
+        Log-odds threshold to consider a cell free
+    min_free_count : int
+        Minimum number of free cells in the surface window to consider a cell as belonging to a surface
+    grid_res : float
+        Grid resolution in meters
+    shift_x, shift_y : float
+        Map origin shift (centered map)
+    '''
+
+    n_rows, n_cols = log_odds_map.shape
 
     # Define maximum number of points that can be extracted and pre-allocate array for points
+    # This is a simplistic upper bound cause we use a squared area instead of circular area.
     max_points = (r_cells * 2 + 1) * (r_cells * 2 + 1)
     # points = np.empty((max_points, 2), dtype=np.float64)
     map_points = np.full((max_points, 2), np.nan, dtype=np.float64)
@@ -53,23 +418,28 @@ def extract_map_numba(
             i = i_pose + di
             j = j_pose + dj
 
-            # Check if cell is inside the map
-            if i < 1 or i >= n_rows-1 or j < 1 or j >= n_cols-1:
+            # Check if surface window is inside map
+            if (
+                i < surface_r_cells
+                or i >= n_rows - surface_r_cells
+                or j < surface_r_cells
+                or j >= n_cols - surface_r_cells
+            ):
                 continue
             
-            # Check if cell is occupied 
-            if log_map[i, j] < occ_thresh:
+            # Check if cell is free -> skip
+            if log_odds_map[i, j] < occ_thresh:
                 continue
 
             # Check if cell belongs to surface
             free_count = 0
-            for ni in range(i-1, i+2):
-                for nj in range(j-1, j+2):
+            for ni in range(i-surface_r_cells, i+surface_r_cells + 1):
+                for nj in range(j-surface_r_cells, j+surface_r_cells + 1):
                     # Exclude pose
                     if ni == i and nj == j:
                         continue
                     # Count number of free cells around map point
-                    if log_map[ni, nj] < free_thresh:
+                    if log_odds_map[ni, nj] < free_thresh:
                         free_count += 1
             
             # Cell belongs to surface when number of free cells >= min_free_count 
@@ -87,6 +457,286 @@ def extract_map_numba(
     return map_points[:count]
 
 
+@njit(cache=True, nogil=True)
+def update_map_numba(
+    log_odds_map: np.ndarray,
+    measurements: np.ndarray,   # shape (N, 2) -> [range, bearing]
+    x: float,
+    y: float,
+    heading: float,
+    shift_x: float,
+    shift_y: float,
+    grid_resolution: float,
+    min_sensor_range: float,
+    max_sensor_range: float,
+    log_odds_decreasing: float,
+    log_odds_increasing: float,
+    min_log_odds: float,
+    max_log_odds: float,
+) -> int:
+    """
+    Update the occupancy grid map (log-odds) using laser scan measurements.
+
+    This version correctly handles:
+    - finite measurements → free space + occupied endpoint
+    - max-range / inf measurements → free space ONLY (no occupied endpoint)
+
+    Parameters
+    ----------
+    log_odds_map : np.ndarray
+        2D log-odds occupancy grid map (modified in-place)
+
+    measurements : np.ndarray
+        Array of shape (N, 2) containing (range, bearing)
+
+    x, y, heading : float
+        Robot pose in world coordinates
+
+    shift_x, shift_y : float
+        Map origin shift (centered map)
+
+    grid_resolution : float
+        Cell size in meters
+
+    min_sensor_range, max_sensor_range : float
+        Sensor limits
+
+    log_odds_decreasing : float
+        Log-odds update for free cells (negative)
+
+    log_odds_increasing : float
+        Log-odds update for occupied cells (positive)
+
+    min_log_odds, max_log_odds : float
+        Clamping limits
+
+    Returns
+    -------
+    int
+        Status flag (0 = success, 1 = robot outside map)
+    """
+    beam_out_map_count = 0
+    n_rows, n_cols = log_odds_map.shape
+
+    # Convert robot pose to grid index
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    # If robot is outside map → abort
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return 1, beam_out_map_count
+
+    # Iterate over all beams
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        # --------------------------------------------------
+        # 1. Determine measurement type
+        # --------------------------------------------------
+
+        # Ignore too small values
+        if r <= min_sensor_range:
+            continue
+
+        # Handle max-range / inf → free space only
+        if not np.isfinite(r) or r >= max_sensor_range:
+            r_eff = max_sensor_range
+            is_hit = False   # NO occupied endpoint
+        else:
+            r_eff = r
+            is_hit = True    # valid obstacle hit
+
+        # --------------------------------------------------
+        # 2. Compute endpoint in world coordinates
+        # --------------------------------------------------
+        phi = heading + bearing
+
+        end_x = x + r_eff * np.cos(phi)
+        end_y = y + r_eff * np.sin(phi)
+
+        end_i = int(np.floor((end_y + shift_y) / grid_resolution))
+        end_j = int(np.floor((end_x + shift_x) / grid_resolution))
+
+        # If endpoint outside map → skip beam
+        if end_i < 0 or end_i >= n_rows or end_j < 0 or end_j >= n_cols:
+            beam_out_map_count += 1
+            continue
+
+        # --------------------------------------------------
+        # 3. Bresenham ray tracing (free + occupied update)
+        # --------------------------------------------------
+        cell_i = pose_i
+        cell_j = pose_j
+
+        dx = abs(end_j - cell_j)
+        dy = abs(end_i - cell_i)
+
+        sx = 1 if cell_j < end_j else -1
+        sy = 1 if cell_i < end_i else -1
+
+        err = dx - dy
+
+        while True:
+            old_val = log_odds_map[cell_i, cell_j]
+
+            # Only update if within bounds
+            if min_log_odds < old_val < max_log_odds:
+
+                # Last cell (endpoint)
+                if cell_i == end_i and cell_j == end_j:
+                    if is_hit:
+                        # Only mark occupied if real hit
+                        log_odds_map[cell_i, cell_j] = old_val + log_odds_increasing
+                    # else: max-range → DO NOTHING (no occupied cell)
+
+                else:
+                    # Free space update
+                    log_odds_map[cell_i, cell_j] = old_val + log_odds_decreasing
+
+            # Stop at endpoint
+            if cell_i == end_i and cell_j == end_j:
+                break
+
+            # Bresenham step
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                cell_j += sx
+            if e2 < dx:
+                err += dx
+                cell_i += sy
+
+            # Safety check
+            if cell_i < 0 or cell_i >= n_rows or cell_j < 0 or cell_j >= n_cols:
+                break
+
+    return 0, beam_out_map_count
+
+
+
+@njit(cache=True, nogil=True)
+def update_map_numba_old_bresenham(
+    log_odds_map,
+    measurements,
+    x,
+    y,
+    heading,
+    shift_x,
+    shift_y,
+    grid_resolution,
+    min_sensor_range,
+    max_sensor_range,
+    log_odds_decreasing_probability,
+    log_odds_increasing_probability,
+    min_log_odds,
+    max_log_odds,
+):
+    n_rows, n_cols = log_odds_map.shape
+
+    pose_i = int(np.floor((y + shift_y) / grid_resolution))
+    pose_j = int(np.floor((x + shift_x) / grid_resolution))
+
+    if pose_i < 0 or pose_i >= n_rows or pose_j < 0 or pose_j >= n_cols:
+        return
+
+    for k in range(measurements.shape[0]):
+        r = measurements[k, 0]
+        bearing = measurements[k, 1]
+
+        if r <= min_sensor_range or r >= max_sensor_range or not np.isfinite(r):
+            continue
+
+        phi = heading + bearing
+
+        reflection_point_x = x + r * np.cos(phi)
+        reflection_point_y = y + r * np.sin(phi)
+
+        y_end = int(np.floor((reflection_point_y + shift_y) / grid_resolution))
+        x_end = int(np.floor((reflection_point_x + shift_x) / grid_resolution))
+
+        if y_end < 0 or y_end >= n_rows or x_end < 0 or x_end >= n_cols:
+            continue
+
+        # ------------------------------------------------------------------
+        # Equivalent to your old bresenham_line_drawing()
+        # ------------------------------------------------------------------
+        y_start = pose_i
+        x_start = pose_j
+
+        dx_raw = x_end - x_start
+        dy_raw = y_end - y_start
+
+        increment_x = 0
+        if dx_raw > 0:
+            increment_x = 1
+        elif dx_raw < 0:
+            increment_x = -1
+
+        increment_y = 0
+        if dy_raw > 0:
+            increment_y = 1
+        elif dy_raw < 0:
+            increment_y = -1
+
+        dx = dx_raw
+        dy = dy_raw
+
+        if dx < 0:
+            dx = -dx
+        if dy < 0:
+            dy = -dy
+
+        ddx = increment_x
+        ddy = increment_y
+
+        if dx > dy:
+            pdx = increment_x
+            pdy = 0
+            slow_direction = dy
+            fast_direction = dx
+        else:
+            pdx = 0
+            pdy = increment_y
+            slow_direction = dx
+            fast_direction = dy
+
+        cell_x = x_start
+        cell_y = y_start
+        err = fast_direction / 2.0
+
+        # start cell update
+        old_log_odds_value = log_odds_map[cell_y, cell_x]
+
+        if old_log_odds_value > min_log_odds and old_log_odds_value < max_log_odds:
+            if fast_direction == 0:
+                log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_increasing_probability
+            else:
+                log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_decreasing_probability
+
+        for step in range(fast_direction):
+            err -= slow_direction
+
+            if err < 0:
+                err += fast_direction
+                cell_x += ddx
+                cell_y += ddy
+            else:
+                cell_x += pdx
+                cell_y += pdy
+
+            if cell_y < 0 or cell_y >= n_rows or cell_x < 0 or cell_x >= n_cols:
+                break
+
+            old_log_odds_value = log_odds_map[cell_y, cell_x]
+
+            if old_log_odds_value > min_log_odds and old_log_odds_value < max_log_odds:
+                if step == fast_direction - 1:
+                    log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_increasing_probability
+                else:
+                    log_odds_map[cell_y, cell_x] = old_log_odds_value + log_odds_decreasing_probability
+
+
 
 class OGM:
     '''
@@ -100,6 +750,10 @@ class OGM:
     '''
     IDX_X= 0
     IDX_Y= 1
+    COL_VAL_OCC=100
+    COL_VAL_FREE=0
+    COL_VAL_UNKNOWN=-1
+
     def __init__(self, map_parameter: List[float], occupancy_parameter: List[float], sensor_parameter: List[float]) -> None:
         '''
         Constructor of the OGM class. Initializes all parameters and variables needed for the algorithm. Also checks 
@@ -135,9 +789,12 @@ class OGM:
         # Variables needed for point to grid cell transformation
         self.shift_x= 0
         self.shift_y= 0
+
+        # COunter for counting beam otuside map
+        self.beam_out_map_count = 0
         
         # Create OccupancyGrid Message object
-        lom= LogOddsMap()
+        # lom= LogOddsMap()
         self.log_odds_map_msg= LogOddsMap()
         self.log_odds_map_msg.header.frame_id= "log_odds_map"
         
@@ -267,12 +924,66 @@ class OGM:
         )
 
 
-    def return_log_odds_map(self) -> np.ndarray:
+    def init_map_from_map_with_origin(
+        self,
+        log_odds_map: np.ndarray,
+        grid_resolution: float,
+        origin_x: float,
+        origin_y: float,
+    ):
+        self.log_odds_map = np.array(log_odds_map, copy=True)
+        self.grid_resolution_m = float(grid_resolution)
+
+        self.number_of_cells_y, self.number_of_cells_x = self.log_odds_map.shape
+
+        self.map_width_m = self.number_of_cells_x * self.grid_resolution_m
+        self.map_height_m = self.number_of_cells_y * self.grid_resolution_m
+
+        self.shift_x = -float(origin_x)
+        self.shift_y = -float(origin_y)
+
+        self.left_map_border_m = origin_x
+        self.bottom_map_border_m = origin_y
+        self.right_map_border_m = origin_x + self.map_width_m
+        self.top_map_border_m = origin_y + self.map_height_m
+
+        self.update_log_odds_message()
+
+        rospy.loginfo("The map was successfully initialized from the given map.")
+        rospy.loginfo(
+            f"Map width= {self.map_width_m}, Map height= {self.map_height_m},"
+            f" Number of cells in x direction= {self.number_of_cells_x},"
+            f" Number of cells in y direction= {self.number_of_cells_y}"
+            f" Origin x= {origin_x}, Origin y= {origin_y}"
+        )
+
+
+    def get_log_odds_map(self) -> np.ndarray:
         '''Returns the grid map in log odds form.'''
         return self.log_odds_map
 
+
+    def get_map_meta(self):
+        '''
+        Returns the log odds map metadata as a dictionary.
+        '''
+        log_odds_map_meta= {
+            "map_width_m": self.map_width_m,
+            "map_height_m": self.map_height_m,
+            "grid_resolution_m": self.grid_resolution_m,
+            "number_of_cells_x": self.number_of_cells_x,
+            "number_of_cells_y": self.number_of_cells_y,
+            "left_map_border_m": self.left_map_border_m,
+            "top_map_border_m": self.top_map_border_m,
+            "right_map_border_m": self.right_map_border_m,
+            "bottom_map_border_m": self.bottom_map_border_m,
+            "shift_x": self.shift_x,
+            "shift_y": self.shift_y
+        }
+        return log_odds_map_meta
     
-    def return_log_odds_map_object(self) -> LogOddsMap:
+    
+    def get_log_odds_map_object(self) -> LogOddsMap:
         '''
         Returns a log odds map message object containing the map and the map metadata.
         '''
@@ -284,6 +995,21 @@ class OGM:
 
     
     def extend_map(self, direction: str, distance: float) -> Tuple[int, bool]:
+        '''
+        Extends the map in the specified direction by the given distance.
+
+        Parameters
+        ----------
+        direction: str
+            The direction in which to extend the map. Can be 'l' (left), 'r' (right), 'b' (bottom), or 't' (top).
+        distance: float
+            The distance by which to extend the map in meters.
+        
+        Returns
+        -------
+        Tuple[int, bool]
+            A tuple containing the number of cells the map was extended by and a boolean indicating if the extension was successful.        
+        '''
         # Calculate number of cells to extend
         number_of_cells= ceil(distance / self.grid_resolution_m)     
         was_extension_successfull= True   
@@ -352,6 +1078,9 @@ class OGM:
 
 
     def map_extension_if_necessary(self, pose: Tuple[float, float, float]) -> bool:
+        '''
+        Checks if the map needs to be extended based on the current robot pose.
+        '''
         x, y, theta= pose        
         extension_needed= False
         # Check if map needed to be extended on the left side 
@@ -382,12 +1111,18 @@ class OGM:
 
 
     def update_log_odds_message(self) -> None:
+        '''
+        Updates the log Odds map message with the current map data and metadata. This is needed to convert the array to
+        ROS message format at any time! 
+        '''
         self.log_odds_map_msg.info.width= self.number_of_cells_x
         self.log_odds_map_msg.info.height= self.number_of_cells_y
-        origin_x, origin_y= self.transform_grid_cell_to_point((0, 0))
-        self.log_odds_map_msg.info.origin.position.x= origin_x
-        self.log_odds_map_msg.info.origin.position.y= origin_y
+        # origin_x, origin_y= self.transform_grid_cell_to_point((0, 0))
+        self.log_odds_map_msg.info.origin.position.x= -self.shift_x
+        self.log_odds_map_msg.info.origin.position.y= -self.shift_y
+        self.log_odds_map_msg.info.origin.orientation.w = 1.0
         self.log_odds_map_msg.info.resolution= self.grid_resolution_m
+        self.log_odds_map_msg.header.frame_id = "map"
 
 
     #_______________________________________________________________________________________________________________
@@ -429,6 +1164,47 @@ class OGM:
             occupancy_value= 1.0
         return occupancy_value
 
+        
+
+    @staticmethod
+    def discretize_map(            
+        ogm: np.ndarray,
+        occ_thres: float,
+        free_thres: float,
+        col_val_unknown: int = -1,
+        col_val_occ:int =100,
+        col_val_free: int=0
+    ) -> np.ndarray:
+            '''
+            Discretizes the given log Odds map into discrete a map with discrete color values. If the logOdds value is >= occ_threshold,
+            then the occ color value gets written to it. If the logOdds value is <= free_threshold, then the free color value gets
+            written, else the unknown value. 
+    
+            Parameters
+            ----------
+            occ_thres: float
+                The threshold for occupied cells in log Odds space. Value >= occ_thres -> col_val = col_val_occ
+            free_thres: float
+                The threshold for free cells in log Odds space. Value <= free_thres -> col_val = col_value_free
+            col_val_unknown: Optional[int]
+                The color value for unknown cells. If None, defaults to self.COL_VAL_UNKNOWN.
+            col_val_occ: Optional[int]
+                The color value for occupied cells. If None, defaults to self.COL_VAL_OCC.
+            col_value_free: Optional[int]
+                The color value for free cells. If None, defaults to self.COL_VAL_FREE. 
+            '''                    
+            # Discretize the map
+            ogm_cp = np.full(
+                ogm.shape,
+                fill_value=col_val_unknown,
+                dtype=np.int8
+            )
+            ogm_cp[ogm <= free_thres] = col_val_free
+            ogm_cp[ogm >= occ_thres] = col_val_occ
+    
+            return ogm_cp
+
+
 
     @staticmethod
     def transform_log_odds_map_to_probability_map(log_odds_map: np.ndarray) -> np.ndarray:
@@ -465,7 +1241,7 @@ class OGM:
 
     def transform_point_to_grid_cell(self, point: Tuple[float, float]) -> Tuple[int, int]:
         '''Transforms an (x, y) point to the array access indices (i, j for row, column). '''
-        x,y = point
+        x, y = point
         x_shifted= x + self.shift_x
         y_shifted= y + self.shift_y
         i= floor(y_shifted/self.grid_resolution_m)
@@ -481,17 +1257,16 @@ class OGM:
         return (x, y)    
 
 
-
     #_______________________________________________________________________________________________________________
     # Main Algorithm
     #_______________________________________________________________________________________________________________
 
     def find_reflecting_grid_cell(self, measurement: Tuple[float, float], pose: Tuple[float, float, float]) -> Optional[Tuple[int, int]]:
-        '''Gets a (range, bearing) measurement and a (x, y, heading) pose and calculates 
-        the indices of the reflecting grid cell. Also checks if the measurement range is 
-        in the area of the sensor range and if the range is infinite. If there is no 
-        plausible measurement, then the function return None, otherwise the reflected 
-        grid cell.'''
+        '''
+        Gets a (range, bearing) measurement and a (x, y, heading) pose and calculates the indices of the reflecting grid
+        cell. Also checks if the measurement range is in the area of the sensor range and if the range is infinite. If 
+        there is no plausible measurement, then the function return None, otherwise the reflected grid cell.
+        '''
         x, y, heading= pose
         range, bearing= measurement
         reflecting_cell= ()
@@ -501,10 +1276,11 @@ class OGM:
             reflecting_cell= None
         else: 
             # Ensure angles between -pi and pi
-            bearing= atan2(sin(bearing), cos(bearing))
-            heading= atan2(sin(heading), cos(heading))
-            # Calculate x,y-position of reflected beam.
-            phi= atan2(sin(heading + bearing), cos(heading + bearing))
+            # bearing= atan2(sin(bearing), cos(bearing))
+            # heading= atan2(sin(heading), cos(heading))
+            # # Calculate x,y-position of reflected beam.
+            phi = heading + bearing
+            # phi = atan2(sin(phi), cos(phi))
             reflection_point_x= x + range * cos(phi)
             reflection_point_y= y + range* sin(phi)
             # Transfrom cell coordinates to cell indices.
@@ -514,8 +1290,10 @@ class OGM:
     
     @staticmethod
     def bresenham_line_drawing(start_grid_idx: Tuple[int, int], end_grid_idx: Tuple[int, int]) -> List[Tuple[int, int]]:
-        '''Calculates all cell indices between start_grid_idx and end_grid_idx cell. 
-        Input values are indices of first and last grid (line, column) (assuming integers).'''
+        '''
+        Calculates all cell indices between start_grid_idx and end_grid_idx cell. Input values are indices of first and 
+        last grid (line, column) (assuming integers).
+        '''
         #  y= lines, x = column 
         y_start, x_start= start_grid_idx
         y_end, x_end= end_grid_idx
@@ -584,7 +1362,113 @@ class OGM:
             self.log_odds_map[cell_i][cell_j]= new_log_odds_value
 
 
+    def update_cells(self, start_grid_idx, end_grid_idx):
+        y, x = start_grid_idx
+        y_end, x_end = end_grid_idx
+
+        dx = abs(x_end - x)
+        dy = abs(y_end - y)
+
+        sx = 1 if x < x_end else -1
+        sy = 1 if y < y_end else -1
+
+        err = dx - dy
+
+        while True:
+            # ---- THIS IS YOUR update_affected_cells LOGIC ----
+            old_log_odds_value = self.log_odds_map[y][x]
+
+            if not (old_log_odds_value <= self.min_log_odds or old_log_odds_value >= self.max_log_odds):
+
+                # last cell = reflecting cell
+                if (y == y_end and x == x_end):
+                    new_log_odds_value = old_log_odds_value + self.log_odds_increasing_probability
+                else:
+                    new_log_odds_value = old_log_odds_value + self.log_odds_decreasing_probability
+
+                self.log_odds_map[y][x] = new_log_odds_value
+
+            # stop condition
+            if y == y_end and x == x_end:
+                break
+
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x += sx
+            if e2 < dx:
+                err += dx
+                y += sy
+            
+
     def update_map(self, measurements: List[Tuple[float, float]], pose: Tuple[float, float, float]) -> None:
+        """
+        Update the logOdds map by the given pose and laser measurements.
+        Numba-optimized version.
+        """
+        measurements_np = np.asarray(measurements, dtype=np.float64)
+
+        if measurements_np.size == 0:
+            return
+
+        # Extract pose
+        x, y, heading = pose
+
+        # status, counter = update_map_numba(
+        #     self.log_odds_map,
+        #     measurements_np,
+        #     x,
+        #     y,
+        #     heading,
+        #     self.shift_x,
+        #     self.shift_y,
+        #     self.grid_resolution_m,
+        #     self.min_sensor_range,
+        #     self.max_sensor_range,
+        #     self.log_odds_decreasing_probability,
+        #     self.log_odds_increasing_probability,
+        #     self.min_log_odds,
+        #     self.max_log_odds,
+
+        # )
+
+        status, counter = update_map_numba_inf_free_space(
+            log_odds_map=self.log_odds_map,
+            measurements=measurements_np,
+            x=x,
+            y=y,
+            heading=heading,
+            shift_x=self.shift_x,
+            shift_y=self.shift_y,
+            grid_resolution=self.grid_resolution_m,
+            min_sensor_range=self.min_sensor_range,
+            max_sensor_range=self.max_sensor_range,
+            log_odds_decreasing=self.log_odds_decreasing_probability,
+            log_odds_increasing=self.log_odds_increasing_probability,
+            min_log_odds=self.min_log_odds,
+            max_log_odds=self.max_log_odds,
+        )
+
+
+        # status, beam_out_map_count = update_map_numba_unique_cells(
+        #     self.log_odds_map,
+        #     measurements_np,
+        #     x,
+        #     y,
+        #     heading,
+        #     self.shift_x,
+        #     self.shift_y,
+        #     self.grid_resolution_m,
+        #     self.min_sensor_range,
+        #     self.max_sensor_range,
+        #     self.log_odds_decreasing_probability,
+        #     self.log_odds_increasing_probability,
+        #     self.min_log_odds,
+        #     self.max_log_odds,
+        # )
+
+    
+    def update_map_copy(self, measurements: List[Tuple[float, float]], pose: Tuple[float, float, float]) -> None:
         '''Update the logOdds map by the given (x, y, heading) pose and (range, bearing) measurements. 
         Bounds the values of the logOdds map.'''
         x, y, heading= pose
@@ -598,7 +1482,10 @@ class OGM:
                 # Find all grid cells between pose and reflecting grid cell
                 affected_cells= self.bresenham_line_drawing((pose_i, pose_j), (relfecting_cell))
                 self.update_affected_cells(affected_cells)
-    
+                # self.update_cells(
+                #     start_grid_idx=(pose_i, pose_j),
+                #     end_grid_idx=(relfecting_cell),
+                # )
 
     #_______________________________________________________________________________________________________________
     # Map extraction
@@ -704,11 +1591,18 @@ class OGM:
                 x, y = self.transform_grid_cell_to_point((i, j))
                 valid_points.append((x, y))
 
-        return np.copy(valid_points)
-    
+        return np.copy(valid_points)    
 
 
-    def extract_map_for_scan_matching_numba(self, pose, radius, delta_r=1.0, occ_thresh=2.0):
+    def extract_map_for_scan_matching_numba(
+            self,
+            pose,
+            radius,
+            delta_radius=1.0,
+            occ_thresh=2.0,
+            surface_radius_m : float = 0.1,
+            min_free_ratio: float = 0.25
+    ) -> np.ndarray:
         '''
         Extracts the map for scan matching. This variant is speed optimized using numba.
 
@@ -718,39 +1612,109 @@ class OGM:
             The pose of the robot (x, y, heading) for which the map should be extracted.
         radius: float
             The radius around the robot pose for which the map should be extracted.
-        delta_r: float, optional
+        delta_radius: float, optional
             An additional radius that is added to the given radius to ensure that enough points are extracted for scan matching. Default is 1.0.
         occ_thresh: float, optional
             The log Odds threshold for a cell to be considered occupied. Default is 2.0.
+        surface_radius_m: float, optional
+            The radius around a map point to consider for surface validation. Default is 0.1.
+        min_free_ratio: float, optional
+            The minimum ratio of free cells around a occ map point to be valid. We assume those point lies on a surface.
         
         Returns
         -------
         np.ndarray
             An array of shape (N, 2) containing the (x, y) coordinates of the valid points in the map for scan matching.
         '''
-        r_cells = int(np.ceil((radius + delta_r) / self.grid_resolution_m))
-        r_cells_sq = r_cells * r_cells
+        # Transfer map extraction parameters from continuous space to discrete space
+        r_cells = int(ceil((radius + delta_radius) / self.grid_resolution_m))
+        r_cells_sq = int(r_cells ** 2) 
+
+        # Compute surface radius in grid cells (floating point safe)
+        surface_radius_cells = int(ceil(surface_radius_m / self.grid_resolution_m - 1e-12))
+
+        # Compute minimum free cells for surface validation
+        surface_window = 2 * surface_radius_cells + 1
+        n_cells_surface_window = surface_window**2
+        n_neighbors = n_cells_surface_window - 1
+        min_free_count = int(ceil(n_neighbors * min_free_ratio))
 
         i_pose, j_pose = self.transform_point_to_grid_cell(pose[:2])
 
+        # n_cells_great_thres = np.sum(self.log_odds_map > occ_thresh)
+        # print("\nNumber of cells above threshold: ", n_cells_great_thres)
+
+        # map_points = extract_map_numba(
+        #     self.log_odds_map,
+        #     i_pose,
+        #     j_pose,
+        #     r_cells,
+        #     r_cells_sq,
+        #     occ_thresh,
+        #     -2.0,
+        #     2,
+        #     self.grid_resolution_m,
+        #     self.shift_x,
+        #     self.shift_y
+        # )
+
         map_points = extract_map_numba(
-            self.log_odds_map,
-            i_pose,
-            j_pose,
-            r_cells,
-            r_cells_sq,
-            occ_thresh,
-            -2.0,
-            2,
-            self.grid_resolution_m,
-            self.shift_x,
-            self.shift_y
+            log_odds_map=self.log_odds_map,
+            i_pose=i_pose,
+            j_pose=j_pose,
+            r_cells=r_cells,
+            r_cells_sq=r_cells_sq,
+            surface_r_cells=surface_radius_cells,
+            occ_thresh=occ_thresh,
+            free_thresh=-2.0,
+            min_free_count=min_free_count,
+            grid_res=self.grid_resolution_m,
+            shift_x=self.shift_x,
+            shift_y=self.shift_y
         )
 
-        # Filter inf and nan values from pre allocated map points
+        # Filter inf and nan values from pre allocated map points -> Only keep actual map points
         map_points = map_points[np.all(np.isfinite(map_points), axis=1)]
         
         return map_points
+    
+
+    def extract_submap(self, center_cell, height, width):
+        """
+        Extract a rectangular submap from log_odds_map for testing! Not access secured, make sure to use 
+        valid cell, height and width values!
+
+        Parameters:
+            center_cell (tuple): (i, j) center index
+            height (int): number of cells in y-direction
+            width (int): number of cells in x-direction
+
+        Returns:
+            submap (np.ndarray): sliced map
+            (i_min, i_max, j_min, j_max): indices in original map
+        """
+
+        # Get map and 
+        
+        n_rows, n_cols = self.log_odds_map.shape
+
+        i_center, j_center = center_cell
+
+        # half sizes
+        h_half = height // 2
+        w_half = width // 2
+
+        # bounds
+        i_min = max(0, i_center - h_half)
+        i_max = min(n_rows, i_center + h_half)
+
+        j_min = max(0, j_center - w_half)
+        j_max = min(n_cols, j_center + w_half)
+
+        submap = self.log_odds_map[i_min:i_max, j_min:j_max]
+
+        return submap, (i_min, i_max, j_min, j_max)
+    
 
     #_______________________________________________________________________________________________________________
     # Grid Cell manipulation
@@ -759,15 +1723,15 @@ class OGM:
     def colorize_grid_black(self, grid_cell_indices: Tuple[int, int]) -> None:
         '''For testing. Change the color of the given grid cell to black.'''
         # Define log Odds value that correspond's to black
-        logOdds_one= 100.0                               
+        logOdds_one= self.max_log_odds                               
         grid_idx_x, grid_idx_y= grid_cell_indices
         self.log_odds_map[grid_idx_x][grid_idx_y]= logOdds_one
 
     
     def colorize_grid_white(self, grid_cell_indices: Tuple[int, int]) -> None:
         '''For testing. Change the color of the given grid cell to white.'''
-        # Define log Odds value that correspond's to black
-        logOdds_zero= -100                               
+        # Define log Odds value that correspond's to white
+        logOdds_zero= self.min_log_odds                               
         grid_idx_x, grid_idx_y= grid_cell_indices
         self.log_odds_map[grid_idx_x][grid_idx_y]= logOdds_zero
 

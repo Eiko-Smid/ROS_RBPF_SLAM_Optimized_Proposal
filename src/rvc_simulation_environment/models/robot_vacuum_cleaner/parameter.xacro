@@ -73,10 +73,10 @@
     <xacro:property name="max_angle" value="${pi/2}"/>                  <!--Maximum angle [rad]-->
     <xacro:property name="min_range" value="0.1"/>                      <!--Minimum distance the lidar can measure-->
     <xacro:property name="max_range" value="10.0"/>                     <!--Maximum distance the lidar can measure-->
-    <xacro:property name="range_resolution" value="0.01"/>              
-    <xacro:property name="noise_type" value="gaussian"/>  
-    <xacro:property name="noise_mean" value="0.0"/>                     <!--Mean of the gaussian noise in [m]-->
-    <xacro:property name="noise_stddv" value="0.01"/>                   <!--Standard deviation in [m]-->
+    <xacro:property name="range_resolution" value="$(arg laser_range_resolution)"/>              
+    <xacro:property name="noise_type" value="$(arg laser_noise_type)"/>  
+    <xacro:property name="noise_mean" value="$(arg laser_noise_mean)"/>                     <!--Mean of the gaussian noise in [m]-->
+    <xacro:property name="noise_stddv" value="$(arg laser_noise_stddv)"/>                   <!--Standard deviation in [m]-->
     <xacro:property name="scan_topic" value="/scan"/>  
     <xacro:property name="frame_name" value="laser_scanner_link"/>  
 

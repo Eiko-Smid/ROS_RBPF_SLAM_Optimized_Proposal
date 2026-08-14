@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro" />
+  <!-- <xacro:include filename="$(find rvc_simulation_environment)/models/robot_vacuum_cleaner/parameter.xacro" /> -->
 
     
     <!-- TODO: Add same update rates over parameter setting and define all parameters in config -->
@@ -8,8 +8,14 @@
     <gazebo>
         <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
             <alwaysOn>true</alwaysOn>
+            <!--- Enable/Disable publishing of tfs -->
+            <publishOdomTF>false</publishOdomTF>
+            <publishTf>false</publishTf>
+            <publishWheelTF>false</publishWheelTF>
+            <publishWheelJointState>true</publishWheelJointState>
+
             <!-- Plugin update rate in Hz -->
-            <updateRate>10</updateRate>
+            <updateRate>${update_rate}</updateRate>
             <!-- Name of left joint, defaults to `left_joint` -->
             <leftJoint>base_link_to_left_wheel</leftJoint>
             <!-- Name of right joint, defaults to `right_joint` -->
@@ -43,6 +49,35 @@
         </plugin>
     </gazebo>
 
+    <!-- TThis plugin is used to publish the true pose of the robot with a timestamp -->
+    <gazebo>
+        <plugin name="ground_truth_odometry" filename="libgazebo_ros_p3d.so">
+            <!-- Optional ROS namespace -->
+            <robotNamespace>/</robotNamespace>
+
+            <!-- Link whose ground-truth pose is published -->
+            <bodyName>base_link</bodyName>
+
+            <!-- Output topic -->
+            <topicName>ground_truth/odom</topicName>
+
+            <!-- Pose is expressed relative to Gazebo world -->
+            <frameName>world</frameName>
+
+            <!-- Publish ground truth at 100 Hz -->
+            <updateRate>100.0</updateRate>
+
+            <!-- No artificial offset -->
+            <xyzOffset>0 0 0</xyzOffset>
+            <rpyOffset>0 0 0</rpyOffset>
+
+            <!-- Ground truth must contain no noise -->
+            <gaussianNoise>0.0</gaussianNoise>
+
+            <!-- Velocity frame; irrelevant for your true pose -->
+            <localTwist>false</localTwist>
+        </plugin>
+    </gazebo>
 
     <!--Hukuyo Laser Plugin-->
     <gazebo reference="laser_scanner_link">
@@ -68,7 +103,7 @@
                 <noise>
                     <type>${noise_type}</type>
                     <mean>${noise_mean}</mean>
-                    <stddv>${noise_stddv}</stddv>
+                    <stddev>${noise_stddv}</stddev>
                 </noise>
             </ray>
             <plugin name="gazebo_ros_head_hokuyo_controller" filename="libgazebo_ros_laser.so">
@@ -87,36 +122,52 @@
 
     <!--Black Caster Wheels-->
     <gazebo reference="caster_wheel_front_link">
-        <mu1>0.0</mu1>
-        <mu2>0.0</mu2>
+        <mu1>0.05</mu1>
+        <mu2>0.05</mu2>
+        <slip1>0.0</slip1>
+        <slip2>0.0</slip2>
+        <kp>1000000.0</kp>
+        <kd>100.0</kd>
+        <minDepth>0.001</minDepth>
+        <maxVel>0.05</maxVel>
         <material>Gazebo/Black</material>
     </gazebo>
 
     <gazebo reference="caster_wheel_back_link">
-        <mu1>0.0</mu1>
-        <mu2>0.0</mu2>
+        <mu1>0.05</mu1>
+        <mu2>0.05</mu2>
+        <slip1>0.0</slip1>
+        <slip2>0.0</slip2>
+        <kp>1000000.0</kp>
+        <kd>100.0</kd>
+        <minDepth>0.001</minDepth>
+        <maxVel>0.05</maxVel>
         <material>Gazebo/Black</material>
     </gazebo>
 
     <!--Black Left Wheel-->
     <gazebo reference="left_wheel_link">
-        <mu1>1.5</mu1>
-        <mu2>1.5</mu2>
+        <mu1>3.0</mu1>
+        <mu2>3.0</mu2>
+        <slip1>0.0</slip1>
+        <slip2>0.0</slip2>
         <kp>1000000.0</kp>
         <kd>100.0</kd>
         <minDepth>0.001</minDepth>
-        <maxVel>0.1</maxVel>
+        <maxVel>0.05</maxVel>
         <material>Gazebo/Black</material>
     </gazebo>
 
     <!--Black Right Wheel-->
     <gazebo reference="right_wheel_link">
-        <mu1>1.5</mu1>
-        <mu2>1.5</mu2>
+        <mu1>3.0</mu1>
+        <mu2>3.0</mu2>
+        <slip1>0.0</slip1>
+        <slip2>0.0</slip2>
         <kp>1000000.0</kp>
         <kd>100.0</kd>
         <minDepth>0.001</minDepth>
-        <maxVel>0.1</maxVel>
+        <maxVel>0.05</maxVel>
         <material>Gazebo/Black</material>
     </gazebo>    
     <!--Black Right Wheel-->

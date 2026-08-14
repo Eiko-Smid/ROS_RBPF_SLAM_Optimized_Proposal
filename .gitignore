@@ -15,6 +15,7 @@ __pycache__/
 *.pkl
 *.npy
 *.jsonl
+*.json
 *.csv
 
 # VSCode
@@ -42,3 +43,12 @@ maps/*~
 *.jpg
 *.jpeg
 
+# Keep presentation/documentation images
+!src/rbpf_slam/data/presentation/*.png
+!src/rbpf_slam/data/presentation/*.jpg
+!src/rbpf_slam/data/presentation/*.jpeg
+
+# Delete venv from git history, as it is not needed and can be large. --- IGNORE ---
+.venv
+
+optimize_rbpf_scan_matcher_copy/

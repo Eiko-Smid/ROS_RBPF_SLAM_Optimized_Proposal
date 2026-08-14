@@ -1,0 +1,1769 @@
+import math
+from dataclasses import dataclass, field
+
+from typing import Any, List, Optional, Tuple, Dict
+
+import numpy as np
+from scipy.stats import spearmanr
+
+from .playback_defs import ExperimentParams
+
+
+# Transfers the angle in rad into meters to combine translational and rotational errors 
+ROT_SCALE = 2.0     # trans_err + ROT_SCALE * angle (rad) -> m
+
+Pose2D = Tuple[float, float, float]
+
+
+@dataclass
+class StepResult:
+    """
+    Stores evaluation data for one RBPF step.
+    """
+    step_idx: int
+    t: float
+    true_pose: Pose2D
+    raw_odom_pose: Optional[Pose2D]
+    est_pose: Optional[Pose2D]
+    best_particle_pose: Optional[Pose2D]
+    neff: Optional[float]
+    scan_match_pose: Optional[Pose2D] = None
+    scan_match_failed: Optional[bool] = None
+    scan_match_fallback_failed: Optional[bool] = None
+    n_raw_map_points: Optional[int] = None
+    n_used_map_points: Optional[int] = None
+    map_point_keep_ratio: Optional[float] = None
+    translation_error: Optional[float] = None
+    rotation_error: Optional[float] = None
+    trans_err_raw_odom: Optional[float] = None
+    rot_err_raw_odom: Optional[float] = None
+    translation_error_best_p: Optional[float] = None
+    rotation_error_best_p: Optional[float] = None
+    particle_weight_min: Optional[float] = None
+    particle_weight_max: Optional[float] = None
+    particle_weight_mean: Optional[float] = None
+    step_duration: Optional[float] = None
+
+    # Proposal time durations
+    t_sample_poses: Optional[float] = None
+    t_pred_poses: Optional[float] = None
+    t_motion_model: Optional[float] = None
+    t_meas_model: Optional[float] = None
+    t_compute_prop_params: Optional[float] = None
+    t_sample_from_prop: Optional[float] = None
+    
+    # Scan matcher time durations
+    time_duration_scan_matching: Optional[float] = None
+    time_duration_prediction: Optional[float] = None
+    time_duration_map_extraction: Optional[float] = None
+    time_duration_correct_pose: Optional[float] = None
+    time_duration_update_pose: Optional[float] = None
+
+    # ICP time durations
+    t_init_icp_trans: Optional[float] = None
+    t_init_and_train_nn_tree_normals: Optional[float] = None
+    t_downsampling_pointcloud: Optional[float] = None
+    t_compute_normal: Optional[float] = None
+    t_outlier_rejection: Optional[float] = None
+    t_find_nn_outlier_rejec: Optional[float] = None
+    t_prepare_system: Optional[float] = None
+    t_solve_least_squares: Optional[float] = None
+    t_transf_update_and_results: Optional[float] = None
+    t_find_trans: Optional[float] = None
+    
+    trans_err_mu_true: Optional[float] = None
+    rot_err_mu_true: Optional[float] = None
+    pose_err_mu_true: Optional[float] = None
+    trans_err_mu_sm: Optional[float] = None
+    rot_err_mu_sm: Optional[float] = None
+    trans_err_sm_true: Optional[float] = None
+    rot_err_sm_true: Optional[float] = None
+    pose_err_sm_true: Optional[float] = None
+    mu_true_err_improves_over_sm_true: Optional[float] = None
+    mu_true_better_than_sm_true: Optional[bool] = None
+    
+    min_xj_pose_err_true: Optional[float] = None
+    min_xj_is_best_xj: Optional[bool] = None
+    min_xj_better_sm_pose: Optional[bool] = None
+    best_xj_better_sm_pose: Optional[bool] = None
+
+    weight_min_xj_err: Optional[float] = None
+    best_weighted_xj_pose_err_true: Optional[float] = None
+    weight_best_xj: Optional[float] = None
+    rot_err_best_xj_true: Optional[float] = None
+    trans_err_worst_xj_true: Optional[float] = None
+    rot_err_worst_xj_true: Optional[float] = None
+    min_xj_true_err_improves_over_sm_true: Optional[float] = None
+    best_xj_true_err_improves_over_sm_true : Optional[float] = None
+    best_xj_improves_over_sm_rot : Optional[bool] = None
+    best_xj_better_than_worst_trans : Optional[bool] = None
+    best_xj_better_than_worst_rot : Optional[bool] = None
+    min_xj_true_err_weight_score: Optional[float] = None
+    
+    # Estimate correlations between low errors and high probs/weights
+    corr_xjs_weights: Optional[float] = None
+    corr_xjs_motion: Optional[float] = None
+    corr_xjs_meas: Optional[float] = None
+    corr_weights_motion: Optional[float] = None
+    corr_weights_meas: Optional[float] = None
+
+    corr_xj_trans_weights: Optional[float] = None
+    corr_xj_trans_motion: Optional[float] = None
+    corr_xj_trans_meas: Optional[float] = None
+    corr_xj_rot_weights: Optional[float] = None
+    corr_xj_rot_motion: Optional[float] = None
+    corr_xj_rot_meas: Optional[float] = None
+
+    best_xj_score: Optional[float] = None
+    motion_rank_score: Optional[float] = None
+    meas_rank_score: Optional[float] = None
+    weight_ratio_min_best_weight: Optional[float] = None
+    log_motion_range: Optional[float] = None
+    log_meas_range: Optional[float] = None
+    log_weight_range: Optional[float] = None
+    xj_indices: Optional[List[int]] = None
+    xj_pose_err: Optional[List[float]] = None
+    xj_weight: Optional[List[float]] = None
+    xj_motion: Optional[List[float]] = None
+    xj_meas: Optional[List[float]] = None
+
+    min_trans_err_xjs: Optional[float] = None
+    min_rot_err_xjs: Optional[float] = None
+    min_xj_trans_err_true: Optional[float] = None
+    min_xj_rot_err_true: Optional[float] = None
+    best_xj_trans_err_true: Optional[float] = None
+    best_xj_rot_err_true: Optional[float] = None
+    
+    trans_err_mu_pred: Optional[float] = None
+    rot_err_mu_pred: Optional[float] = None
+    prop_std_x: Optional[float] = None
+    prop_std_y: Optional[float] = None
+    prop_std_theta: Optional[float] = None
+    corr_xy: Optional[float] = None
+    corr_x_theta: Optional[float] = None
+    corr_y_theta: Optional[float] = None
+    xj_eff: Optional[float] = None
+    xj_eff_motion: Optional[float] = None
+    xj_eff_meas: Optional[float] = None
+
+    # Measurement model counter values
+    # Proposal
+    # Counter
+    meas_model_prop_call_count: Optional[int] = None
+    meas_model_prop_valid_beam_count: Optional[int] = None
+    meas_model_prop_map_hit_count: Optional[int] = None
+    meas_model_prop_no_map_hit_count: Optional[int] = None
+    meas_model_prop_out_of_map_count: Optional[int] = None
+    meas_model_prop_unknown_ray_count: Optional[int] = None
+    meas_model_prop_known_free_ray_count: Optional[int] = None
+    meas_model_prop_unexpected_known_free_count: Optional[int] = None
+    # rates
+    meas_model_prop_map_hit_rate: Optional[float] = None
+    meas_model_prop_out_of_map_rate: Optional[float] = None    
+    meas_model_prop_no_map_hit_rate: Optional[float] = None
+    meas_model_prop_unknown_no_map_hit_rate: Optional[float] = None
+    meas_model_prop_known_free_no_map_hit_rate: Optional[float] = None
+    meas_model_prop_unexpected_known_free_rate: Optional[float] = None
+
+    # Fallback
+    # Counter
+    meas_model_fallback_call_count: Optional[int] = None
+    meas_model_fallback_valid_beam_count: Optional[int] = None
+    meas_model_fallback_map_hit_count: Optional[int] = None
+    meas_model_fallback_no_map_hit_count: Optional[int] = None
+    meas_model_fallback_out_of_map_count: Optional[int] = None
+    meas_model_fallback_unknown_ray_count: Optional[int] = None
+    meas_model_fallback_known_free_ray_count: Optional[int] = None
+    meas_model_fallback_unexpected_known_free_count: Optional[int] = None
+    # rates
+    meas_model_fallback_map_hit_rate: Optional[float] = None
+    meas_model_fallback_out_of_map_rate: Optional[float] = None    
+    meas_model_fallback_no_map_hit_rate: Optional[float] = None
+    meas_model_fallback_unknown_no_map_hit_rate: Optional[float] = None
+    meas_model_fallback_known_free_no_map_hit_rate: Optional[float] = None
+    meas_model_fallback_unexpected_known_free_rate: Optional[float] = None
+
+
+@dataclass
+class RunResult:
+    """
+    Stores all RBPF evaluation data for one parameter-set run.
+    """
+    params: ExperimentParams
+    step_results: List[StepResult] = field(default_factory=list)
+    summary: dict = field(default_factory=dict)
+    best_part_map: Optional[np.ndarray] = None
+    best_part_map_meta: Dict[str, Any] = field(default_factory=dict)
+
+
+class RBPFEvaluator:
+    # non_finite_count = 0
+    """
+    Computes per-step errors and run-level metrics for one RBPF playback run.
+    """
+
+    @staticmethod
+    def _to_pose_tuple(pose) -> Optional[Pose2D]:
+        """
+        Converts a pose object to (x, y, theta).
+
+        Supports tuples/lists/ndarrays and objects exposing x/y/theta attributes.
+        """
+        if pose is None:
+            return None
+
+        if hasattr(pose, "x") and hasattr(pose, "y") and hasattr(pose, "theta"):
+            return (float(pose.x), float(pose.y), float(pose.theta))
+
+        if isinstance(pose, (tuple, list, np.ndarray)) and len(pose) >= 3:
+            return (float(pose[0]), float(pose[1]), float(pose[2]))
+
+        raise TypeError(f"Unsupported pose format: {type(pose)}")
+
+
+    @staticmethod
+    def angle_diff(a: float, b: float) -> float:
+        """
+        Returns wrapped angular difference in [-pi, pi].
+        """
+        return math.atan2(math.sin(a - b), math.cos(a - b))
+
+
+    @staticmethod
+    def translation_error(p1: Pose2D, p2: Pose2D) -> float:
+        """
+        Euclidean translation error in the x-y plane.
+        """
+        return float(np.hypot(p1[0] - p2[0], p1[1] - p2[1]))
+
+
+    @staticmethod
+    def pose_err(trans_err: float, rot_err: float, rot_scale: float) -> float:
+        '''
+        Get's the translational and rotational errors between two poses and computes a combined error metric
+        that allows to compare the overall error of two poses.
+        '''
+        return float(np.sqrt(trans_err**2 + (rot_scale * rot_err)**2))
+
+
+    @staticmethod
+    def xj_weight_score(xj_pose_errors_true: np.ndarray, xj_weights: np.ndarray) -> float:
+        '''
+        Computes the normalized rank score of the xj closest to the true pose based on its weight.
+        The bigger the weight of the weights list, the xj corresponds to, the higher the score.
+
+        Parameters
+        ----------
+        xj_pose_errors_true: np.ndarray
+            Array of pose errors of each xj pose to the true pose.
+        xj_weights: np.ndarray
+            Array of weights for each xj pose.
+
+        Returns         
+        ---------
+        rank_score: float
+            Normalized rank score of the xj closest to the true pose based on its weight. 
+                    
+                rank_score = 1.0  -> closest-to-true xj has highest weight
+                rank_score = 0.0  -> closest-to-true xj has lowest weight
+                rank_score ≈ 0.5  -> closest-to-true xj is around the middle of the weight ranking
+
+        '''
+        # Find index of lowest error
+        idx_closest_true = np.argmin(xj_pose_errors_true)
+
+        # Order the negated weights from low to high
+        order = np.argsort(-xj_weights)
+
+        # Compute the rank at which the closest-to-true xj appears in the weight ranking 
+        rank_of_closest = int(np.where(order == idx_closest_true)[0][0]) + 1
+        N = len(xj_weights)
+        
+        # Compute score
+        if N == 1:
+            rank_score = 1.0
+        else:
+            rank_score = 1.0 - (rank_of_closest - 1) / (N - 1)
+        
+        return rank_score
+    
+
+    @staticmethod
+    def rank_model_probs(pose_errors, weights):
+        # get idx of max weights
+        max_weight_idx = np.argmax(weights)
+
+        # Pseudo sort pose err from low to high
+        order = np.argsort(pose_errors)
+
+        # Compute rank
+        rank = int(np.where(order == max_weight_idx)[0][0]) + 1
+
+        # Compute score
+        N = len(pose_errors)
+        if N == 1:
+            rank_score = 1.0
+        else:
+            rank_score = 1.0 - (rank - 1) / (N - 1)
+        
+        return rank_score
+
+
+    @staticmethod
+    def _finite_values(values: List[Optional[float]]) -> List[float]:
+        '''
+        Converts the given list to a numpy array. Filters all non-finite values (inf, -inf, nan) and returns 
+        a list of only finite values.
+        '''
+        arr = np.asarray(values, dtype=float)
+        if arr.size == 0:
+            return []
+        return arr[np.isfinite(arr)].astype(float).tolist()
+
+
+    @staticmethod
+    def _compute_rate(
+        numerator,
+        denominator,
+        call_count=None,
+    ) -> float:
+        """
+        Compute a pooled measurement-model rate.
+
+        Returns
+        -------
+        float
+            NaN:
+                - measurement model was not called, or
+                - denominator is missing, non-finite, or <= 0
+            0.0:
+                - measurement model was called,
+                - denominator is valid,
+                - numerator is zero
+            > 0.0:
+                - valid rate
+        """
+        # Explicitly distinguish "model not used" from "event did not occur".
+        if call_count is not None:
+            try:
+                call_count = float(call_count)
+            except (TypeError, ValueError):
+                return float("nan")
+
+            if not np.isfinite(call_count) or call_count <= 0.0:
+                return float("nan")
+
+        if numerator is None or denominator is None:
+            return float("nan")
+
+        try:
+            numerator = float(numerator)
+            denominator = float(denominator)
+        except (TypeError, ValueError):
+            return float("nan")
+
+        if not np.isfinite(numerator) or not np.isfinite(denominator):
+            return float("nan")
+
+        if numerator < 0.0 or denominator <= 0.0:
+            return float("nan")
+
+        return numerator / denominator
+        
+
+    def evaluate_step(
+        self,
+        step_idx: int,
+        t: float,
+        true_pose,
+        raw_odom_pose,
+        est_pose,
+        best_particle_pose,
+        scan_match_failed: Optional[bool],
+        scan_match_fallback_failed: Optional[bool],
+        neff: Optional[float],
+        particle_weight_min: Optional[float],
+        particle_weight_max: Optional[float],
+        particle_weight_mean: Optional[float],
+        step_duration: Optional[float],
+        proposal_metrics: Optional[dict] = None,
+        measurement_model_counters_fallback: Optional[dict] = None,
+    ) -> StepResult:
+        """
+        Evaluates one RBPF step and returns per-step metrics and information.
+
+        Parameters
+        ----------
+        step_idx : int
+            The index of the current step.
+        t : float
+            The timestamp of the current step.
+        true_pose : Any
+            The true pose of the robot at the current step.
+        raw_odom_pose : Any
+            The raw odometry pose of the robot at the current step.
+        est_pose : Any
+            The estimated pose of the robot at the current step.
+        best_particle_pose : Any
+            The pose of the best particle at the current step.
+        scan_match_failed : Optional[bool]
+            Indicates whether scan matching failed at the current step.
+        scan_match_fallback_failed : Optional[bool]
+            Indicates whether scan matching fallback failed at the current step.
+        neff : Optional[float]
+            The effective number of particles at the current step.
+        particle_weight_min : Optional[float]
+            The minimum particle weight at the current step.
+        particle_weight_max : Optional[float]
+            The maximum particle weight at the current step.
+        particle_weight_mean : Optional[float]
+            The mean particle weight at the current step.
+        step_duration : Optional[float]
+            The duration of the current step.
+        proposal_metrics : Optional[dict], optional
+            A dictionary containing proposal metrics for the current step. Default is None.
+        measurement_model_counters_fallback : Optional[dict], optional
+            A dictionary containing measurement model counters for the fallback model at the current step. Default is None.
+
+        Returns
+        -------
+        StepResult
+            An object containing the evaluation results for the current step.
+        """
+        true_pose_t = self._to_pose_tuple(true_pose)
+        raw_odom_pose_t = self._to_pose_tuple(raw_odom_pose)
+        scan_match_pose_t = None
+        est_pose_t = self._to_pose_tuple(est_pose)
+        best_particle_pose_t = self._to_pose_tuple(best_particle_pose)
+
+        trans_err = None
+        rot_err = None
+        trans_err_raw_odom = None
+        rot_err_raw_odom = None
+        trans_err_best_p = None
+        rot_err_best_p = None
+        trans_err_mu_true = None
+        rot_err_mu_true = None
+        pose_err_mu_true = None
+        trans_err_mu_sm = None
+        rot_err_mu_sm = None
+
+        trans_err_sm_true = None
+        rot_err_sm_true = None
+        pose_err_sm_true = None
+        mu_true_err_improves_over_sm_true = None
+        mu_true_better_than_sm_true = None
+        trans_err_best_xj_true = None
+        rot_err_best_xj_true = None
+        trans_err_worst_xj_true = None
+        rot_err_worst_xj_true = None
+        trans_err_mu_pred = None
+        rot_err_mu_pred = None
+        prop_std_x = None
+        prop_std_y = None
+        prop_std_theta = None
+        corr_xy = None
+        corr_x_theta = None
+        corr_y_theta = None
+        xj_eff = None
+        xj_eff_motion = None
+        xj_eff_meas = None
+
+        min_xj_pose_err_true = None
+        min_xj_is_best_xj = None
+        weight_min_xj_err = None
+        best_weighted_xj_pose_err_true = None
+        weight_best_xj = None
+        best_xj_true_err_improves_over_sm_true = None
+        best_xj_better_than_worst_trans = None
+        best_xj_improves_over_sm_rot = None
+        best_xj_better_than_worst_rot = None
+        min_xj_better_sm_pose = None
+        best_xj_better_sm_pose = None
+
+        min_trans_err_xjs = None
+        min_rot_err_xjs = None
+        min_xj_trans_err_true = None
+        min_xj_rot_err_true = None
+        best_xj_trans_err_true = None
+        best_xj_rot_err_true = None
+        
+        trans_errors_xj_true = []
+        rot_errors_xj_true = []
+        pose_errors_xj_true = []
+
+        min_xj_true_err_improves_over_sm_true = None
+        xj_improves_over_sm_rot_ratio = None
+        min_xj_true_err_weight_score = None
+
+        corr_xjs_weights = None
+        corr_xjs_motion = None
+        corr_xjs_meas = None
+        corr_weights_motion = None
+        corr_weights_meas = None
+        corr_xj_trans_weights = None
+        corr_xj_trans_motion = None
+        corr_xj_trans_meas = None
+        corr_xj_rot_weights = None
+        corr_xj_rot_motion = None
+        corr_xj_rot_meas = None
+
+        best_xj_score = None
+        motion_rank_score = None
+        meas_rank_score = None
+        weight_ratio_min_best_weight = None
+        log_motion_range = None
+        log_meas_range = None
+        log_weight_range = None
+        xj_indices = None
+        xj_pose_err = None
+        xj_weight = None
+        xj_motion = None
+        xj_meas = None
+        n_raw_map_points = None
+        n_used_map_points = None
+        map_point_keep_ratio = None
+
+        # Proposal time durations
+        t_sample_poses = None
+        t_pred_poses = None
+        t_motion_model = None
+        t_meas_model = None
+        t_compute_prop_params = None
+        t_sample_from_prop = None
+        
+        # Scan mather time durations
+        time_duration_scan_matching = None
+        time_duration_prediction = None
+        time_duration_map_extraction = None
+        time_duration_correct_pose = None
+        time_duration_update_pose = None
+
+        # ICP time durations
+        t_init_icp_trans = None
+        t_init_and_train_nn_tree_normals = None
+        t_downsampling_pointcloud = None
+        t_compute_normal = None
+        t_outlier_rejection = None
+        t_find_nn_outlier_rejec = None
+        t_prepare_system = None
+        t_solve_least_squares = None
+        t_transf_update_and_results = None
+        t_find_trans = None
+
+        # Measurement model counter values
+        # Proposal
+        # Counter
+        meas_model_prop_call_count = None
+        meas_model_prop_valid_beam_count = None
+        meas_model_prop_map_hit_count = None
+        meas_model_prop_no_map_hit_count = None
+        meas_model_prop_out_of_map_count = None
+        meas_model_prop_unknown_ray_count = None
+        meas_model_prop_known_free_ray_count = None
+        meas_model_prop_unexpected_known_free_count = None
+        # rates
+        meas_model_prop_map_hit_rate = None
+        meas_model_prop_out_of_map_rate = None    
+        meas_model_prop_no_map_hit_rate = None
+        meas_model_prop_unknown_no_map_hit_rate = None
+        meas_model_prop_known_free_no_map_hit_rate = None
+        meas_model_prop_unexpected_known_free_rate = None
+        
+        # Fallback
+        # Counter
+        meas_model_fallback_call_count = None
+        meas_model_fallback_valid_beam_count = None
+        meas_model_fallback_map_hit_count = None
+        meas_model_fallback_no_map_hit_count = None
+        meas_model_fallback_out_of_map_count = None
+        meas_model_fallback_unknown_ray_count = None
+        meas_model_fallback_known_free_ray_count = None
+        meas_model_fallback_unexpected_known_free_count = None
+        # rates
+        meas_model_fallback_map_hit_rate = None
+        meas_model_fallback_out_of_map_rate = None    
+        meas_model_fallback_no_map_hit_rate = None
+        meas_model_fallback_unknown_no_map_hit_rate = None
+        meas_model_fallback_known_free_no_map_hit_rate = None
+        meas_model_fallback_unexpected_known_free_rate = None
+
+
+        # Compute errors to true pose
+        if raw_odom_pose_t is not None:
+            trans_err_raw_odom = self.translation_error(raw_odom_pose_t, true_pose_t)
+            rot_err_raw_odom = abs(self.angle_diff(raw_odom_pose_t[2], true_pose_t[2]))
+
+        if est_pose_t is not None:
+            trans_err = self.translation_error(est_pose_t, true_pose_t)
+            rot_err = abs(self.angle_diff(est_pose_t[2], true_pose_t[2]))
+
+        if best_particle_pose_t is not None:
+            trans_err_best_p = self.translation_error(best_particle_pose_t, true_pose_t)
+            rot_err_best_p = abs(self.angle_diff(best_particle_pose_t[2], true_pose_t[2]))
+
+        # Compute proposal metrics
+        if proposal_metrics is not None:
+            mu = proposal_metrics.get("prop_mu")
+            scan_match_pose = proposal_metrics.get("scan_match_pose")
+            scan_match_pose_t = self._to_pose_tuple(scan_match_pose)
+            pred_pose = proposal_metrics.get("pred_pose")
+            cov = proposal_metrics.get("prop_cov_matrix")
+            xjs = proposal_metrics.get("xjs")
+            xj_weights = proposal_metrics.get("xj_weights")
+            motion_probs = proposal_metrics.get("motion_probs")
+            meas_probs = proposal_metrics.get("meas_probs")
+            prop_timings = proposal_metrics.get("prop_timings")
+
+            # Extract scan matcher info
+            scan_matcher_info = proposal_metrics.get("scan_matcher_info")
+            if isinstance(scan_matcher_info, dict):
+                # Extract scan matcher info
+                raw_map_points_val = scan_matcher_info.get("map_points_count")
+                t_scan_matching_val = scan_matcher_info.get("time_duration_scan_matching")
+                t_prediction_val = scan_matcher_info.get("time_duration_prediction")
+                t_map_extraction_val = scan_matcher_info.get("time_duration_map_extraction")
+                t_correct_pose_val = scan_matcher_info.get("time_duration_correct_pose")
+                t_update_pose_val = scan_matcher_info.get("time_duration_update_pose")
+
+                # Extract icp timings
+                t_init_icp_trans_val = scan_matcher_info.get("t_init_icp_trans")
+                t_init_and_train_nn_tree_normals_val = scan_matcher_info.get("t_init_and_train_nn_tree_normals")
+                t_downsampling_pointcloud_val = scan_matcher_info.get("t_downsampling_pointcloud")
+                t_compute_normal_val = scan_matcher_info.get("t_compute_normals")
+                t_outlier_rejection_val = scan_matcher_info.get("t_outlier_rejection")
+                t_find_nn_outlier_rejec_val = scan_matcher_info.get("t_find_nn_outlier_rejec")
+                t_prepare_system_val = scan_matcher_info.get("t_prepare_system")
+                t_solve_least_squares_val = scan_matcher_info.get("t_solve_least_squares")     
+                t_transf_update_and_results_val = scan_matcher_info.get("t_transf_update_and_results")
+                t_find_trans_val = scan_matcher_info.get("t_find_trans")
+
+                if t_init_icp_trans_val is not None and np.isfinite(t_init_icp_trans_val):
+                    t_init_icp_trans = float(t_init_icp_trans_val)
+                if t_init_and_train_nn_tree_normals_val is not None and np.isfinite(t_init_and_train_nn_tree_normals_val):
+                    t_init_and_train_nn_tree_normals = float(t_init_and_train_nn_tree_normals_val)
+
+                if t_downsampling_pointcloud_val is not None and np.isfinite(t_downsampling_pointcloud_val):
+                    t_downsampling_pointcloud = float(t_downsampling_pointcloud_val)
+                if t_compute_normal_val is not None and np.isfinite(t_compute_normal_val):
+                    t_compute_normal = float(t_compute_normal_val)
+                if t_outlier_rejection_val is not None and np.isfinite(t_outlier_rejection_val):
+                    t_outlier_rejection = float(t_outlier_rejection_val)
+                if t_find_nn_outlier_rejec_val is not None and np.isfinite(t_find_nn_outlier_rejec_val):
+                    t_find_nn_outlier_rejec = float(t_find_nn_outlier_rejec_val)
+                if t_prepare_system_val is not None and np.isfinite(t_prepare_system_val):
+                    t_prepare_system = float(t_prepare_system_val)
+                if t_solve_least_squares_val is not None and np.isfinite(t_solve_least_squares_val):
+                    t_solve_least_squares = float(t_solve_least_squares_val)
+                if t_transf_update_and_results_val is not None and np.isfinite(t_transf_update_and_results_val):
+                    t_transf_update_and_results = float(t_transf_update_and_results_val)
+                if t_find_trans_val is not None and np.isfinite(t_find_trans_val):
+                    t_find_trans = float(t_find_trans_val)
+
+                if scan_matcher_info.get("n_points_true_data") is not None:
+                    used_map_points_val = scan_matcher_info.get("n_points_true_data")
+                else:
+                    used_map_points_val = 0
+
+                if raw_map_points_val is not None and np.isfinite(raw_map_points_val):
+                    n_raw_map_points = max(0, int(raw_map_points_val))
+
+                if used_map_points_val is not None and np.isfinite(used_map_points_val):
+                    n_used_map_points = max(0, int(used_map_points_val))
+
+                if n_used_map_points is not None and n_raw_map_points is not None:
+                    map_point_keep_ratio = float(n_used_map_points) / float(max(n_raw_map_points, 1))
+
+                if t_scan_matching_val is not None and np.isfinite(t_scan_matching_val):
+                    time_duration_scan_matching = float(t_scan_matching_val)
+                if t_prediction_val is not None and np.isfinite(t_prediction_val):
+                    time_duration_prediction = float(t_prediction_val)
+                if t_map_extraction_val is not None and np.isfinite(t_map_extraction_val):
+                    time_duration_map_extraction = float(t_map_extraction_val)
+                if t_correct_pose_val is not None and np.isfinite(t_correct_pose_val):
+                    time_duration_correct_pose = float(t_correct_pose_val)
+                if t_update_pose_val is not None and np.isfinite(t_update_pose_val):
+                    time_duration_update_pose = float(t_update_pose_val)
+
+            # Extract and filter proposal timings
+            if isinstance(prop_timings, dict):
+                t_sample_poses_val = prop_timings.get("t_sample_poses")
+                t_pred_poses_val = prop_timings.get("t_pred_poses")
+                t_motion_model_val = prop_timings.get("t_motion_model")
+                t_meas_model_val = prop_timings.get("t_meas_model")
+                t_compute_prop_params_val = prop_timings.get("t_compute_prop_params")
+                t_sample_from_prop_val = prop_timings.get("t_sample_from_prop")
+
+                if t_sample_poses_val is not None and np.isfinite(t_sample_poses_val):
+                    t_sample_poses = float(t_sample_poses_val)
+                if t_pred_poses_val is not None and np.isfinite(t_pred_poses_val):
+                    t_pred_poses = float(t_pred_poses_val)
+                if t_motion_model_val is not None and np.isfinite(t_motion_model_val):
+                    t_motion_model = float(t_motion_model_val)
+                if t_meas_model_val is not None and np.isfinite(t_meas_model_val):
+                    t_meas_model = float(t_meas_model_val)
+                if t_compute_prop_params_val is not None and np.isfinite(t_compute_prop_params_val):
+                    t_compute_prop_params = float(t_compute_prop_params_val)
+                if t_sample_from_prop_val is not None and np.isfinite(t_sample_from_prop_val):
+                    t_sample_from_prop = float(t_sample_from_prop_val)
+
+            # Compute mu, sm error metrics
+            if mu is not None and scan_match_pose is not None:
+                mu_t = self._to_pose_tuple(mu)
+                sm_t = self._to_pose_tuple(scan_match_pose)
+                trans_err_mu_sm = self.translation_error(mu_t, sm_t)
+                rot_err_mu_sm = abs(self.angle_diff(mu_t[2], sm_t[2]))
+
+                if true_pose_t is not None:
+                    trans_err_sm_true = self.translation_error(sm_t, true_pose_t)
+                    rot_err_sm_true = abs(self.angle_diff(sm_t[2], true_pose_t[2]))
+                    pose_err_sm_true = self.pose_err(trans_err_sm_true, rot_err_sm_true, ROT_SCALE)
+
+                    trans_err_mu_true = self.translation_error(mu_t, true_pose_t)
+                    rot_err_mu_true = abs(self.angle_diff(mu_t[2], true_pose_t[2]))
+                    pose_err_mu_true = self.pose_err(trans_err_mu_true, rot_err_mu_true, ROT_SCALE)
+
+                    # >0: mu is better than sm, =0: mu is equal to sm, <0: mu is worse than sm,
+                    mu_true_err_improves_over_sm_true = (pose_err_sm_true - pose_err_mu_true) / (pose_err_sm_true + 1e-12)
+
+                    # Compute mu > sm 
+                    mu_true_better_than_sm_true = bool(pose_err_mu_true < pose_err_sm_true)
+
+            # Analyze proposal xjs and weights
+            if xjs is not None and xj_weights is not None and true_pose_t is not None:
+                xjs_arr = np.asarray(xjs, dtype=float)
+                weights = np.asarray(xj_weights, dtype=float).reshape(-1)
+                motion_probs_arr = np.asarray(motion_probs, dtype=float).reshape(-1)
+                meas_probs_arr = np.asarray(meas_probs, dtype=float).reshape(-1)
+
+                if (
+                    xjs_arr.ndim == 2
+                    and xjs_arr.shape[0] > 0
+                    and xjs_arr.shape[1] >= 3
+                    and weights.shape[0] == xjs_arr.shape[0]
+                ):
+                    valid_idx = np.where(
+                        np.isfinite(weights) & np.all(np.isfinite(xjs_arr[:, :3]), axis=1)
+                    )[0]
+
+                    if valid_idx.size == 0:
+                        print(
+                            f"[RBPFEvaluator] Step {step_idx}: skipping Proposal metrics computations, no shared finite xjs/weights samples."
+                        )
+                    else:
+                        xj_indices = valid_idx.astype(int).tolist()
+
+                        # Filter all proposal vectors on the same valid indices.
+                        xjs_arr = xjs_arr[valid_idx]
+                        weights = weights[valid_idx]
+                        motion_probs_arr = motion_probs_arr[valid_idx]
+                        meas_probs_arr = meas_probs_arr[valid_idx]
+
+                        weight_sum = float(np.sum(weights))
+                       
+                        norm_weights = weights / weight_sum
+
+                        # Find index of best and worst weight
+                        best_idx = int(np.argmax(weights))
+                        worst_idx = int(np.argmin(weights))
+                        n_samples = int(weights.shape[0])
+
+                        # Store normalized best-weighted xj weight for CSV/reporting.
+                        weight_best_xj = float(norm_weights[best_idx])
+
+                        # Compute errors between true pose and xjs
+                        for xj in xjs_arr:
+                            xj_t = self._to_pose_tuple(xj)
+                            t_err = self.translation_error(xj_t, true_pose_t)
+                            r_err = abs(self.angle_diff(xj_t[2], true_pose_t[2]))
+                            p_err = self.pose_err(t_err, r_err, ROT_SCALE)
+                            trans_errors_xj_true.append(t_err)
+                            rot_errors_xj_true.append(r_err)
+                            pose_errors_xj_true.append(p_err)
+
+                        # Ensure numpy arrays for easier computations
+                        trans_errors_xj_true = np.asarray(trans_errors_xj_true, dtype=float)
+                        rot_errors_xj_true = np.asarray(rot_errors_xj_true, dtype=float)
+                        pose_errors_xj_true = np.asarray(pose_errors_xj_true, dtype=float)
+                        
+                        # Store per-sample proposal diagnostics for optional CSV export.
+                        # xj_weight/xj_motion/xj_meas are exported as normalized arrays.
+                        xj_pose_err = pose_errors_xj_true.astype(float).tolist()
+
+                        # Find xj which has min error to true pose
+                        min_xj_pose_err_true = np.min(pose_errors_xj_true)
+
+                        # This ratio tells us how much closer the xj pose with lowest pose error is to the true pose compared to the scan match pose.
+                        min_xj_true_err_improves_over_sm_true = (pose_err_sm_true - min_xj_pose_err_true) / (pose_err_sm_true + 1e-12)
+
+                        # Check if best xj pose is better than scan match pose
+                        best_weighted_xj_pose_err_true = pose_errors_xj_true[best_idx]
+                        best_xj_true_err_improves_over_sm_true = (pose_err_sm_true - best_weighted_xj_pose_err_true) / (pose_err_sm_true + 1e-12)
+
+                        # Compute rank score of xj closest to the true pose based on the given weights.
+                        min_xj_true_err_weight_score = self.xj_weight_score(
+                            xj_pose_errors_true=pose_errors_xj_true,
+                            xj_weights=weights
+                        )
+
+                        # Estimate min trans and rot xj errors
+                        min_trans_err_xjs = np.min(trans_errors_xj_true)
+                        min_rot_err_xjs = np.min(rot_errors_xj_true)
+
+                        # Estimate trans and rot errors of min and best weighted xj
+                        # Access min and best xj
+                        min_xj_idx = np.argmin(pose_errors_xj_true)
+                        min_xj = self._to_pose_tuple(xjs_arr[min_xj_idx])
+                        best_weighted_xj = self._to_pose_tuple(xjs_arr[best_idx])
+
+                        # Compute trans and rot erro for both
+                        min_xj_trans_err_true = self.translation_error(min_xj, true_pose_t)
+                        min_xj_rot_err_true = abs(self.angle_diff(min_xj[2], true_pose_t[2]))
+                        best_xj_trans_err_true = self.translation_error(best_weighted_xj, true_pose_t)
+                        best_xj_rot_err_true = abs(self.angle_diff(best_weighted_xj[2], true_pose_t[2]))   
+
+
+                        # Measure if the min xj beats the bes xj
+                        min_xj_is_best_xj = bool(best_idx == np.argmin(pose_errors_xj_true))
+
+                        # Compute min/best xj better than sm 
+                        min_xj_better_sm_pose = bool(min_xj_pose_err_true < pose_err_sm_true)
+                        best_xj_better_sm_pose = bool(best_weighted_xj_pose_err_true < pose_err_sm_true)
+
+                        # Compute correlation between all xj errors to true pose and corresponding weights/probs
+                        corr_xjs_weights, _ = spearmanr(-pose_errors_xj_true, weights)
+                        corr_xjs_motion, _ = spearmanr(-pose_errors_xj_true, motion_probs_arr)
+                        corr_xjs_meas, _ = spearmanr(-pose_errors_xj_true, meas_probs_arr)
+                        # COmpute correlation between weights and probs
+                        corr_weights_motion, _ = spearmanr(weights, motion_probs_arr)
+                        corr_weights_meas, _ = spearmanr(weights, meas_probs_arr)
+                        # Compute corr between xj probs/weights and trans
+                        corr_xj_trans_weights, _ = spearmanr(-trans_errors_xj_true, weights)
+                        corr_xj_trans_motion, _ = spearmanr(-trans_errors_xj_true, motion_probs_arr)
+                        corr_xj_trans_meas, _ = spearmanr(-trans_errors_xj_true, meas_probs_arr)
+                        # Compute corr between xj probs/weights and rot
+                        corr_xj_rot_weights, _ = spearmanr(-rot_errors_xj_true, weights)
+                        corr_xj_rot_motion, _ = spearmanr(-rot_errors_xj_true, motion_probs_arr)
+                        corr_xj_rot_meas, _ = spearmanr(-rot_errors_xj_true, meas_probs_arr)
+
+                        # Compute importance score of best xj's weight.
+                        min_xj_err_idx = np.argmin(pose_errors_xj_true)
+                        weight_min_xj_err = float(norm_weights[min_xj_err_idx])
+                        uniform_weight = 1 / n_samples
+                        best_weight_importance = weight_min_xj_err / uniform_weight
+
+                        # Compute union score for best xj and its weight.
+                        best_xj_score = best_weight_importance * min_xj_true_err_improves_over_sm_true
+
+                        # Analyse motion and measurement model weights
+                        motion_rank_score = self.rank_model_probs(
+                            pose_errors=pose_errors_xj_true,
+                            weights=motion_probs_arr,
+                        )
+
+                        meas_rank_score = self.rank_model_probs(
+                            pose_errors=pose_errors_xj_true,
+                            weights=meas_probs_arr,
+                        )
+
+                        # Effective sample size based on the same filtered normalized weights.
+                        denom = float(np.sum(norm_weights ** 2))
+                        if np.isfinite(denom) and denom > 0.0:
+                            xj_eff = float(1.0 / denom)
+
+                        # Effective sample size for motion-model weights.
+                        motion_sum = float(np.sum(motion_probs_arr))
+                        motion_norm = motion_probs_arr / motion_sum
+                        denom_motion = float(np.sum(motion_norm ** 2))                    
+                        xj_eff_motion = float(1.0 / denom_motion)
+
+                        # Effective sample size for measurement-model weights.
+                        meas_sum = float(np.sum(meas_probs_arr))                        
+                        meas_norm = meas_probs_arr / meas_sum
+                        denom_meas = float(np.sum(meas_norm ** 2))
+                        xj_eff_meas = float(1.0 / denom_meas)
+
+                        # Store normalized per-sample proposal diagnostics for CSV export.
+                        xj_weight = norm_weights.astype(float).tolist()
+                        xj_motion = motion_norm.astype(float).tolist()
+                        xj_meas = meas_norm.astype(float).tolist()
+
+                        if norm_weights.shape[0] < 27:
+                            print("Weights lower than 27")
+
+                        # Compute weight ratio between best xj and min xj weight
+                        weight_ratio_min_best_weight = weight_min_xj_err / weight_best_xj 
+
+                        # Motion model weight range (normalized motion probabilities)
+                        log_motion_probs = np.log(motion_norm + 1e-12)
+                        log_motion_range = np.max(log_motion_probs) - np.min(log_motion_probs)#
+
+                        # measurement model weight range (normalized measurement probabilities)
+                        log_meas_probs = np.log(meas_norm + 1e-12)
+                        log_meas_range = np.max(log_meas_probs) - np.min(log_meas_probs)
+
+                        # weight range
+                        log_weights = np.log(norm_weights + 1e-12)
+                        log_weight_range = np.max(log_weights) - np.min(log_weights)
+
+                else:
+                    print(
+                        f"[RBPFEvaluator] Step {step_idx}: skipping Proposal metrics computations, invalid xjs/weights base shapes."
+                    )
+                        
+
+            if mu is not None and pred_pose is not None:
+                mu_t = self._to_pose_tuple(mu)
+                pred_t = self._to_pose_tuple(pred_pose)
+                trans_err_mu_pred = self.translation_error(mu_t, pred_t)
+                rot_err_mu_pred = abs(self.angle_diff(mu_t[2], pred_t[2]))
+
+            if cov is not None:
+                cov_arr = np.asarray(cov, dtype=float)
+                if cov_arr.shape == (3, 3):
+                    diag = np.clip(np.diag(cov_arr), a_min=0.0, a_max=None)
+                    std = np.sqrt(diag)
+                    prop_std_x = float(std[0])
+                    prop_std_y = float(std[1])
+                    prop_std_theta = float(std[2])
+
+                    std_x = std[0]
+                    std_y = std[1]
+                    std_theta = std[2]
+
+                    if std_x > 0.0 and std_y > 0.0:
+                        corr_xy = float(cov_arr[0, 1] / (std_x * std_y))
+                    if std_x > 0.0 and std_theta > 0.0:
+                        corr_x_theta = float(cov_arr[0, 2] / (std_x * std_theta))
+                    if std_y > 0.0 and std_theta > 0.0:
+                        corr_y_theta = float(cov_arr[1, 2] / (std_y * std_theta))
+            
+            # Compute proposal measurement model rates
+            measurement_model_counters: Dict = proposal_metrics.get("measurement_model_counters")
+            if measurement_model_counters is not None:   
+                # Get Counter
+                meas_model_prop_call_count = measurement_model_counters.get("call_count")
+                meas_model_prop_valid_beam_count = measurement_model_counters.get("valid_beam_count")
+                meas_model_prop_map_hit_count = measurement_model_counters.get("map_hit_count")
+                meas_model_prop_no_map_hit_count = measurement_model_counters.get("no_map_hit_count")
+                meas_model_prop_out_of_map_count = measurement_model_counters.get("out_of_map_count")
+                meas_model_prop_unknown_ray_count = measurement_model_counters.get("unknown_ray_count")
+                meas_model_prop_known_free_ray_count = measurement_model_counters.get("known_free_ray_count")
+                meas_model_prop_unexpected_known_free_count = measurement_model_counters.get("unexpected_known_free_count") 
+                
+                proposal_call_count = measurement_model_counters.get("call_count")
+
+                # Compute rates
+                meas_model_prop_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("map_hit_count"),
+                    denominator=measurement_model_counters.get("valid_beam_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_out_of_map_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("out_of_map_count"),
+                    denominator=measurement_model_counters.get("valid_beam_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_no_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("no_map_hit_count"),
+                    denominator=measurement_model_counters.get("valid_beam_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_unknown_no_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("unknown_ray_count"),
+                    denominator=measurement_model_counters.get("no_map_hit_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_known_free_no_map_hit_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("known_free_ray_count"),
+                    denominator=measurement_model_counters.get("no_map_hit_count"),
+                    call_count=proposal_call_count,
+                )
+                meas_model_prop_unexpected_known_free_rate = self._compute_rate(
+                    numerator=measurement_model_counters.get("unexpected_known_free_count"),
+                    denominator=measurement_model_counters.get("known_free_ray_count"),
+                    call_count=proposal_call_count,
+                )
+
+        # Compute fallback measurement model counters
+        if measurement_model_counters_fallback is not None:
+            # Get Counter
+            meas_model_fallback_call_count = measurement_model_counters_fallback.get("call_count")
+            meas_model_fallback_valid_beam_count = measurement_model_counters_fallback.get("valid_beam_count")
+            meas_model_fallback_map_hit_count = measurement_model_counters_fallback.get("map_hit_count")
+            meas_model_fallback_no_map_hit_count = measurement_model_counters_fallback.get("no_map_hit_count")
+            meas_model_fallback_out_of_map_count = measurement_model_counters_fallback.get("out_of_map_count")
+            meas_model_fallback_unknown_ray_count = measurement_model_counters_fallback.get("unknown_ray_count")
+            meas_model_fallback_known_free_ray_count = measurement_model_counters_fallback.get("known_free_ray_count")
+            meas_model_fallback_unexpected_known_free_count = measurement_model_counters_fallback.get("unexpected_known_free_count")
+
+            fallback_call_count = measurement_model_counters_fallback.get("call_count")
+
+            # Compute rates
+            meas_model_fallback_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("map_hit_count"),
+                denominator=measurement_model_counters_fallback.get("valid_beam_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_out_of_map_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("out_of_map_count"),
+                denominator=measurement_model_counters_fallback.get("valid_beam_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_no_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("no_map_hit_count"),
+                denominator=measurement_model_counters_fallback.get("valid_beam_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_unknown_no_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("unknown_ray_count"),
+                denominator=measurement_model_counters_fallback.get("no_map_hit_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_known_free_no_map_hit_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("known_free_ray_count"),
+                denominator=measurement_model_counters_fallback.get("no_map_hit_count"),
+                call_count=fallback_call_count,
+            )
+            meas_model_fallback_unexpected_known_free_rate = self._compute_rate(
+                numerator=measurement_model_counters_fallback.get("unexpected_known_free_count"),
+                denominator=measurement_model_counters_fallback.get("known_free_ray_count"),
+                call_count=fallback_call_count,
+            )
+            
+        return StepResult(
+            step_idx=step_idx,
+            t=float(t),
+            true_pose=true_pose_t,
+            raw_odom_pose=raw_odom_pose_t,
+            scan_match_pose=scan_match_pose_t,
+            est_pose=est_pose_t,
+            best_particle_pose=best_particle_pose_t,
+            neff=float(neff) if neff is not None else None,
+            scan_match_failed=scan_match_failed,
+            scan_match_fallback_failed=scan_match_fallback_failed,
+            n_raw_map_points=n_raw_map_points,
+            n_used_map_points=n_used_map_points,
+            map_point_keep_ratio=map_point_keep_ratio,
+            translation_error=trans_err,
+            rotation_error=rot_err,
+            trans_err_raw_odom=trans_err_raw_odom,
+            rot_err_raw_odom=rot_err_raw_odom,
+            translation_error_best_p=trans_err_best_p,
+            rotation_error_best_p=rot_err_best_p,
+            particle_weight_min=float(particle_weight_min) if particle_weight_min is not None else None,
+            particle_weight_max=float(particle_weight_max) if particle_weight_max is not None else None,
+            particle_weight_mean=float(particle_weight_mean) if particle_weight_mean is not None else None,
+            step_duration=float(step_duration) if step_duration is not None else None,
+
+            # Proposal time durations
+            t_sample_poses=t_sample_poses,
+            t_pred_poses=t_pred_poses,
+            t_motion_model=t_motion_model,
+            t_meas_model=t_meas_model,
+            t_compute_prop_params=t_compute_prop_params,
+            t_sample_from_prop=t_sample_from_prop,
+
+            # Scan matcher time durations
+            time_duration_scan_matching=time_duration_scan_matching,
+            time_duration_prediction=time_duration_prediction,
+            time_duration_map_extraction=time_duration_map_extraction,
+            time_duration_correct_pose=time_duration_correct_pose,
+            time_duration_update_pose=time_duration_update_pose,
+
+            # ICP time durations
+            t_init_icp_trans=t_init_icp_trans,
+            t_init_and_train_nn_tree_normals=t_init_and_train_nn_tree_normals,
+            t_downsampling_pointcloud=t_downsampling_pointcloud,
+            t_compute_normal=t_compute_normal,
+            t_outlier_rejection=t_outlier_rejection,
+            t_find_nn_outlier_rejec=t_find_nn_outlier_rejec,
+            t_prepare_system=t_prepare_system,
+            t_solve_least_squares=t_solve_least_squares,
+            t_transf_update_and_results=t_transf_update_and_results,
+            t_find_trans=t_find_trans,
+            
+            trans_err_mu_true=trans_err_mu_true,
+            rot_err_mu_true=rot_err_mu_true,
+            pose_err_mu_true=pose_err_mu_true,
+            trans_err_mu_sm=trans_err_mu_sm,
+            rot_err_mu_sm=rot_err_mu_sm,
+            trans_err_mu_pred=trans_err_mu_pred,
+            rot_err_mu_pred=rot_err_mu_pred,
+            
+            trans_err_sm_true=trans_err_sm_true,
+            rot_err_sm_true=rot_err_sm_true,
+            pose_err_sm_true=pose_err_sm_true,
+            
+            min_xj_pose_err_true=min_xj_pose_err_true,
+            min_xj_is_best_xj=min_xj_is_best_xj,
+            min_xj_better_sm_pose=min_xj_better_sm_pose,
+            best_xj_better_sm_pose=best_xj_better_sm_pose,
+
+            min_trans_err_xjs=min_trans_err_xjs,
+            min_rot_err_xjs=min_rot_err_xjs,
+            min_xj_trans_err_true=min_xj_trans_err_true,
+            min_xj_rot_err_true=min_xj_rot_err_true,
+            best_xj_trans_err_true=best_xj_trans_err_true,
+            best_xj_rot_err_true=best_xj_rot_err_true,
+
+            weight_min_xj_err=weight_min_xj_err,
+            best_weighted_xj_pose_err_true=best_weighted_xj_pose_err_true,
+            weight_best_xj=weight_best_xj,
+            # rot_err_best_xj_true=rot_err_best_xj_true,
+            # trans_err_worst_xj_true=trans_err_worst_xj_true,
+            # rot_err_worst_xj_true=rot_err_worst_xj_true,
+            # best_xj_improves_over_sm_trans=best_xj_improves_over_sm_trans,
+            # best_xj_improves_over_sm_rot=best_xj_improves_over_sm_rot,
+            # best_xj_better_than_worst_trans=best_xj_better_than_worst_trans,
+            # best_xj_better_than_worst_rot=best_xj_better_than_worst_rot,
+            min_xj_true_err_improves_over_sm_true=min_xj_true_err_improves_over_sm_true,    
+            best_xj_true_err_improves_over_sm_true=best_xj_true_err_improves_over_sm_true,  
+            min_xj_true_err_weight_score=min_xj_true_err_weight_score,                      
+            corr_xjs_weights=corr_xjs_weights,                                                         
+            corr_xjs_motion=corr_xjs_motion,                                                  
+            corr_xjs_meas=corr_xjs_meas,                                                       
+            corr_weights_motion=corr_weights_motion,
+            corr_weights_meas=corr_weights_meas,
+            corr_xj_trans_weights=corr_xj_trans_weights,
+            corr_xj_trans_motion=corr_xj_trans_motion,
+            corr_xj_trans_meas=corr_xj_trans_meas,
+            corr_xj_rot_weights=corr_xj_rot_weights,
+            corr_xj_rot_motion=corr_xj_rot_motion,
+            corr_xj_rot_meas=corr_xj_rot_meas,
+
+            best_xj_score=best_xj_score,
+            motion_rank_score=motion_rank_score,
+            meas_rank_score=meas_rank_score,
+            weight_ratio_min_best_weight=weight_ratio_min_best_weight,
+            log_motion_range=log_motion_range,
+            log_meas_range=log_meas_range,
+            log_weight_range=log_weight_range,
+            xj_indices=xj_indices,
+            xj_pose_err=xj_pose_err,
+            xj_weight=xj_weight,
+            xj_motion=xj_motion,
+            xj_meas=xj_meas,
+            mu_true_err_improves_over_sm_true=mu_true_err_improves_over_sm_true,
+            mu_true_better_than_sm_true=mu_true_better_than_sm_true,
+
+            prop_std_x=prop_std_x,
+            prop_std_y=prop_std_y,
+            prop_std_theta=prop_std_theta,
+            corr_xy=corr_xy,
+            corr_x_theta=corr_x_theta,
+            corr_y_theta=corr_y_theta,
+            xj_eff=xj_eff,
+            xj_eff_motion=xj_eff_motion,
+            xj_eff_meas=xj_eff_meas,
+
+            # Measurement model counter values
+            # Proposal
+            # Counter 
+            meas_model_prop_call_count = meas_model_prop_call_count,
+            meas_model_prop_valid_beam_count = meas_model_prop_valid_beam_count,
+            meas_model_prop_map_hit_count = meas_model_prop_map_hit_count,
+            meas_model_prop_no_map_hit_count = meas_model_prop_no_map_hit_count,
+            meas_model_prop_out_of_map_count = meas_model_prop_out_of_map_count,
+            meas_model_prop_unknown_ray_count = meas_model_prop_unknown_ray_count,
+            meas_model_prop_known_free_ray_count = meas_model_prop_known_free_ray_count,
+            meas_model_prop_unexpected_known_free_count = meas_model_prop_unexpected_known_free_count,
+            # rates
+            meas_model_prop_map_hit_rate = meas_model_prop_map_hit_rate,
+            meas_model_prop_out_of_map_rate = meas_model_prop_out_of_map_rate,
+            meas_model_prop_no_map_hit_rate = meas_model_prop_no_map_hit_rate,
+            meas_model_prop_unknown_no_map_hit_rate = meas_model_prop_unknown_no_map_hit_rate,
+            meas_model_prop_known_free_no_map_hit_rate = meas_model_prop_known_free_no_map_hit_rate,
+            meas_model_prop_unexpected_known_free_rate = meas_model_prop_unexpected_known_free_rate,
+            
+            # Fallback
+            # Counter
+            meas_model_fallback_call_count = meas_model_fallback_call_count,
+            meas_model_fallback_valid_beam_count = meas_model_fallback_valid_beam_count,
+            meas_model_fallback_map_hit_count = meas_model_fallback_map_hit_count,
+            meas_model_fallback_no_map_hit_count = meas_model_fallback_no_map_hit_count,
+            meas_model_fallback_out_of_map_count = meas_model_fallback_out_of_map_count,
+            meas_model_fallback_unknown_ray_count = meas_model_fallback_unknown_ray_count,
+            meas_model_fallback_known_free_ray_count = meas_model_fallback_known_free_ray_count,
+            meas_model_fallback_unexpected_known_free_count = meas_model_fallback_unexpected_known_free_count,
+            # rates
+            meas_model_fallback_map_hit_rate = meas_model_fallback_map_hit_rate,
+            meas_model_fallback_out_of_map_rate = meas_model_fallback_out_of_map_rate,
+            meas_model_fallback_no_map_hit_rate = meas_model_fallback_no_map_hit_rate,
+            meas_model_fallback_unknown_no_map_hit_rate = meas_model_fallback_unknown_no_map_hit_rate,
+            meas_model_fallback_known_free_no_map_hit_rate = meas_model_fallback_known_free_no_map_hit_rate,
+            meas_model_fallback_unexpected_known_free_rate = meas_model_fallback_unexpected_known_free_rate,
+        )
+
+
+    def summarize_run(self, step_results: List[StepResult], params: Optional[ExperimentParams] = None) -> Dict:
+        """
+        Summarizes the step results of entire run into metrics that can be used for reporting and analysis.
+
+        Parameters
+        ----------
+        step_results : List[StepResult]
+            List of StepResult objects containing per-step metrics.
+        params : Optional[ExperimentParams], optional
+            Optional experiment parameters for context, by default None.
+        
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing summarized run-level metrics.
+        """
+        # Filter out infinite values form data before computing summary metrics
+        trans_err = self._finite_values([s.translation_error for s in step_results if s.translation_error is not None])
+        rot_err = self._finite_values([s.rotation_error for s in step_results if s.rotation_error is not None])
+        trans_err_raw_odom = self._finite_values([s.trans_err_raw_odom for s in step_results if s.trans_err_raw_odom is not None])
+        rot_err_raw_odom = self._finite_values([s.rot_err_raw_odom for s in step_results if s.rot_err_raw_odom is not None])
+        trans_err_best_p = self._finite_values([s.translation_error_best_p for s in step_results if s.translation_error_best_p is not None])
+        rot_err_best_p = self._finite_values([s.rotation_error_best_p for s in step_results if s.rotation_error_best_p is not None])
+        scan_match_failed_count = sum(1 for s in step_results if s.scan_match_failed)
+        scan_match_fallback_failed_count = sum(1 for s in step_results if s.scan_match_fallback_failed)
+        neff_values = self._finite_values([s.neff for s in step_results if s.neff is not None])
+        particle_weight_min_values = self._finite_values([s.particle_weight_min for s in step_results if s.particle_weight_min is not None])
+        particle_weight_max_values = self._finite_values([s.particle_weight_max for s in step_results if s.particle_weight_max is not None])
+        particle_weight_mean_values = self._finite_values([s.particle_weight_mean for s in step_results if s.particle_weight_mean is not None])
+        step_durations = self._finite_values([s.step_duration for s in step_results if s.step_duration is not None])
+
+        # Filter and store proposal time durations
+        t_sample_poses_values = self._finite_values(
+            [s.t_sample_poses for s in step_results if s.t_sample_poses is not None]
+        )
+        t_pred_poses_values = self._finite_values(
+            [s.t_pred_poses for s in step_results if s.t_pred_poses is not None]
+        )
+        t_motion_model_values = self._finite_values(
+            [s.t_motion_model for s in step_results if s.t_motion_model is not None]
+        )
+        t_meas_model_values = self._finite_values(
+            [s.t_meas_model for s in step_results if s.t_meas_model is not None]
+        )
+        t_compute_prop_params_values = self._finite_values(
+            [s.t_compute_prop_params for s in step_results if s.t_compute_prop_params is not None]
+        )
+        t_sample_from_prop_values = self._finite_values(
+            [s.t_sample_from_prop for s in step_results if s.t_sample_from_prop is not None]
+        )
+        
+        # Filter and store time durations scan matching
+        time_duration_scan_matching_values = self._finite_values(
+            [s.time_duration_scan_matching for s in step_results if s.time_duration_scan_matching is not None]
+        )
+        time_duration_prediction_values = self._finite_values(
+            [s.time_duration_prediction for s in step_results if s.time_duration_prediction is not None]
+        )
+        time_duration_map_extraction_values = self._finite_values(
+            [s.time_duration_map_extraction for s in step_results if s.time_duration_map_extraction is not None]
+        )
+        time_duration_correct_pose_values = self._finite_values(
+            [s.time_duration_correct_pose for s in step_results if s.time_duration_correct_pose is not None]
+        )
+        time_duration_update_pose_values = self._finite_values(
+            [s.time_duration_update_pose for s in step_results if s.time_duration_update_pose is not None]
+        )
+
+        # Filter and store time durations ICP
+        t_init_icp_trans_values = self._finite_values(
+            [s.t_init_icp_trans for s in step_results if s.t_init_icp_trans is not None]
+        )
+        t_init_and_train_nn_tree_normals_values = self._finite_values(
+            [s.t_init_and_train_nn_tree_normals for s in step_results if s.t_init_and_train_nn_tree_normals is not None]
+        )
+        t_downsampling_pointcloud_values = self._finite_values(
+            [s.t_downsampling_pointcloud for s in step_results if s.t_downsampling_pointcloud is not None]
+        )
+        t_compute_normal_values = self._finite_values(
+            [s.t_compute_normal for s in step_results if s.t_compute_normal is not None]
+        )
+        t_outlier_rejection_values = self._finite_values(
+            [s.t_outlier_rejection for s in step_results if s.t_outlier_rejection is not None]
+        )
+        t_find_nn_outlier_rejec_values = self._finite_values(
+            [s.t_find_nn_outlier_rejec for s in step_results if s.t_find_nn_outlier_rejec is not None]
+        )
+        t_prepare_system_values = self._finite_values(
+            [s.t_prepare_system for s in step_results if s.t_prepare_system is not None]
+        )
+        t_solve_least_squares_values = self._finite_values(
+            [s.t_solve_least_squares for s in step_results if s.t_solve_least_squares is not None]
+        )
+        t_transf_update_and_results_values = self._finite_values(
+            [s.t_transf_update_and_results for s in step_results if s.t_transf_update_and_results is not None]
+        )
+        t_find_trans_values = self._finite_values(
+            [s.t_find_trans for s in step_results if s.t_find_trans is not None]
+        )
+
+        n_raw_map_points_values = self._finite_values(
+            [s.n_raw_map_points for s in step_results if s.n_raw_map_points is not None]
+        )
+        map_point_keep_ratio_values = self._finite_values(
+            [s.map_point_keep_ratio for s in step_results if s.map_point_keep_ratio is not None]
+        )
+        
+        # Access step data and ensure valid values
+        trans_err_mu_true_values = self._finite_values([s.trans_err_mu_true for s in step_results if s.trans_err_mu_true is not None])
+        rot_err_mu_true_values = self._finite_values([s.rot_err_mu_true for s in step_results if s.rot_err_mu_true is not None])
+        pose_err_mu_true_values = self._finite_values([s.pose_err_mu_true for s in step_results if s.pose_err_mu_true is not None])
+        trans_err_mu_sm_values = self._finite_values([s.trans_err_mu_sm for s in step_results if s.trans_err_mu_sm is not None])
+        rot_err_mu_sm_values = self._finite_values([s.rot_err_mu_sm for s in step_results if s.rot_err_mu_sm is not None])
+        trans_err_sm_true_values = self._finite_values([s.trans_err_sm_true for s in step_results if s.trans_err_sm_true is not None])
+        rot_err_sm_true_values = self._finite_values([s.rot_err_sm_true for s in step_results if s.rot_err_sm_true is not None])
+        pose_err_sm_true_values = self._finite_values([s.pose_err_sm_true for s in step_results if s.pose_err_sm_true is not None])
+        trans_err_mu_pred_values = self._finite_values([s.trans_err_mu_pred for s in step_results if s.trans_err_mu_pred is not None])
+        rot_err_mu_pred_values = self._finite_values([s.rot_err_mu_pred for s in step_results if s.rot_err_mu_pred is not None])
+        prop_std_x_values = self._finite_values([s.prop_std_x for s in step_results if s.prop_std_x is not None])
+        prop_std_y_values = self._finite_values([s.prop_std_y for s in step_results if s.prop_std_y is not None])
+        prop_std_theta_values = self._finite_values([s.prop_std_theta for s in step_results if s.prop_std_theta is not None])
+        
+        prop_std_xy_values = self._finite_values(
+            [
+                (s.prop_std_x + s.prop_std_y) / 2.0
+                for s in step_results
+                if s.prop_std_x is not None
+                and s.prop_std_y is not None
+                and np.isfinite(s.prop_std_x)
+                and np.isfinite(s.prop_std_y)
+            ]
+        )
+        mean_prop_std_xy = float(np.mean(prop_std_xy_values)) if prop_std_xy_values else float("nan")
+        mean_std_theta = np.mean(prop_std_theta_values) if prop_std_theta_values else float("nan")
+        
+        prop_corr_xy_values = self._finite_values([s.corr_xy for s in step_results if s.corr_xy is not None])
+        prop_corr_x_theta_values = self._finite_values([s.corr_x_theta for s in step_results if s.corr_x_theta is not None])
+        prop_corr_y_theta_values = self._finite_values([s.corr_y_theta for s in step_results if s.corr_y_theta is not None])
+        xj_eff_values = self._finite_values([s.xj_eff for s in step_results if s.xj_eff is not None])
+        xj_eff_motion_values = self._finite_values([s.xj_eff_motion for s in step_results if s.xj_eff_motion is not None])
+        xj_eff_meas_values = self._finite_values([s.xj_eff_meas for s in step_results if s.xj_eff_meas is not None])
+        min_xj_pose_err_true_values = self._finite_values([s.min_xj_pose_err_true for s in step_results if s.min_xj_pose_err_true is not None])
+        min_xj_is_best_xj_values = [s.min_xj_is_best_xj for s in step_results if s.min_xj_is_best_xj is not None]
+        min_xj_better_sm_pose_values = [s.min_xj_better_sm_pose for s in step_results if s.min_xj_better_sm_pose is not None]
+        best_xj_better_sm_pose_values = [s.best_xj_better_sm_pose for s in step_results if s.best_xj_better_sm_pose is not None]
+
+        min_xj_true_err_improves_over_sm_true_values = self._finite_values([s.min_xj_true_err_improves_over_sm_true for s in step_results if s.min_xj_true_err_improves_over_sm_true is not None])
+        best_xj_true_err_improves_over_sm_true_values = self._finite_values([s.best_xj_true_err_improves_over_sm_true for s in step_results if s.best_xj_true_err_improves_over_sm_true is not None])
+        min_xj_true_err_weight_score_values = self._finite_values([s.min_xj_true_err_weight_score for s in step_results if s.min_xj_true_err_weight_score is not None])
+        
+        min_trans_err_xjs_values = self._finite_values([s.min_trans_err_xjs for s in step_results if s.min_trans_err_xjs is not None])
+        min_rot_err_xjs_values = self._finite_values([s.min_rot_err_xjs for s in step_results if s.min_rot_err_xjs is not None])
+        min_xj_trans_err_true_values = self._finite_values([s.min_xj_trans_err_true for s in step_results if s.min_xj_trans_err_true is not None])
+        min_xj_rot_err_true_values = self._finite_values([s.min_xj_rot_err_true for s in step_results if s.min_xj_rot_err_true is not None])
+        best_xj_trans_err_true_values = self._finite_values([s.best_xj_trans_err_true for s in step_results if s.best_xj_trans_err_true is not None])
+        best_xj_rot_err_true_values = self._finite_values([s.best_xj_rot_err_true for s in step_results if s.best_xj_rot_err_true is not None])
+        
+        corr_xjs_weights_values = self._finite_values([s.corr_xjs_weights for s in step_results if s.corr_xjs_weights is not None])
+        corr_xjs_motion_values = self._finite_values([s.corr_xjs_motion for s in step_results if s.corr_xjs_motion is not None])
+        corr_xjs_meas_values = self._finite_values([s.corr_xjs_meas for s in step_results if s.corr_xjs_meas is not None])
+        corr_weights_motion_values = self._finite_values([s.corr_weights_motion for s in step_results if s.corr_weights_motion is not None])
+        corr_weights_meas_values = self._finite_values([s.corr_weights_meas for s in step_results if s.corr_weights_meas is not None])
+        corr_xj_trans_weights_values = self._finite_values([s.corr_xj_trans_weights for s in step_results if s.corr_xj_trans_weights is not None])
+        corr_xj_trans_motion_values = self._finite_values([s.corr_xj_trans_motion for s in step_results if s.corr_xj_trans_motion is not None])
+        corr_xj_trans_meas_values = self._finite_values([s.corr_xj_trans_meas for s in step_results if s.corr_xj_trans_meas is not None])
+        corr_xj_rot_weights_values = self._finite_values([s.corr_xj_rot_weights for s in step_results if s.corr_xj_rot_weights is not None])
+        corr_xj_rot_motion_values = self._finite_values([s.corr_xj_rot_motion for s in step_results if s.corr_xj_rot_motion is not None])
+        corr_xj_rot_meas_values = self._finite_values([s.corr_xj_rot_meas for s in step_results if s.corr_xj_rot_meas is not None])
+
+
+        best_xj_score_values = self._finite_values([s.best_xj_score for s in step_results if s.best_xj_score is not None])
+        motion_rank_score_values = self._finite_values([s.motion_rank_score for s in step_results if s.motion_rank_score is not None])
+        meas_rank_score_values = self._finite_values([s.meas_rank_score for s in step_results if s.meas_rank_score is not None])
+        mu_true_err_improves_over_sm_true_values = self._finite_values([s.mu_true_err_improves_over_sm_true for s in step_results if s.mu_true_err_improves_over_sm_true is not None])
+        weight_min_xj_err_values = self._finite_values([s.weight_min_xj_err for s in step_results if s.weight_min_xj_err is not None])
+        best_weighted_xj_pose_err_true_values = self._finite_values([s.best_weighted_xj_pose_err_true for s in step_results if s.best_weighted_xj_pose_err_true is not None])
+        weight_best_xj_values = self._finite_values([s.weight_best_xj for s in step_results if s.weight_best_xj is not None])
+        weight_ratio_min_best_weight_values = self._finite_values([s.weight_ratio_min_best_weight for s in step_results if s.weight_ratio_min_best_weight is not None])
+        mu_true_better_than_sm_true_values = [s.mu_true_better_than_sm_true for s in step_results if s.mu_true_better_than_sm_true is not None]
+        log_motion_range_values = self._finite_values([s.log_motion_range for s in step_results if s.log_motion_range is not None])
+        log_meas_range_values = self._finite_values([s.log_meas_range for s in step_results if s.log_meas_range is not None])
+        log_weight_range_values = self._finite_values([s.log_weight_range for s in step_results if s.log_weight_range is not None])
+
+        # Measurement model counters
+        # Proposal
+        meas_model_prop_call_count_vals = self._finite_values(
+            [s.meas_model_prop_call_count for s in step_results if s.meas_model_prop_call_count is not None]
+        )
+        meas_model_prop_valid_beam_count_vals = self._finite_values(
+            [s.meas_model_prop_valid_beam_count for s in step_results if s.meas_model_prop_valid_beam_count is not None]
+        )
+        meas_model_prop_map_hit_count_vals = self._finite_values(
+            [s.meas_model_prop_map_hit_count for s in step_results if s.meas_model_prop_map_hit_count is not None]
+        )
+        meas_model_prop_no_map_hit_count_vals = self._finite_values(
+            [s.meas_model_prop_no_map_hit_count for s in step_results if s.meas_model_prop_no_map_hit_count is not None]
+        )
+        meas_model_prop_out_of_map_count_vals = self._finite_values(
+            [s.meas_model_prop_out_of_map_count for s in step_results if s.meas_model_prop_out_of_map_count is not None]
+        )
+        meas_model_prop_unknown_ray_count_vals = self._finite_values(
+            [s.meas_model_prop_unknown_ray_count for s in step_results if s.meas_model_prop_unknown_ray_count is not None]
+        )
+        meas_model_prop_known_free_ray_count_vals = self._finite_values(
+            [s.meas_model_prop_known_free_ray_count for s in step_results if s.meas_model_prop_known_free_ray_count is not None]
+        )
+        meas_model_prop_unexpected_known_free_count_vals = self._finite_values(
+            [s.meas_model_prop_unexpected_known_free_count for s in step_results if s.meas_model_prop_unexpected_known_free_count is not None]
+        )
+        # Fallback
+        meas_model_fallback_call_count_vals = self._finite_values(
+            [s.meas_model_fallback_call_count for s in step_results if s.meas_model_fallback_call_count is not None]
+        )
+        meas_model_fallback_valid_beam_count_vals = self._finite_values(
+            [s.meas_model_fallback_valid_beam_count for s in step_results if s.meas_model_fallback_valid_beam_count is not None]
+        )
+        meas_model_fallback_map_hit_count_vals = self._finite_values(
+            [s.meas_model_fallback_map_hit_count for s in step_results if s.meas_model_fallback_map_hit_count is not None]
+        )
+        meas_model_fallback_no_map_hit_count_vals = self._finite_values(
+            [s.meas_model_fallback_no_map_hit_count for s in step_results if s.meas_model_fallback_no_map_hit_count is not None]
+        )
+        meas_model_fallback_out_of_map_count_vals = self._finite_values(
+            [s.meas_model_fallback_out_of_map_count for s in step_results if s.meas_model_fallback_out_of_map_count is not None]
+        )
+        meas_model_fallback_unknown_ray_count_vals = self._finite_values(
+            [s.meas_model_fallback_unknown_ray_count for s in step_results if s.meas_model_fallback_unknown_ray_count is not None]
+        )
+        meas_model_fallback_known_free_ray_count_vals = self._finite_values(
+            [s.meas_model_fallback_known_free_ray_count for s in step_results if s.meas_model_fallback_known_free_ray_count is not None]
+        )
+        meas_model_fallback_unexpected_known_free_count_vals = self._finite_values(
+            [s.meas_model_fallback_unexpected_known_free_count for s in step_results if s.meas_model_fallback_unexpected_known_free_count is not None]
+        )
+
+        prop_call_count = float(np.sum(meas_model_prop_call_count_vals))
+        prop_valid_beam_count = float(np.sum(meas_model_prop_valid_beam_count_vals))
+        prop_map_hit_count = float(np.sum(meas_model_prop_map_hit_count_vals))
+        prop_no_map_hit_count = float(np.sum(meas_model_prop_no_map_hit_count_vals))
+        prop_out_of_map_count = float(np.sum(meas_model_prop_out_of_map_count_vals))
+        prop_unknown_ray_count = float(np.sum(meas_model_prop_unknown_ray_count_vals))
+        prop_known_free_ray_count = float(np.sum(meas_model_prop_known_free_ray_count_vals))
+        prop_unexpected_known_free_count = float(np.sum(meas_model_prop_unexpected_known_free_count_vals))
+
+        fallback_call_count = float(np.sum(meas_model_fallback_call_count_vals))
+        fallback_valid_beam_count = float(np.sum(meas_model_fallback_valid_beam_count_vals))
+        fallback_map_hit_count = float(np.sum(meas_model_fallback_map_hit_count_vals))
+        fallback_no_map_hit_count = float(np.sum(meas_model_fallback_no_map_hit_count_vals))
+        fallback_out_of_map_count = float(np.sum(meas_model_fallback_out_of_map_count_vals))
+        fallback_unknown_ray_count = float(np.sum(meas_model_fallback_unknown_ray_count_vals))
+        fallback_known_free_ray_count = float(np.sum(meas_model_fallback_known_free_ray_count_vals))
+        fallback_unexpected_known_free_count = float(np.sum(meas_model_fallback_unexpected_known_free_count_vals))
+
+
+        drift_trans_err = float("inf")
+        drift_rot_err = float("inf")
+        drift_trans_err_raw_odom = float("inf")
+        drift_rot_err_raw_odom = float("inf")
+
+        for s in reversed(step_results):
+            if s.est_pose is not None:
+                drift_trans_err = self.translation_error(s.est_pose, s.true_pose)
+                drift_rot_err = abs(self.angle_diff(s.est_pose[2], s.true_pose[2]))
+                break
+
+        for s in reversed(step_results):
+            if s.raw_odom_pose is not None:
+                drift_trans_err_raw_odom = self.translation_error(s.raw_odom_pose, s.true_pose)
+                drift_rot_err_raw_odom = abs(self.angle_diff(s.raw_odom_pose[2], s.true_pose[2]))
+                break
+
+        summary = {
+            "n_steps": len(step_results),
+            "scan_match_failed_count": int(scan_match_failed_count),
+            "scan_match_fallback_failed_count": int(scan_match_fallback_failed_count),
+            "mean_translation_error": float(np.mean(trans_err)) if trans_err else float("inf"),
+            "worst_translation_error": float(np.max(trans_err)) if trans_err else float("inf"),
+            "mean_rotation_error": float(np.mean(rot_err)) if rot_err else float("inf"),
+            "worst_rotation_error": float(np.max(rot_err)) if rot_err else float("inf"),
+
+            "rmse_translation_error": float(np.sqrt(np.mean(np.square(trans_err)))) if trans_err else float("inf"),
+            "rmse_rotation_error": float(np.sqrt(np.mean(np.square(rot_err)))) if rot_err else float("inf"),
+            "mean_translation_error_raw_odom": float(np.mean(trans_err_raw_odom)) if trans_err_raw_odom else float("inf"),
+            "mean_rotation_error_raw_odom": float(np.mean(rot_err_raw_odom)) if rot_err_raw_odom else float("inf"),
+            "rmse_translation_error_raw_odom": float(np.sqrt(np.mean(np.square(trans_err_raw_odom)))) if trans_err_raw_odom else float("inf"),
+            "rmse_rotation_error_raw_odom": float(np.sqrt(np.mean(np.square(rot_err_raw_odom)))) if rot_err_raw_odom else float("inf"),
+            "mean_trans_err_best_p": float(np.mean(trans_err_best_p)) if trans_err_best_p else float("inf"),
+            "mean_rot_err_best_p": float(np.mean(rot_err_best_p)) if rot_err_best_p else float("inf"),
+            "rmse_trans_error_best_p": float(np.sqrt(np.mean(np.square(trans_err_best_p)))) if trans_err_best_p else float("inf"),
+            "rmse_rot_error_best_p": float(np.sqrt(np.mean(np.square(rot_err_best_p)))) if rot_err_best_p else float("inf"),
+            "drift_trans_err": drift_trans_err,
+            "drift_rot_err": drift_rot_err,
+            "drift_trans_err_raw_odom": drift_trans_err_raw_odom,
+            "drift_rot_err_raw_odom": drift_rot_err_raw_odom,
+            "mean_neff": float(np.mean(neff_values)) if neff_values else 0.0,
+            "mean_particle_weight_min": float(np.mean(particle_weight_min_values)) if particle_weight_min_values else 0.0,
+            "mean_particle_weight_max": float(np.mean(particle_weight_max_values)) if particle_weight_max_values else 0.0,
+            "mean_particle_weight_mean": float(np.mean(particle_weight_mean_values)) if particle_weight_mean_values else 0.0,
+            
+            # Mean time durations scan matching
+            "mean_step_duration": float(np.mean(step_durations)) if step_durations else float("nan"),
+            "mean_time_duration_scan_matching": float(np.mean(time_duration_scan_matching_values)) if time_duration_scan_matching_values else float("nan"),
+            "mean_time_duration_prediction": float(np.mean(time_duration_prediction_values)) if time_duration_prediction_values else float("nan"),
+            "mean_time_duration_map_extraction": float(np.mean(time_duration_map_extraction_values)) if time_duration_map_extraction_values else float("nan"),
+            "mean_time_duration_correct_pose": float(np.mean(time_duration_correct_pose_values)) if time_duration_correct_pose_values else float("nan"),
+            "mean_time_duration_update_pose": float(np.mean(time_duration_update_pose_values)) if time_duration_update_pose_values else float("nan"),
+            # Mean time durations ICP
+            "mean_t_init_icp_trans": float(np.mean(t_init_icp_trans_values)) if t_init_icp_trans_values else float("nan"),
+            "mean_t_init_and_train_nn_tree_normals": float(np.mean(t_init_and_train_nn_tree_normals_values)) if t_init_and_train_nn_tree_normals_values else float("nan"),
+            "mean_t_downsampling_pointcloud": float(np.mean(t_downsampling_pointcloud_values)) if t_downsampling_pointcloud_values else float("nan"),
+            "mean_t_compute_normal": float(np.mean(t_compute_normal_values)) if t_compute_normal_values else float("nan"),
+            "mean_t_outlier_rejection": float(np.mean(t_outlier_rejection_values)) if t_outlier_rejection_values else float("nan"),
+            "mean_t_find_nn_outlier_rejec": float(np.mean(t_find_nn_outlier_rejec_values)) if t_find_nn_outlier_rejec_values else float("nan"),
+            "mean_t_prepare_system": float(np.mean(t_prepare_system_values)) if t_prepare_system_values else float("nan"),
+            "mean_t_solve_least_squares": float(np.mean(t_solve_least_squares_values)) if t_solve_least_squares_values else float("nan"),
+            "mean_t_transf_update_and_results": float(np.mean(t_transf_update_and_results_values)) if t_transf_update_and_results_values else float("nan"),
+            "mean_t_find_trans": float(np.mean(t_find_trans_values)) if t_find_trans_values else float("nan"),
+
+            "median_extracted_map_points": float(np.median(n_raw_map_points_values)) if n_raw_map_points_values else float("nan"),
+            "median_map_point_keep_ratio": float(np.median(map_point_keep_ratio_values)) if map_point_keep_ratio_values else float("nan"),
+            
+            "mean_pose_err_mu_true": float(np.mean(pose_err_mu_true_values)) if pose_err_mu_true_values else float("nan"),
+            "mean_min_xj_pose_err_true": float(np.mean(min_xj_pose_err_true_values)) if min_xj_pose_err_true_values else float("nan"),
+            "rmse_min_xj_pose_err_true": float(np.sqrt(np.mean(np.square(min_xj_pose_err_true_values)))) if min_xj_pose_err_true_values else float("nan"),
+            "mean_min_xj_is_best_xj": float(np.mean(min_xj_is_best_xj_values)) if min_xj_is_best_xj_values else float("nan"),
+            "min_xj_better_sm_pose_rate": float(np.mean(min_xj_better_sm_pose_values)) if min_xj_better_sm_pose_values else float("nan"),
+            "best_xj_better_sm_pose_rate": float(np.mean(best_xj_better_sm_pose_values)) if best_xj_better_sm_pose_values else float("nan"),
+
+            # Mean time durations proposal
+            "mean_t_sample_poses": float(np.mean(t_sample_poses_values)) if t_sample_poses_values else float("nan"),
+            "mean_t_pred_poses": float(np.mean(t_pred_poses_values)) if t_pred_poses_values else float("nan"),
+            "mean_t_motion_model": float(np.mean(t_motion_model_values)) if t_motion_model_values else float("nan"),
+            "mean_t_meas_model": float(np.mean(t_meas_model_values)) if t_meas_model_values else float("nan"),
+            "mean_t_compute_prop_params": float(np.mean(t_compute_prop_params_values)) if t_compute_prop_params_values else float("nan"),
+            "mean_t_sample_from_prop": float(np.mean(t_sample_from_prop_values)) if t_sample_from_prop_values else float("nan"),
+
+            # Trans and rot errors of xjs
+            "mean_min_trans_err_xjs": float(np.mean(min_trans_err_xjs_values)) if min_trans_err_xjs_values else float("nan"),
+            "rmse_min_trans_err_xjs": float(np.sqrt(np.mean(np.square(min_trans_err_xjs_values)))) if min_trans_err_xjs_values else float("nan"),
+            "mean_min_rot_err_xjs": float(np.mean(min_rot_err_xjs_values)) if min_rot_err_xjs_values else float("nan"),
+            "rmse_min_rot_err_xjs": float(np.sqrt(np.mean(np.square(min_rot_err_xjs_values)))) if min_rot_err_xjs_values else float("nan"),
+            "mean_min_xj_trans_err_true": float(np.mean(min_xj_trans_err_true_values)) if min_xj_trans_err_true_values else float("nan"),
+            "rmse_min_xj_trans_err_true": float(np.sqrt(np.mean(np.square(min_xj_trans_err_true_values)))) if min_xj_trans_err_true_values else float("nan"),
+            "mean_min_xj_rot_err_true": float(np.mean(min_xj_rot_err_true_values)) if min_xj_rot_err_true_values else float("nan"),
+            "rmse_min_xj_rot_err_true": float(np.sqrt(np.mean(np.square(min_xj_rot_err_true_values)))) if min_xj_rot_err_true_values else float("nan"),
+            "mean_best_xj_trans_err_true": float(np.mean(best_xj_trans_err_true_values)) if best_xj_trans_err_true_values else float("nan"),
+            "rmse_best_xj_trans_err_true": float(np.sqrt(np.mean(np.square(best_xj_trans_err_true_values)))) if best_xj_trans_err_true_values else float("nan"),
+            "mean_best_xj_rot_err_true": float(np.mean(best_xj_rot_err_true_values)) if best_xj_rot_err_true_values else float("nan"),
+            "rmse_best_xj_rot_err_true": float(np.sqrt(np.mean(np.square(best_xj_rot_err_true_values)))) if best_xj_rot_err_true_values else float("nan"),  
+
+            "mean_min_xj_true_err_improves_over_sm_true": float(np.mean(min_xj_true_err_improves_over_sm_true_values)) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
+            "rmse_min_xj_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(min_xj_true_err_improves_over_sm_true_values)))) if min_xj_true_err_improves_over_sm_true_values else float("nan"),
+            "mean_best_xj_true_err_improves_over_sm_true": float(np.mean(best_xj_true_err_improves_over_sm_true_values)) if best_xj_true_err_improves_over_sm_true_values else float("nan"),
+            "rmse_best_xj_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(best_xj_true_err_improves_over_sm_true_values)))) if best_xj_true_err_improves_over_sm_true_values else float("nan"),
+            "mean_min_xj_true_err_weight_score": float(np.mean(min_xj_true_err_weight_score_values)) if min_xj_true_err_weight_score_values else float("nan"),
+            "rmse_min_xj_true_err_weight_score": float(np.sqrt(np.mean(np.square(min_xj_true_err_weight_score_values)))) if min_xj_true_err_weight_score_values else float("nan"),
+            
+            "mean_corr_xjs_weights": float(np.mean(corr_xjs_weights_values)) if corr_xjs_weights_values else float("nan"),
+            "median_corr_xjs_weights": float(np.median(corr_xjs_weights_values)) if corr_xjs_weights_values else float("nan"),
+            "mean_corr_xjs_motion": float(np.mean(corr_xjs_motion_values)) if corr_xjs_motion_values else float("nan"),
+            "median_corr_xjs_motion": float(np.median(corr_xjs_motion_values)) if corr_xjs_motion_values else float("nan"),
+            "mean_corr_xjs_meas": float(np.mean(corr_xjs_meas_values)) if corr_xjs_meas_values else float("nan"),
+            "median_corr_xjs_meas": float(np.median(corr_xjs_meas_values)) if corr_xjs_meas_values else float("nan"),
+            "mean_corr_weights_motion": float(np.mean(corr_weights_motion_values)) if corr_weights_motion_values else float("nan"),
+            "median_corr_weights_motion": float(np.median(corr_weights_motion_values)) if corr_weights_motion_values else float("nan"),
+            "mean_corr_weights_meas": float(np.mean(corr_weights_meas_values)) if corr_weights_meas_values else float("nan"),
+            "median_corr_weights_meas": float(np.median(corr_weights_meas_values)) if corr_weights_meas_values else float("nan"),
+            
+            "mean_corr_xj_trans_weights": float(np.mean(corr_xj_trans_weights_values)) if corr_xj_trans_weights_values else float("nan"),
+            "median_corr_xj_trans_weights": float(np.median(corr_xj_trans_weights_values)) if corr_xj_trans_weights_values else float("nan"),
+            "mean_corr_xj_trans_motion": float(np.mean(corr_xj_trans_motion_values)) if corr_xj_trans_motion_values else float("nan"),
+            "median_corr_xj_trans_motion": float(np.median(corr_xj_trans_motion_values)) if corr_xj_trans_motion_values else float("nan"),
+            "mean_corr_xj_trans_meas": float(np.mean(corr_xj_trans_meas_values)) if corr_xj_trans_meas_values else float("nan"),
+            "median_corr_xj_trans_meas": float(np.median(corr_xj_trans_meas_values)) if corr_xj_trans_meas_values else float("nan"),
+            "mean_corr_xj_rot_weights": float(np.mean(corr_xj_rot_weights_values)) if corr_xj_rot_weights_values else float("nan"),
+            "median_corr_xj_rot_weights": float(np.median(corr_xj_rot_weights_values)) if corr_xj_rot_weights_values else float("nan"),
+            "mean_corr_xj_rot_motion": float(np.mean(corr_xj_rot_motion_values)) if corr_xj_rot_motion_values else float("nan"),
+            "median_corr_xj_rot_motion": float(np.median(corr_xj_rot_motion_values)) if corr_xj_rot_motion_values else float("nan"),
+            "mean_corr_xj_rot_meas": float(np.mean(corr_xj_rot_meas_values)) if corr_xj_rot_meas_values else float("nan"),
+            "median_corr_xj_rot_meas": float(np.median(corr_xj_rot_meas_values)) if corr_xj_rot_meas_values else float("nan"),
+            
+
+            "mean_best_xj_score": float(np.mean(best_xj_score_values)) if best_xj_score_values else float("nan"),
+            "rmse_best_xj_score": float(np.sqrt(np.mean(np.square(best_xj_score_values)))) if best_xj_score_values else float("nan"),
+            "mean_motion_rank_score": float(np.mean(motion_rank_score_values)) if motion_rank_score_values else float("nan"),
+            "mean_meas_rank_score": float(np.mean(meas_rank_score_values)) if meas_rank_score_values else float("nan"),
+            "mean_mu_true_err_improves_over_sm_true": float(np.mean(mu_true_err_improves_over_sm_true_values)) if mu_true_err_improves_over_sm_true_values else float("nan"),
+            "rmse_mu_true_err_improves_over_sm_true": float(np.sqrt(np.mean(np.square(mu_true_err_improves_over_sm_true_values)))) if mu_true_err_improves_over_sm_true_values else float("nan"),
+            "mu_true_better_than_sm_true_rate": float(np.mean(mu_true_better_than_sm_true_values)) if mu_true_better_than_sm_true_values else float("nan"),
+
+            "mean_weight_min_xj_err": float(np.mean(weight_min_xj_err_values)) if weight_min_xj_err_values else float("nan"),
+            "mean_best_weighted_xj_pose_err_true": float(np.mean(best_weighted_xj_pose_err_true_values)) if best_weighted_xj_pose_err_true_values else float("nan"),
+            "mean_weight_best_xj": float(np.mean(weight_best_xj_values)) if weight_best_xj_values else float("nan"),
+            "mean_weight_ratio_min_best_weight": float(np.mean(weight_ratio_min_best_weight_values)) if weight_ratio_min_best_weight_values else float("nan"),
+            "median_weight_ratio_min_best_weight": float(np.median(weight_ratio_min_best_weight_values)) if weight_ratio_min_best_weight_values else float("nan"),
+            "mean_log_motion_range": float(np.mean(log_motion_range_values)) if log_motion_range_values else float("nan"),
+            "median_log_motion_range": float(np.median(log_motion_range_values)) if log_motion_range_values else float("nan"),
+            "mean_log_meas_range": float(np.mean(log_meas_range_values)) if log_meas_range_values else float("nan"),
+            "median_log_meas_range": float(np.median(log_meas_range_values)) if log_meas_range_values else float("nan"),
+            "mean_log_weight_range": float(np.mean(log_weight_range_values)) if log_weight_range_values else float("nan"),
+
+            "mean_trans_err_mu_true": float(np.mean(trans_err_mu_true_values)) if trans_err_mu_true_values else float("nan"),
+            "rmse_trans_err_mu_true": float(np.sqrt(np.mean(np.square(trans_err_mu_true_values)))) if trans_err_mu_true_values else float("nan"),
+            "worst_trans_err_mu_true": float(np.max(trans_err_mu_true_values)) if trans_err_mu_true_values else float("nan"),
+            "mean_rot_err_mu_true": float(np.mean(rot_err_mu_true_values)) if rot_err_mu_true_values else float("nan"), 
+            "rmse_rot_err_mu_true": float(np.sqrt(np.mean(np.square(rot_err_mu_true_values)))) if rot_err_mu_true_values else float("nan"),
+            "worst_rot_err_mu_true": float(np.max(rot_err_mu_true_values)) if rot_err_mu_true_values else float("nan"),
+            "mean_pose_err_sm_true": float(np.mean(pose_err_sm_true_values)) if pose_err_sm_true_values else float("nan"),
+
+            "mean_trans_err_mu_sm": float(np.mean(trans_err_mu_sm_values)) if trans_err_mu_sm_values else float("nan"),
+            "mean_rot_err_mu_sm": float(np.mean(rot_err_mu_sm_values)) if rot_err_mu_sm_values else float("nan"),
+
+            "mean_trans_err_sm_true": float(np.mean(trans_err_sm_true_values)) if trans_err_sm_true_values else float("nan"),
+            "worst_trans_err_sm_true": float(np.max(trans_err_sm_true_values)) if trans_err_sm_true_values else float("nan"),
+            "mean_rot_err_sm_true": float(np.mean(rot_err_sm_true_values)) if rot_err_sm_true_values else float("nan"),
+            "worst_rot_err_sm_true": float(np.max(rot_err_sm_true_values)) if rot_err_sm_true_values else float("nan"),
+            "rmse_trans_err_sm_true": float(np.sqrt(np.mean(np.square(trans_err_sm_true_values)))) if trans_err_sm_true_values else float("nan"),
+            "rmse_rot_err_sm_true": float(np.sqrt(np.mean(np.square(rot_err_sm_true_values)))) if rot_err_sm_true_values else float("nan"),
+            
+            "rmse_trans_err_mu_sm": float(np.sqrt(np.mean(np.square(trans_err_mu_sm_values)))) if trans_err_mu_sm_values else float("nan"),
+            "rmse_rot_err_mu_sm": float(np.sqrt(np.mean(np.square(rot_err_mu_sm_values)))) if rot_err_mu_sm_values else float("nan"),
+            "mean_trans_err_mu_pred": float(np.mean(trans_err_mu_pred_values)) if trans_err_mu_pred_values else float("nan"),
+            "mean_rot_err_mu_pred": float(np.mean(rot_err_mu_pred_values)) if rot_err_mu_pred_values else float("nan"),
+            "rmse_trans_err_mu_pred": float(np.sqrt(np.mean(np.square(trans_err_mu_pred_values)))) if trans_err_mu_pred_values else float("nan"),
+            "rmse_rot_err_mu_pred": float(np.sqrt(np.mean(np.square(rot_err_mu_pred_values)))) if rot_err_mu_pred_values else float("nan"),
+            
+            "mean_prop_std_xy": mean_prop_std_xy,
+            "mean_prop_std_theta": mean_std_theta,
+            
+            "mean_prop_corr_xy": float(np.mean(prop_corr_xy_values)) if prop_corr_xy_values else float("nan"),
+            "mean_prop_corr_x_theta": float(np.mean(prop_corr_x_theta_values)) if prop_corr_x_theta_values else float("nan"),
+            "mean_prop_corr_y_theta": float(np.mean(prop_corr_y_theta_values)) if prop_corr_y_theta_values else float("nan"),
+            "mean_xj_eff": float(np.mean(xj_eff_values)) if xj_eff_values else float("nan"),
+            "mean_xj_eff_motion": float(np.mean(xj_eff_motion_values)) if xj_eff_motion_values else float("nan"),
+            "mean_xj_eff_meas": float(np.mean(xj_eff_meas_values)) if xj_eff_meas_values else float("nan"),
+
+            # Measurement model metrics
+            # Proposal
+            # Counter
+            "meas_model_prop_call_count": prop_call_count,
+            "meas_model_prop_valid_beam_count": prop_valid_beam_count,
+            "meas_model_prop_map_hit_count": prop_map_hit_count,
+            "meas_model_prop_no_map_hit_count": prop_no_map_hit_count,
+            "meas_model_prop_out_of_map_count": prop_out_of_map_count,
+            "meas_model_prop_unknown_ray_count": prop_unknown_ray_count,
+            "meas_model_prop_known_free_ray_count": prop_known_free_ray_count,
+            "meas_model_prop_unexpected_known_free_count": prop_unexpected_known_free_count,
+            # Rates
+            "meas_model_prop_map_hit_rate": self._compute_rate(
+                numerator=prop_map_hit_count,
+                denominator=prop_valid_beam_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_out_of_map_rate": self._compute_rate(
+                numerator=prop_out_of_map_count,
+                denominator=prop_valid_beam_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_no_map_hit_rate": self._compute_rate(
+                numerator=prop_no_map_hit_count,
+                denominator=prop_valid_beam_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_unknown_no_map_hit_rate": self._compute_rate(
+                numerator=prop_unknown_ray_count,
+                denominator=prop_no_map_hit_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_known_free_no_map_hit_rate": self._compute_rate(
+                numerator=prop_known_free_ray_count,
+                denominator=prop_no_map_hit_count,
+                call_count=prop_call_count,
+            ),
+            "meas_model_prop_unexpected_known_free_rate": self._compute_rate(
+                numerator=prop_unexpected_known_free_count,
+                denominator=prop_known_free_ray_count,
+                call_count=prop_call_count,
+            ),
+            # Fallback
+            # Counter
+            "meas_model_fallback_call_count": fallback_call_count,
+            "meas_model_fallback_valid_beam_count": fallback_valid_beam_count,
+            "meas_model_fallback_map_hit_count": fallback_map_hit_count,
+            "meas_model_fallback_no_map_hit_count": fallback_no_map_hit_count,
+            "meas_model_fallback_out_of_map_count": fallback_out_of_map_count,
+            "meas_model_fallback_unknown_ray_count": fallback_unknown_ray_count,
+            "meas_model_fallback_known_free_ray_count": fallback_known_free_ray_count,
+            "meas_model_fallback_unexpected_known_free_count": fallback_unexpected_known_free_count,
+            # Rates
+            "meas_model_fallback_map_hit_rate": self._compute_rate(
+                numerator=fallback_map_hit_count,
+                denominator=fallback_valid_beam_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_out_of_map_rate": self._compute_rate(
+                numerator=fallback_out_of_map_count,
+                denominator=fallback_valid_beam_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_no_map_hit_rate": self._compute_rate(
+                numerator=fallback_no_map_hit_count,
+                denominator=fallback_valid_beam_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_unknown_no_map_hit_rate": self._compute_rate(
+                numerator=fallback_unknown_ray_count,
+                denominator=fallback_no_map_hit_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_known_free_no_map_hit_rate": self._compute_rate(
+                numerator=fallback_known_free_ray_count,
+                denominator=fallback_no_map_hit_count,
+                call_count=fallback_call_count,
+            ),
+            "meas_model_fallback_unexpected_known_free_rate": self._compute_rate(
+                numerator=fallback_unexpected_known_free_count,
+                denominator=fallback_known_free_ray_count,
+                call_count=fallback_call_count,
+            ),
+        }
+
+        if params is not None:
+            summary.update(
+                {
+                    "n_particles": self._extract_n_particles(params),
+                    "sigma_measurement": self._extract_sigma_measurement(params),
+                    "neff_threshold": self._extract_neff_threshold(params),
+                    # Keep both. TO many positions in code were "n_samples_dir" named and may be used
+                    "proposal_n_samples": self._extract_proposal_n_samples(params),
+                    "n_samples_dir": self._extract_proposal_n_samples(params),
+                }
+            )
+        return summary
+
+
+    @staticmethod
+    def _extract_n_particles(params: ExperimentParams) -> Optional[int]:
+        if hasattr(params, "particle_params") and hasattr(params.particle_params, "n_particles"):
+            return int(params.particle_params.n_particles)
+        if hasattr(params, "n_particles"):
+            return int(params.n_particles)
+        return None
+
+
+    @staticmethod
+    def _extract_sigma_measurement(params: ExperimentParams) -> Optional[float]:
+        if hasattr(params, "measurement_model_params") and hasattr(params.measurement_model_params, "sigma_measurement"):
+            return float(params.measurement_model_params.sigma_measurement)
+        if hasattr(params, "sigma_measurement"):
+            return float(params.sigma_measurement)
+        return None
+
+
+    @staticmethod
+    def _extract_neff_threshold(params: ExperimentParams) -> Optional[float]:
+        if hasattr(params, "neff_threshold"):
+            value = params.neff_threshold
+            return float(value) if value is not None else None
+
+        if hasattr(params, "particle_params") and hasattr(params.particle_params, "n_particles"):
+            return float(params.particle_params.n_particles) / 2.0
+
+        return None
+
+
+    @staticmethod
+    def _extract_proposal_n_samples(params: ExperimentParams) -> Optional[int]:
+        if hasattr(params, "proposal_n_samples"):
+            value = params.proposal_n_samples
+            return int(value) if value is not None else None
+        return None

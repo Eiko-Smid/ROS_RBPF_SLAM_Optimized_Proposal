@@ -1,0 +1,37 @@
+<?xml version="1.0" ?>
+
+<sdf version="1.5">
+	<world name="robot_vacuum_cleaner_world">
+
+		<!-- Define physics properties -->
+		<physics type="ode">
+			<real_time_update_rate>100</real_time_update_rate>   <!-- ↓ from ~1000 -->
+			<max_step_size>0.01</max_step_size>                  <!-- bigger step = less CPU -->
+			<real_time_factor>1</real_time_factor>
+		</physics>
+
+		<!-- Define scene properties -->
+		<scene>
+		<shadows>false</shadows>              <!-- huge GPU saver -->
+		</scene>
+
+		<!-- Define global light source -->
+		<include>
+			<uri>model://sun</uri>
+		</include>
+
+		<!-- Define a ground plane -->
+		<include>
+			<uri>model://ground_plane</uri>
+		</include>
+
+		<include>
+  			<uri>model://turtlebot3_house</uri>
+  			<pose>0 0 0 0 0 0</pose>
+		</include>
+
+	</world>
+</sdf>  
+
+
+

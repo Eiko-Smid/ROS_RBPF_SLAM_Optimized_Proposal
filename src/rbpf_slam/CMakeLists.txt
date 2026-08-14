@@ -58,6 +58,7 @@ add_message_files(
   LogOddsMap.msg
   Measurement.msg
   PoseErr2D.msg
+  RBPFInput.msg
   WheelEncoder.msg
 )
 
@@ -172,6 +173,9 @@ include_directories(
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   scripts/rbpf_slam_node.py
+  scripts/ogm_node.py
+  scripts/playback_node.py
+  scripts/rbpf_data_processor_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

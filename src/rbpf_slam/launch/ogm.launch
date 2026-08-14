@@ -1,0 +1,106 @@
+<launch>
+<!--Launch the robot model and the world.-->
+    <!--Define useful parameters-->
+    <arg name="paused" default="true"/>
+
+    <!--Use simulation time-->
+    <arg name="use_sim_time" default="true"/>
+
+    <!-- Enable/disable gazebo gui. Runs also without, but robot not visible then -->
+    <arg name="gui" default="true"/>
+
+    <!--Define world to launch-->
+    <!-- <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-bookstore-world/worlds/bookstore_light.world"/> -->
+    <!-- <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-small-house-world/worlds/small_house_light.world"/> -->
+    <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/turtle_map.world"/>
+    <!-- <arg name="world_name" default="$(find rvc_simulation_environment)/worlds/robot_vacuum_cleaner.world"/> -->
+
+    <!--Robot spawn pose for cafe map-->
+    <!-- <arg name="spawn_x" default="0.0"/>
+    <arg name="spawn_y" default="0.0"/>
+    <arg name="spawn_z" default="0.18"/>
+    <arg name="spawn_roll" default="0.0"/>
+    <arg name="spawn_pitch" default="0.0"/>
+    <arg name="spawn_yaw" default="0.0"/> -->
+
+    <!--Robot spawn pose for aws bookstore -->
+    <!-- <arg name="spawn_x" default="2.0"/>
+    <arg name="spawn_y" default="2.8"/>
+    <arg name="spawn_z" default="0.0"/>
+    <arg name="spawn_roll" default="0.0"/>
+    <arg name="spawn_pitch" default="0.0"/>
+    <arg name="spawn_yaw" default="3.14"/> -->
+
+    <!--Robot spawn pose for aws smallhouse and turtlebot3 -->
+    <arg name="spawn_x" default="0.0"/>
+    <arg name="spawn_y" default="0.3"/>
+    <arg name="spawn_z" default="0.0"/>
+    <arg name="spawn_roll" default="0.0"/>
+    <arg name="spawn_pitch" default="0.0"/>
+    <arg name="spawn_yaw" default="3.14"/>
+    <!-- <arg name="spawn_yaw" default="0.0"/> -->
+
+    <!--Motion uncertainty parameters-->
+    <arg name="motion_error_factor" default="0.1"/>
+    <arg name="turn_error_factor" default="0.15"/>
+
+    <!--Laser Scanner parameters-->
+    <arg name="laser_range_resolution" default="0.01"/>
+    <arg name="laser_noise_type" default="gaussian"/>
+    <arg name="laser_noise_mean" default="0.0"/>
+    <arg name="laser_noise_stddv" default="0.03"/>
+
+    <!--Pass the parameters to ros parameter server-->
+    <param name="use_sim_time" value="$(arg use_sim_time)"/>
+    <param name="spawn_x" value="$(arg spawn_x)"/>
+    <param name="spawn_y" value="$(arg spawn_y)"/>
+    <param name="spawn_z" value="$(arg spawn_z)"/>
+    <param name="spawn_roll" value="$(arg spawn_roll)"/>
+    <param name="spawn_pitch" value="$(arg spawn_pitch)"/>
+    <param name="spawn_yaw" value="$(arg spawn_yaw)"/>
+
+    <param name="motion_error_factor" value="$(arg motion_error_factor)"/>
+    <param name="turn_error_factor" value="$(arg turn_error_factor)"/>
+
+    <param name="laser_range_resolution" value="$(arg laser_range_resolution)"/>
+    <param name="laser_noise_type" value="$(arg laser_noise_type)"/>
+    <param name="laser_noise_mean" value="$(arg laser_noise_mean)"/>
+    <param name="laser_noise_stddv" value="$(arg laser_noise_stddv)"/>
+
+    <!--Launch the robot model and the world.-->
+    <include file="$(find rvc_simulation_environment)/launch/robot_vacuum_cleaner.launch">
+        <arg name="world_name" value="$(arg world_name)"/>
+        <arg name="paused" value="$(arg paused)"/>
+        <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+        <arg name="gui" value="$(arg gui)"/>
+        <arg name="spawn_x" value="$(arg spawn_x)"/>
+        <arg name="spawn_y" value="$(arg spawn_y)"/>
+        <arg name="spawn_z" value="$(arg spawn_z)"/>
+        <arg name="spawn_roll" value="$(arg spawn_roll)"/>
+        <arg name="spawn_pitch" value="$(arg spawn_pitch)"/>
+        <arg name="spawn_yaw" value="$(arg spawn_yaw)"/>
+
+        <arg name="laser_range_resolution" value="$(arg laser_range_resolution)"/>
+        <arg name="laser_noise_type" value="$(arg laser_noise_type)"/>
+        <arg name="laser_noise_mean" value="$(arg laser_noise_mean)"/>
+        <arg name="laser_noise_stddv" value="$(arg laser_noise_stddv)"/>
+    </include>
+
+
+<!--Generate a transform between map and odom -->
+    <node pkg="tf" type="static_transform_publisher" name="map_to_odom" args="0 0 0 0 0 0 map odom_link 30" />
+
+<!--Generate synchronized input data for the occupancy grid mapping algorithm.-->
+    <node pkg="rbpf_slam" name="rbpf_data_processor_node" type="rbpf_data_processor_node.py" output="screen">
+        <rosparam command="load" file="$(find rbpf_slam)/config/rbpf_data_processor_params.yaml"/>
+    </node>
+
+<!--Launch the occupancy grid mapping algorithm (with known pose).-->
+    <node pkg="rbpf_slam" name="ogm_node" type="ogm_node.py" output="screen">
+        <rosparam command="load" file="$(find rbpf_slam)/config/ogm_params.yaml"/>
+    </node>
+
+<!--Launch rviz-->
+    <node pkg="rviz" name="rviz" type="rviz" args="-d $(find rbpf_slam)/rviz/ogm_rviz_cfg.rviz">
+    </node>
+</launch>

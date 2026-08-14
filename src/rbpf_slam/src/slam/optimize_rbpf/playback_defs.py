@@ -1,0 +1,55 @@
+from typing import List, Tuple, Any, Optional
+from dataclasses import dataclass, field
+
+import numpy as np
+
+from ..rbpf.scan_match_factory import OccupancyParams, SensorParams, MapParameter, ICPParams, RobotParams, ScanMatcherParams
+from ..rbpf.rbpf import RBPFFactory, ParticleParams, MotionModelParams, MeasurementModelParams, BeamRangeFinderMeasModelParams
+
+
+@dataclass
+class StepData:
+    '''
+    Data storage to perform one step in scan matching 
+    '''
+    t: float
+    dl: float
+    dr: float
+    scan: List[Tuple[float, float]]   # (range, bearing)
+    true_pose: Tuple[float, float, float]  # (x, y, yaw)
+
+
+@dataclass
+class PlaybackData:
+    '''
+    Data storage for the whole playback run
+    '''
+    step_data_list: List[StepData]
+
+@dataclass
+class ExperimentParams:
+    '''
+    Parameters for the rbpf experiment
+    '''
+    occupancy_params: OccupancyParams
+    sensor_params: SensorParams
+    map_param: MapParameter
+    icp_params: ICPParams
+    robot_params: RobotParams
+    scan_matcher_params: ScanMatcherParams
+    particle_params: ParticleParams
+    motion_model_params: MotionModelParams
+    # measurement_model_params: MeasurementModelParams
+    measurement_model_params: BeamRangeFinderMeasModelParams
+
+    tag: str
+    every_nth_scan_filter: int = 4
+    every_nth_scan_map: int = 2
+    neff_threshold: float = 0.5
+    proposal_sigma_xy: float = 1.0
+    proposal_sigma_theta: float = 1.0
+    proposal_n_samples: int = 10
+    meas_kernel_size: int = 1
+    gaussian_sigma: float = 0.05
+    measurement_noise_stddev: Optional[float] = None
+    used_meas_model: str = "Unknown"

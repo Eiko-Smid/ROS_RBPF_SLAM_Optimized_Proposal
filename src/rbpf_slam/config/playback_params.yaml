@@ -1,0 +1,106 @@
+# ============================================================
+# Playback recorder Version-1 configuration
+# ============================================================
+
+config_name: "playback_v1"
+
+
+# ============================================================
+# Metadata stored with each playback recording
+# ============================================================
+
+metadata:
+  map_name: "AWS_Robot_Maker_Small_House_alt_path"
+
+
+# ============================================================
+# RBPF experiment parameters stored as playback metadata
+# ============================================================
+
+experiment:
+  tag: "AWS small house map on different path with synced playback."
+
+  occupancy_params:
+    prior_probability: 0.5
+    min_distance_to_border: 13.0
+    increasing_probability: 0.7
+    decreasing_probability: 0.3
+    min_log_odds: -5.0
+    max_log_odds: 5.0
+
+  sensor_params:
+    min_sensor_range: 0.1
+    max_sensor_range: 10.0
+
+  map_params:
+    map_width: 25.0
+    map_height: 25.0
+    grid_resolution_m: 0.05
+
+  icp_params:
+    max_n_points: 400
+    max_correspondence_distance: 0.6
+    neighbors_pca: 10
+    max_iterations: 5
+    epsilon_rel: 0.001
+    no_improvement_limit: 3
+    min_error: 0.0005
+    min_dtrans: 0.001
+    min_drot: 0.01
+
+  scan_matcher_params:
+    occ_thres: 1.2
+    delta_r: 0.6
+
+  particle_params:
+    n_particles: 40
+
+  motion_model_params:
+    sigma_x: 0.2
+    sigma_y: 0.2
+    sigma_theta: 0.15
+    ctrl_motion_fac: 0.1
+    ctrl_turn_fac: 0.20
+
+  measurement_model_params:
+    sigma_measurement: 0.2
+
+  rbpf_params:
+    every_nth_scan_filter: 4
+    every_nth_scan_map: 2
+    proposal_sigma_xy: 0.1
+    proposal_sigma_theta: 0.05
+    proposal_n_samples: 10
+
+
+# ============================================================
+# Playback recorder configuration
+# ============================================================
+
+recording:
+  enable_recording: true
+  # Relative paths are resolved from the rbpf_slam package root.
+  output_dir: "data/python_playback"
+
+
+# ============================================================
+# ROS-specific configuration of playback_node
+# ============================================================
+
+ros:
+  topics:
+    ground_truth: "/ground_truth/odom"
+    scan: "scan"
+
+
+  frames:
+    odom: "odom_link"
+    base: "base_link"
+
+
+  synchronization:
+    desired_time_window_s: 0.5
+    time_window_tolerance_s: 0.05
+    max_sync_error_s: 0.02
+    time_synchronizer_queue_size: 50
+    time_synchronizer_slop_s: 0.02
