@@ -81,7 +81,7 @@ MIN_SENSOR_RANGE = 0.1
 MAX_SENSOR_RANGE = 10.0 
 
 # Define whether ICP subsampling is skipped
-ICP_SKIP_SUBSAMPLING = True
+ICP_SKIP_SUBSAMPLING = False
 
 POSE_APPENDIX = ("x", "y", "theta_deg")
 

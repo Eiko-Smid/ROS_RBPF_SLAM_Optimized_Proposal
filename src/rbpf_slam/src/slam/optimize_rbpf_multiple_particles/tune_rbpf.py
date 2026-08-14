@@ -91,7 +91,7 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 
 # Defines how many steps of the playback data to use for the optimization. If None, the full playback data is used.
-N_PLAYBACK_STEPS = 50    
+N_PLAYBACK_STEPS = None   
 
 # Defines how ofter the optimization is repeated for each parameter combination. Useful for stability testing without seeds
 N_OPTIMIZATION_REPEATS = 1          

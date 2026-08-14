@@ -90,7 +90,7 @@ CSV_FLOAT_DECIMALS = 6
 OVERRIDE_EXISTING_RESULTS = False
 
 # Defines how many steps of the playback data to use for the optimization. If None, the full playback data is used.
-N_PLAYBACK_STEPS = 50
+N_PLAYBACK_STEPS = None
 
 # Defines how often the optimization is repeated for each parameter combination. Useful for stability testing without seeds
 N_OPTIMIZATION_REPEATS = 1
@@ -1073,7 +1073,7 @@ def rbpf_tuning_pipeline_multiprocessing():
         )
 
     # Save per-step, per-proposal-sample diagnostics (raw weights/motion/meas).
-    # TODO: Add proposal weights again
+    # Add proposal weights again
     # result_writer.write_proposal_weights_csv(
     #     output_path=PROPOSAL_WEIGHTS_PATH,
     #     ranked_runs=ranked_run_list,
