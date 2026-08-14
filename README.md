@@ -309,7 +309,7 @@ parameters were tuned to run on multiple maps/seeds, it is recommended **not to 
 
 ### Running the Playback Node
 
-The playback node can be used to record the data required by the tuning pipelines. Recorded datasets can be reused
+The playback node can be used to record the data required by the tuning pipelines. Recorded datasets are being used
 across all three pipelines. The output directory is configured using the `output_dir` parameter, which is defined in:
 
 ```bash
@@ -360,10 +360,10 @@ recommended to leave the parameters as they are.
 However, to run the RoboViewer, it is necessary to run at least one of the following tuning pipelines once with
 the standard parameters:
 
-- Scan matcher tuning pipeline: `python3 -m slam.optimize_rbpf_scan_matcher.tune_rbpf_scan_matcher`
 - RBPF tuning pipeline: `python3 -m slam.optimize_rbpf.tune_rbpf`
 - RBPF tuning pipeline with multiple particles:
   `python3 -m slam.optimize_rbpf_multiple_particles.tune_rbpf`
+
 
 This generates the data that can then be visualized by the RoboViewer. The data will be available in one of the
 following folders, depending on which tuning pipeline was used:
@@ -379,6 +379,8 @@ src/rbpf_slam/data/slam/optimization_results
 ```bash
 src/rbpf_slam/data/slam/optm_results_mult_part
 ```
+
+Attention! The scan matcher tuning pipeline results can't be visualized by the RoboViewer!!! 
 
 If one of the two RBPF tuning pipelines has been run, a folder whose name is defined by the parameter `STORAGE_DIR`
 inside the corresponding tuning file (the same file used to run the Python scripts; see above) will be created.
@@ -415,11 +417,62 @@ contains `grid_axes`, where the parameters to be used for the search can be defi
 `ExperimentParams` in each file can be changed manually, for example the `ICPParams`, which control the ICP
 algorithm behavior.
 
+Additionally all three tuning pipeliens produce the the following folders:
+- params.json
+      - Overview of the parameters used for the tuning process
+- summary_agg_dataset_id_param.csv
+      - The summary ranked results aggregated by dataset id and parameter hash
+- summary_agg_param.csv
+      - The summary_agg_dataset_id_param results aggregated by parameter hash
+      - This view shows which parameter set won by score
+- summary_rank_scored.csv
+      - The summary of all individual runs, ranked by score
+- summary_ranked_param_overview.csv
+      - The rank order of summary_agg_param showing all used parameter's
+- trace_steps.csv
+      - The individual steps of each runs, sorted by the score of the runs
+
+
+Sorting is always from lowest to highest score -> low score == better!
+
+Finally we will discuss the most important parameter's of the tuning pipes. 
+
+Parameters all pipes have in common:
+- NUMBER_OF_WORKERS
+      - The number of workers to use for the parallized tuning pipe (Defualt= 4)
+      - None -> Use all CPU cores
+- KEEP_STEP_RESULTS
+      - When True the step results are getting stored, else not
+      - Recommended to set this to false, for huge runs (high amount of params or steps in playback data)
+- N_PLAYBACK_STEPS
+      - The number of steps from the playback data to use. None -> Use all steps
+      - Else only N steps are used from the choose playback files
+- PLAYBACK_DATA_LIST 
+      - Defiens the playback data being used in the tuning pipe.
+      - Add one PlaybackDataset instance and the timestamp of the playback file to be used for each file
+- SEED_LIST
+      - Defines the seeds being used for the run
+- MEASUREMENT_STDDEV
+      - Defines the standard deviation of the measurements. Default is 0.03. Adapt as u like!
+      - Recommended to set this to zero if the measurement in the playback data already include measurement
+        noise
+- STORE_MAP_DATA
+      - Only available in the two rbpf tuning pipes!
+      - IF true the map of each run is being stoered, else not! 
+      - Recommended to set to False for big runs!
+- MIN_SENSOR_RANGE
+      - The minimal range of sensor to use in the algorithm. Distances lower than this will be skipped.
+- MAX_SENSOR_RANGE
+      - The max range of the sensor. Range measurements bigger than this threshold are being skipped.
+
+
 
 ### Using the RoboViewer
 
 The RoboViewer enables the user to visualize trajectories and the map. When the true robot pose is known, the
-trajectories estimated by the RBPF SLAM algorithm can be compared against it!
+trajectories estimated by the RBPF SLAM algorithm can be compared against it! In order for the Viewer to work,
+one of the RBPF tuning pipelines must have run ones. For more information see section "Using the Tuning Pipeline"
+above.
 
 The viewer is started using the following command:
 
@@ -450,7 +503,7 @@ If both have been selected, the view should look as follows:
 Clicking the "Open RoboViewer" button starts the actual viewer, and a version of the following screen opens:
 
 <p align="center">
-  <img src="src/rbpf_slam/data/presentation/robo_viwer_viewer_3.png">
+  <img src="src/rbpf_slam/data/presentation/robo_viwer_viewer_aws_indoor_1.png">
 </p>
 
 The buttons on the right can be used to enable/disable trajectories and the particle cloud. The "step" bar controls
