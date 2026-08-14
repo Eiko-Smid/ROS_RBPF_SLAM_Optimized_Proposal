@@ -79,7 +79,8 @@ experiment:
 
 recording:
   enable_recording: true
-  output_dir: "/home/smide/work/ros_workspaces/ros_ws/src/rbpf_slam/data/slam/python_playback/"
+  # Relative paths are resolved from the rbpf_slam package root.
+  output_dir: "data/python_playback"
 
 
 # ============================================================

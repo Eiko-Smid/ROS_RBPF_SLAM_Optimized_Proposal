@@ -4,6 +4,7 @@ from typing import Tuple, Dict, Any, List
 
 from dataclasses import dataclass
 from math import atan2, cos, sin, sqrt
+from pathlib import Path
 import random
 import threading
 import time
@@ -76,6 +77,9 @@ The synchronized data is stored in the configured playback directory. Three file
 
 # Name of the ROS node
 NODE_NAME = "playback_node"
+
+# Root directory of the rbpf_slam package
+RBPF_SLAM_DIR = Path(__file__).resolve().parents[1]
 
 
 @dataclass
@@ -272,9 +276,13 @@ def load_record_params() -> RECORDParams:
     config = rospy.get_param("~recording")
 
     try:
+        output_dir = Path(str(config["output_dir"])).expanduser()
+        if not output_dir.is_absolute():
+            output_dir = RBPF_SLAM_DIR / output_dir
+
         return RECORDParams(
             enable_recording=bool(config["enable_recording"]),
-            output_dir=str(config["output_dir"]),
+            output_dir=str(output_dir.resolve()),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError(
