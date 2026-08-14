@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /LaserScan1
         - /BestPPose1
         - /WeightedMeanPPose1
       Splitter Ratio: 0.5
@@ -74,7 +75,7 @@ Visualization Manager:
       Queue Size: 10
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.009999999776482582
+      Size (m): 0.029999999329447746
       Style: Flat Squares
       Topic: /scan
       Unreliable: false
@@ -285,5 +286,5 @@ Window Geometry:
   Views:
     collapsed: true
   Width: 1908
-  X: 1888
+  X: -32
   Y: -32
