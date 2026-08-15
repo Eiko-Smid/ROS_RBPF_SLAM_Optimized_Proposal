@@ -16,13 +16,13 @@ The system consists of multiple components:
 - **Real-Time RBPF SLAM** algorithm with optimized proposal distribution
     - Probabilistic motion and measurement models
     - **ICP**-based **Scan Matcher**
-    - **Proposal Estimator** approximating the optimized proposal distribution with a Gaussian
+    - **Proposal Estimator** approximating the proposal distribution with a Gaussian -> **Optimized Proposal**
     - **Occupancy Grid Mapping** algorithm to build the 2D grid map
     - **Resampler** with an adaptive resampling strategy
 - **ROS / Gazebo integration**
     - **ROS** nodes for synchronized sensor processing and SLAM execution
     - Differential-Drive Mobile Robot (DDMR) in **Gazebo**
-    - RViz visualization
+    - **RViz** visualization
 - **Tuning and evaluation framework**
     - **Multiprocessing** implementation of the pipelines to speed up the tuning process
     - Tuning pipelines for:
@@ -31,7 +31,7 @@ The system consists of multiple components:
         - Multiple-particle RBPF
 - **RoboViewer**
     - Visualizes information such as trajectories and maps stored by the evaluation framework
-    - Provides a GUI to select the data to display
+    - Provides a **GUI** to select the data to display
 - **Performance Optimization**
     - **Vectorized NumPy** implementation in key algorithm parts such as **Point-Cloud Downsampling** or
       **Outlier Rejection** in ICP

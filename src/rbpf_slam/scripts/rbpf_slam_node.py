@@ -157,6 +157,9 @@ class ROSParams:
 
     # Defines the max duration for the rbpf filter to proceed the task before throwing a warning (in seconds).
     max_filter_duration_s: float
+
+    # Defines the max duration for the Node
+    max_node_duration_s: float
     # Defines the colormap used for publishing the occupancy grid map
     col_map: Colormap = field(default_factory=Colormap)
 
@@ -351,6 +354,9 @@ def load_ros_node_params() -> ROSParams:
             tf_timeout_s=float(runtime["tf_timeout_s"]),
             max_filter_duration_s=float(
                 runtime["max_filter_duration_s"]
+            ),
+            max_node_duration_s=float(
+                runtime["max_node_duration_s"]
             ),
         )
     except (KeyError, TypeError, ValueError) as exc:
@@ -1043,6 +1049,15 @@ class RBPF_ROS_Node:
                     f"In step {step_res.step_idx}."
                 )
                 rospy.loginfo(f"Complete Step {step_res.step_idx} took {step_res.t_step_duration:.4f} seconds.")
+
+        if total_step_time > self.ros_params.max_node_duration_s:
+            total_step_time_ms = total_step_time * 1000.0
+            max_node_duration_ms = self.ros_params.max_node_duration_s * 1000.0
+            rospy.logwarn(
+                f"\nTotal step time exceeded given threshold."
+                f"Total step time: {total_step_time_ms:.4f} ms > {max_node_duration_ms:.4f} ms."
+                f"In step {step_res.step_idx}."
+            )
 
         if step_res.resampling:
             rospy.loginfo(f"Resampling took place in step {step_res.step_idx}")
