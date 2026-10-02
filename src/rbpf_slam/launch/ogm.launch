@@ -8,6 +8,7 @@
 
     <!-- Enable/disable gazebo gui. Runs also without, but robot not visible then -->
     <arg name="gui" default="true"/>
+    <arg name="publish_tfs" default="true"/>
 
     <!--Define world to launch-->
     <!-- <arg name="world_name" default="/home/smide/work/ros_workspaces/aws-robomaker-bookstore-world/worlds/bookstore_light.world"/> -->
@@ -73,6 +74,7 @@
         <arg name="paused" value="$(arg paused)"/>
         <arg name="use_sim_time" value="$(arg use_sim_time)"/>
         <arg name="gui" value="$(arg gui)"/>
+        <arg name="publish_tfs" value="$(arg publish_tfs)"/>
         <arg name="spawn_x" value="$(arg spawn_x)"/>
         <arg name="spawn_y" value="$(arg spawn_y)"/>
         <arg name="spawn_z" value="$(arg spawn_z)"/>

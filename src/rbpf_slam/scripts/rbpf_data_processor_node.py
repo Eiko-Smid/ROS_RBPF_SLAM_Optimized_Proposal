@@ -485,7 +485,7 @@ def main():
         f"{ros_params.max_sync_error_s * 1000.0:.1f} ms"
     )
 
-    # RUn RBPF data processor
+    # Run RBPF data processor
     rbpf_data_processor = RBPFDataProcessorNode(
         ros_params=ros_params,
         wheel_separation=wheel_separation

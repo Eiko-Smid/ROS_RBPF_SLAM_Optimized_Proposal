@@ -3,6 +3,7 @@
 <!--Choose a name space and start xacro-->
 <robot name="differential_drive_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+    <xacro:arg name="publish_tfs" default="true"/>
     <xacro:arg name="laser_range_resolution" default="0.01"/>
     <xacro:arg name="laser_noise_type" default="gaussian"/>
     <xacro:arg name="laser_noise_mean" default="0.0"/>
